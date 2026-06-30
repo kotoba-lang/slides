@@ -16,6 +16,17 @@
       (is (re-find #"pptx" usage))
       (is (re-find #"update" usage)))))
 
+(deftest package-bin-points-to-cljs-wrapper
+  (let [package-json (slurp "package.json")
+        package-lock (slurp "package-lock.json")
+        bin (java.io.File. "bin/kotoba-slides.cljs")]
+    (is (re-find #"\"kotoba-slides\"\s*:\s*\"bin/kotoba-slides\.cljs\"" package-json))
+    (is (re-find #"\"kotoba-slides\"\s*:\s*\"bin/kotoba-slides\.cljs\"" package-lock))
+    (is (not (re-find #"bin/kotoba-slides\.js" package-json)))
+    (is (not (re-find #"bin/kotoba-slides\.js" package-lock)))
+    (is (.exists bin))
+    (is (.canExecute bin))))
+
 (deftest parse-deck-title-from-path
   (let [title-fn (ns-resolve 'slides.cli 'deck-title-from-path)]
     (is (some? title-fn))

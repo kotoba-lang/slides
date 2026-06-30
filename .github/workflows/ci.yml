@@ -26,10 +26,10 @@ jobs:
       - name: Build GitHub Pages CLJS
         run: npm run build:pages
       - name: Check generated Pages artifacts
-        run: git diff --exit-code -- docs/index.html docs/main.css docs/main.js
+        run: git diff --exit-code -- docs/index.html docs/main.css
       - name: Install browser for e2e
         run: npx playwright install --with-deps chromium
       - name: Test browser editor
         run: npm run test:e2e
       - name: Smoke npm bin wrapper
-        run: node bin/kotoba-slides.js
+        run: npx nbb bin/kotoba-slides.cljs

@@ -1,5 +1,6 @@
 (ns slides.site-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is]]
             [shadow.css.build :as css-build]
             [slides.build :as build]
             [slides.site :as site]))
@@ -7,11 +8,19 @@
 (deftest index-html-renders-github-pages-shell
   (let [html (site/index-html)]
     (is (.startsWith html "<!doctype html>"))
+    (is (re-find #"<title>kotoba-lang/slides</title>" html))
     (is (re-find #"<link rel=\"stylesheet\" href=\"\./main\.css\">" html))
-    (is (re-find #"Open PPTX" html))
-    (is (re-find #"id=\"pptx-file\"" html))
-    (is (re-find #"id=\"deck-edn\"" html))
-    (is (re-find #"src=\"\./main\.js\"" html))))
+    (is (re-find #"<body class=\"slides_site__" html))
+     (is (re-find #"<div id=\"app\"></div>" html))
+     (is (re-find #"src=\"\./main\.js\"" html))))
+
+(deftest write-persists-index-html
+  (let [dir (java.nio.file.Files/createTempDirectory "slides-site-test" (make-array java.nio.file.attribute.FileAttribute 0))
+        out (io/file (.toFile dir) "index.html")]
+    (with-redefs [io/file (fn [& _] out)]
+      (is (= out (site/write!)))
+      (is (.exists out))
+      (is (re-find #"<title>kotoba-lang/slides</title>" (slurp out))))))
 
 (deftest css-release-runs-shadow-css-pipeline
   (let [calls (atom [])]
@@ -34,7 +43,7 @@
       (is (= [[:start]
               [:index-path :started "src" {}]
               [:index-path :started "resources" {}]
-              [:generate :started '{:main {:include [slides.site]}}]
+              [:generate :started '{:main {:include [slides.site shitsuke.components]}}]
               [:minify :started]
               [:write :started "docs"]]
              @calls)))))

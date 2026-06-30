@@ -1,5 +1,9 @@
 /.cpcache/
 /target/
 /out/
+/node_modules/
+/.shadow-cljs/
+/test-results/
+/docs/manifest.edn
 /.calva/
 /.lsp/
