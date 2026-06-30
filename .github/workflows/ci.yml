@@ -14,7 +14,9 @@ jobs:
           cli: latest
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+      - name: Install npm dependencies
+        run: npm ci
       - name: Test CLJC
         run: clojure -X:test
       - name: Test npm package script
