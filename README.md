@@ -75,6 +75,21 @@ CLJC code and zipped on the JVM host.
 (pptx/write-pptx! "deck.pptx" deck)
 ```
 
+## CLI / npm
+
+The core writer is CLJC. The npm package only provides a thin `node` bin wrapper
+that invokes the Clojure CLI, so `clojure` must be installed on the host.
+
+```bash
+clojure -M:cli pptx deck.edn deck.pptx
+clojure -M:cli update base.pptx deck.edn updated.pptx
+
+npx @kotoba-lang/slides pptx deck.edn deck.pptx
+```
+
+GitHub Pages includes a browser-only EDN editor and PPTX download surface:
+https://kotoba-lang.github.io/slides/
+
 ## Test
 
 ```bash

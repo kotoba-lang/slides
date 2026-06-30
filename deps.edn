@@ -3,7 +3,8 @@
  ;; ClojureScript, and SCI-style hosts.
  :deps {}
  :aliases
- {:test {:extra-paths ["test"]
+ {:cli {:main-opts ["-m" "slides.cli"]}
+  :test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner"]

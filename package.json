@@ -1,0 +1,18 @@
+{
+  "name": "@kotoba-lang/slides",
+  "version": "0.1.0",
+  "description": "CLJC EDN deck model and PPTX writer.",
+  "license": "MIT",
+  "bin": {
+    "kotoba-slides": "bin/kotoba-slides.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "deps.edn",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "clojure -X:test"
+  }
+}

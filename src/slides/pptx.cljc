@@ -226,6 +226,16 @@
      :cljs
      (throw (ex-info "pptx byte writing requires a host zip implementation" {:feature :slides/pptx}))))
 
+(defn update-pptx-bytes
+  "Returns .pptx bytes for deck EDN.
+
+  The current writer emits a complete normalized PPTX package from the supplied
+  deck data. The base bytes are accepted so callers can use the same command
+  shape for create/update workflows while the CLJC writer grows richer patch
+  support."
+  [_base-bytes deck]
+  (pptx-bytes deck))
+
 (defn write-pptx!
   "Writes a .pptx generated from an EDN deck map. JVM only."
   [path deck]
@@ -238,3 +248,18 @@
         :slides/slides (count (deck-slides deck))})
      :cljs
      (throw (ex-info "write-pptx! requires a host file implementation" {:feature :slides/pptx}))))
+
+(defn update-pptx!
+  "Writes an updated .pptx from base path and deck EDN. JVM only."
+  [in-path out-path deck]
+  #?(:clj
+     (let [base (java.nio.file.Files/readAllBytes
+                 (java.nio.file.Path/of (str in-path) (into-array String [])))
+           bytes (update-pptx-bytes base deck)]
+       (with-open [out (FileOutputStream. (str out-path))]
+         (.write out bytes))
+       {:slides/path (str out-path)
+        :slides/bytes (alength bytes)
+        :slides/slides (count (deck-slides deck))})
+     :cljs
+     (throw (ex-info "update-pptx! requires a host file implementation" {:feature :slides/pptx}))))

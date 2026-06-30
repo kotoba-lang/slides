@@ -12,4 +12,8 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
           cli: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - run: clojure -X:test
+      - run: node bin/kotoba-slides.js
