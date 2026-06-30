@@ -167,6 +167,7 @@ clojure -X:test
 clojure -M:local:test
 npm run build:pages
 npm run test:e2e
+npm run test:all
 ```
 
 The test suite covers the EDN workspace model, validation, routing, HTML render,
@@ -177,8 +178,10 @@ workspace/deck/slide/shape EDN structures, including semantic shape warnings for
 malformed design/theme overrides, missing slide ids/titles, missing shape ids, and renderer fallback
 kinds/components across default and deck component definitions, plus malformed
 item rendering fallbacks.
-The e2e test starts from the built Pages app, imports `docs/sample.pptx`, checks
-the EDN conversion surface, downloads the browser-generated PPTX, and verifies it
-as an Open XML ZIP package.
+The e2e tests start from the built Pages app, import `docs/sample.pptx`, edit a
+browser shape, check the EDN conversion surface, download the browser-generated
+PPTX, and inspect the resulting Open XML slide/theme XML. They also apply an EDN
+deck with reusable components/styles and verify that the exported PPTX keeps
+editable text, font size, and color in the package XML.
 Use `:local:test` when developing `slides`, `office`, and `office-style` from
 sibling checkouts in this workspace.

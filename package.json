@@ -15,6 +15,7 @@
   "scripts": {
     "build:pages": "clojure -M:pages && clojure -M:cljs",
     "test": "clojure -X:test",
+    "test:all": "npm run build:pages && npm test && npm run test:e2e",
     "test:e2e": "playwright test test/e2e"
   },
   "devDependencies": {

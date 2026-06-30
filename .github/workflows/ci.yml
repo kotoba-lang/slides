@@ -21,5 +21,9 @@ jobs:
         run: npm test
       - name: Build GitHub Pages CLJS
         run: npm run build:pages
+      - name: Install browser for e2e
+        run: npx playwright install --with-deps chromium
+      - name: Test browser editor
+        run: npm run test:e2e
       - name: Smoke npm bin wrapper
         run: node bin/kotoba-slides.js
