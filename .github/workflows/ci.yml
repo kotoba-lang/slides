@@ -22,9 +22,11 @@ jobs:
       - name: Test npm package script
         run: npm test
       - name: Coverage gate
-        run: npm run coverage
+        run: npm run coverage && npm run coverage:thresholds
       - name: Build GitHub Pages CLJS
         run: npm run build:pages
+      - name: Check generated Pages artifacts
+        run: git diff --exit-code -- docs/index.html docs/main.css docs/main.js
       - name: Install browser for e2e
         run: npx playwright install --with-deps chromium
       - name: Test browser editor

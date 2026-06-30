@@ -167,6 +167,7 @@ clojure -X:test
 clojure -M:local:test
 npm run build:pages
 npm run coverage
+npm run coverage:thresholds
 npm run test:e2e
 npm run test:all
 ```
@@ -185,7 +186,9 @@ PPTX, and inspect the resulting Open XML slide/theme XML. They also apply an EDN
 deck with reusable components/styles and verify that the exported PPTX keeps
 editable text, font size, and color in the package XML.
 `npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
-85% aggregate coverage, so CI blocks broad regressions in the core model,
-Office/PPTX bridge, Pages Hiccup shell, and static build pipeline.
+85% aggregate coverage. `npm run coverage:thresholds` then checks the generated
+LCOV report against namespace-level floors, with a 90% aggregate floor, so CI
+blocks broad regressions and local coverage holes in the core model, Office/PPTX
+bridge, Pages Hiccup shell, and static build pipeline.
 Use `:local:test` when developing `slides`, `office`, and `office-style` from
 sibling checkouts in this workspace.

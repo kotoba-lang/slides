@@ -15,8 +15,9 @@
   "scripts": {
     "build:pages": "clojure -M:pages && clojure -M:cljs",
     "coverage": "clojure -M:coverage",
+    "coverage:thresholds": "clojure -M:coverage-thresholds",
     "test": "clojure -X:test",
-    "test:all": "npm run build:pages && npm test && npm run coverage && npm run test:e2e",
+    "test:all": "npm run build:pages && npm test && npm run coverage && npm run coverage:thresholds && npm run test:e2e",
     "test:e2e": "playwright test test/e2e"
   },
   "devDependencies": {

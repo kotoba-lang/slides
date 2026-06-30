@@ -40,4 +40,6 @@
                          "--no-html"
                          "--text"
                          "--lcov"
-                         "--fail-threshold" "85"]}}}
+                         "--fail-threshold" "85"]}
+  :coverage-thresholds {:extra-paths ["test"]
+                        :main-opts ["-m" "slides.coverage-gate"]}}}
