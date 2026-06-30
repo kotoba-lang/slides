@@ -70,8 +70,13 @@ PPTX bytes → deck EDN → PPTX bytes の編集/export 境界を EDN だけに�
 
 ## Render
 
-`slides.render` emits static HTML for GitHub Pages and simple host shells. The
-checked-in Pages artifact is under `docs/`.
+`slides.render` emits static HTML for simple host shells. The checked-in GitHub
+Pages artifact is under `docs/` and is generated from `slides.site` Hiccup plus
+`shadow-css` output:
+
+```bash
+npm run build:pages
+```
 
 ## PPTX
 
@@ -80,7 +85,9 @@ It does not use `pptxgenjs`; the package parts and relationships are emitted by
 CLJC code and zipped on the JVM host.
 
 The writer escapes XML text and theme fonts, validates hex colors, falls back on
-invalid deck/shape geometry, and emits a placeholder slide for empty decks.
+invalid deck/shape geometry, non-finite numeric values, malformed slide/shape
+collections, malformed design overrides, and emits a placeholder slide for empty
+decks.
 The browser editor and JVM CLI use the same `slides.pptx/pptx-files` package
 parts, so downloaded decks are normal ZIP/Open XML packages with editable text
 boxes and shapes.
@@ -148,7 +155,9 @@ clojure -M:cli update base.pptx deck.edn updated.pptx
 npx @kotoba-lang/slides pptx deck.edn deck.pptx
 ```
 
-GitHub Pages includes a browser-only EDN editor and PPTX download surface:
+GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
+`.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,
+and download a fresh editable `.pptx`:
 https://kotoba-lang.github.io/slides/
 
 ## Test
@@ -156,11 +165,20 @@ https://kotoba-lang.github.io/slides/
 ```bash
 clojure -X:test
 clojure -M:local:test
+npm run build:pages
+npm run test:e2e
 ```
 
 The test suite covers the EDN workspace model, validation, routing, HTML render,
 Office PPTX import, CLI commands, theme handling, PPTX export/update, and
-fallback behavior for invalid geometry, colors, fonts, empty decks, and malformed
-workspace EDN structures.
+fallback behavior for invalid geometry, colors, fonts, empty decks, malformed
+slide/shape collections, non-finite numeric values, malformed design overrides, and malformed
+workspace/deck/slide/shape EDN structures, including semantic shape warnings for
+malformed design/theme overrides, missing slide ids/titles, missing shape ids, and renderer fallback
+kinds/components across default and deck component definitions, plus malformed
+item rendering fallbacks.
+The e2e test starts from the built Pages app, imports `docs/sample.pptx`, checks
+the EDN conversion surface, downloads the browser-generated PPTX, and verifies it
+as an Open XML ZIP package.
 Use `:local:test` when developing `slides`, `office`, and `office-style` from
 sibling checkouts in this workspace.

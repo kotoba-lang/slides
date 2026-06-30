@@ -20,11 +20,16 @@
       (str/replace "\"" "&quot;")
       (str/replace "'" "&apos;")))
 
+(defn- finite-number? [x]
+  (and (number? x)
+       #?(:clj (Double/isFinite (double x))
+          :cljs (js/isFinite x))))
+
 (defn- numeric [x fallback]
-  (if (number? x) x fallback))
+  (if (finite-number? x) x fallback))
 
 (defn- positive-numeric [x fallback]
-  (if (and (number? x) (pos? x)) x fallback))
+  (if (and (finite-number? x) (pos? x)) x fallback))
 
 (defn- emu [inches]
   (long (Math/round (* emu-per-inch (double (numeric inches 0))))))
@@ -258,8 +263,10 @@
              :slides/text (or (:slides/text footer) (:slides/title deck ""))))))
 
 (defn- slide-shapes [deck slide]
-  (let [own-shapes (if (seq (:slides/shapes slide))
-                     (:slides/shapes slide)
+  (let [valid-shapes (when (sequential? (:slides/shapes slide))
+                       (filterv map? (:slides/shapes slide)))
+        own-shapes (if (seq valid-shapes)
+                     valid-shapes
                      [{:slides/shape :text
                        :slides/id "title"
                        :slides/text (:slides/title slide)
@@ -290,9 +297,11 @@
 </Relationships>")
 
 (defn deck-slides [deck]
-  (let [slides (:slides/slides deck)]
-    (if (seq slides)
-      slides
+  (let [slides (:slides/slides deck)
+        valid-slides (when (sequential? slides)
+                       (filterv map? slides))]
+    (if (seq valid-slides)
+      valid-slides
       [{:slides/id "slide-1"
         :slides/title (:slides/title deck (:slides/id deck "Slides"))
         :slides/shapes []}])))

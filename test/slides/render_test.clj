@@ -54,3 +54,23 @@
                                :slides/title nil})]
     (is (re-find #"<tr><td></td><td></td><td></td></tr>" html))
     (is (not (re-find #"nil" html)))))
+
+(deftest render-tolerates-malformed-items
+  (let [row (render/item-row "not a map")
+        html (render/index-html {:slides/id "bad"
+                                 :slides/items []
+                                 :slides/links []})]
+    (is (re-find #"<td>not a map</td>" row))
+    (is (re-find #"<td>:unknown</td>" row))
+    (is (re-find #"</table>" html))))
+
+(deftest index-html-renders-mixed-map-and-non-map-items
+  (let [html (render/index-html {:slides/id "mixed"
+                                 :slides/items {"deck" {:slides/id "deck"
+                                                        :slides/kind :slides/deck
+                                                        :slides/title "Deck"}
+                                                "bad" "not a map"}
+                                 :slides/links []})]
+    (is (re-find #"Deck" html))
+    (is (re-find #"not a map" html))
+    (is (re-find #":unknown" html))))

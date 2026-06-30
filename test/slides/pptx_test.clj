@@ -91,6 +91,26 @@
     (is (re-find #"ext cx=\"914400\" cy=\"914400\"" slide))
     (is (re-find #"sz=\"2400\"" slide))))
 
+(deftest non-finite-numeric-values-fall-back
+  (let [deck (-> (m/deck "deck" {:slides/title "Non finite"
+                                 :slides/width Double/POSITIVE_INFINITY
+                                 :slides/height Double/NaN})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Only"})
+                      (m/add-shape (m/text-box "bad-text" "Bad"
+                                               {:slides/x Double/NaN
+                                                :slides/y Double/POSITIVE_INFINITY
+                                                :slides/w Double/POSITIVE_INFINITY
+                                                :slides/h Double/NaN
+                                                :slides/font-size Double/POSITIVE_INFINITY})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        presentation (entries "ppt/presentation.xml")
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"p:sldSz cx=\"9144000\" cy=\"5143500\"" presentation))
+    (is (re-find #"off x=\"0\" y=\"0\"" slide))
+    (is (re-find #"ext cx=\"914400\" cy=\"914400\"" slide))
+    (is (re-find #"sz=\"2400\"" slide))))
+
 (deftest shape-xml-escapes-ids-and-unknown-shapes
   (let [deck (-> (m/deck "deck" {:slides/title "Escaped shapes"})
                  (m/add-slide
@@ -151,6 +171,36 @@
                                   (keys entries)))]
     (is (= 1 slide-count))
     (is (re-find #"Empty deck" (entries "ppt/slides/slide1.xml")))))
+
+(deftest malformed-slide-data-falls-back-to-placeholder-content
+  (let [bad-slides {:slides/id "bad"
+                    :slides/title "Bad deck"
+                    :slides/slides "not slides"}
+        bad-slide-items {:slides/id "bad-slide-items"
+                         :slides/title "Bad slide items deck"
+                         :slides/slides ["not a slide"
+                                         {:slides/id "s2"
+                                          :slides/title "Good slide"
+                                          :slides/shapes []}]}
+        bad-shapes {:slides/id "bad-shapes"
+                    :slides/title "Bad shapes deck"
+                    :slides/slides [{:slides/id "s1"
+                                     :slides/title "Bad shapes"
+                                     :slides/shapes "not shapes"}]}
+        bad-shape-items {:slides/id "bad-shape-items"
+                         :slides/title "Bad shape items deck"
+                         :slides/slides [{:slides/id "s1"
+                                          :slides/title "Bad shape items"
+                                          :slides/shapes ["not a shape"]}]}
+        entries-a (zip-entries (pptx/pptx-bytes bad-slides))
+        entries-b (zip-entries (pptx/pptx-bytes bad-slide-items))
+        entries-c (zip-entries (pptx/pptx-bytes bad-shapes))
+        entries-d (zip-entries (pptx/pptx-bytes bad-shape-items))]
+    (is (re-find #"Bad deck" (entries-a "ppt/slides/slide1.xml")))
+    (is (re-find #"Good slide" (entries-b "ppt/slides/slide1.xml")))
+    (is (not (contains? entries-b "ppt/slides/slide2.xml")))
+    (is (re-find #"Bad shapes" (entries-c "ppt/slides/slide1.xml")))
+    (is (re-find #"Bad shape items" (entries-d "ppt/slides/slide1.xml")))))
 
 (deftest updates-pptx-using-base-path
   (let [deck (-> (m/deck "deck" {:slides/title "Base deck"})

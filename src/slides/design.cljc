@@ -65,11 +65,20 @@
               :else b))]
     (reduce mrg {} (filter some? maps))))
 
+(defn- map-overrides [m ks]
+  (->> ks
+       (keep (fn [k]
+               (when (map? (get m k))
+                 [k (get m k)])))
+       (into {})))
+
 (defn deck-design [deck]
-  (deep-merge default-design
-              (select-keys deck [:slides/theme :slides/master :slides/guides
-                                 :slides/text-styles :slides/components])
-              (:slides/design deck)))
+  (let [ks [:slides/theme :slides/master :slides/guides
+            :slides/text-styles :slides/components]]
+    (deep-merge default-design
+                (map-overrides deck ks)
+                (when (map? (:slides/design deck))
+                  (:slides/design deck)))))
 
 (defn theme [deck]
   (:slides/theme (deck-design deck)))
@@ -93,7 +102,8 @@
   (get-in (deck-design deck) [:slides/components id]))
 
 (defn resolve-shape [deck shape]
-  (let [component-defaults (when-let [id (:slides/component shape)]
+  (let [shape (if (map? shape) shape {})
+        component-defaults (when-let [id (:slides/component shape)]
                              (component deck id))
         styled (deep-merge component-defaults shape)
         text-defaults (when-let [id (:slides/text-style styled)]

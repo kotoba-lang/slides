@@ -1,5 +1,6 @@
 (ns slides.validate
-  (:require [slides.model :as model]
+  (:require [slides.design :as design]
+            [slides.model :as model]
             [slides.routes :as routes]))
 
 (defn problem [severity code id msg]
@@ -7,6 +8,16 @@
    :slides/code code
    :slides/id id
    :slides/msg msg})
+
+(def shape-kinds
+  #{:text :rect})
+
+(def design-override-keys
+  [:slides/master :slides/guides
+   :slides/text-styles :slides/components :slides/design])
+
+(defn- valid-theme-override? [x]
+  (or (map? x) (keyword? x)))
 
 (defn workspace-problems [ws]
   (cond-> []
@@ -41,8 +52,85 @@
          (conj (problem :warning :item/missing-title id "item has no title"))))
      (:slides/items ws))))
 
+(defn- shape-problems [deck-id slide-id shape-idx components shape]
+  (cond-> []
+    (not (map? shape))
+    (conj (problem :error :shape/not-map (str deck-id "/" slide-id "#" shape-idx)
+                   "shape must be an EDN map"))
+
+    (and (map? shape) (nil? (:slides/id shape)))
+    (conj (problem :warning :shape/missing-id (str deck-id "/" slide-id "#" shape-idx)
+                   "shape has no id"))
+
+    (and (map? shape)
+         (:slides/component shape)
+         (not (contains? components (:slides/component shape))))
+    (conj (problem :warning :shape/unknown-component (str deck-id "/" slide-id "#" shape-idx)
+                   "unknown component id will use renderer fallback"))
+
+    (and (map? shape)
+         (nil? (:slides/component shape))
+         (not (contains? shape-kinds (:slides/shape shape))))
+    (conj (problem :warning :shape/unknown-kind (str deck-id "/" slide-id "#" shape-idx)
+                   "unknown shape kind will use renderer fallback"))))
+
+(defn- slide-problems [deck-id components slide-idx slide]
+  (if-not (map? slide)
+    [(problem :error :slide/not-map (str deck-id "#" slide-idx)
+              "slide must be an EDN map")]
+    (let [slide-id (or (:slides/id slide) (str "slide-" slide-idx))
+          shapes (:slides/shapes slide)]
+      (concat
+       (cond-> []
+         (nil? (:slides/id slide))
+         (conj (problem :warning :slide/missing-id (str deck-id "#" slide-idx)
+                        "slide has no id"))
+
+         (or (nil? (:slides/title slide)) (= "" (:slides/title slide)))
+         (conj (problem :warning :slide/missing-title slide-id
+                        "slide has no title"))
+
+         (not (sequential? shapes))
+         (conj (problem :error :slide/shapes-not-sequential slide-id
+                        ":slides/shapes must be sequential")))
+       (when (sequential? shapes)
+         (mapcat (fn [[idx shape]]
+                   (shape-problems deck-id slide-id idx components shape))
+                 (map-indexed vector shapes)))))))
+
+(defn deck-problems [ws]
+  (if-not (map? (:slides/items ws))
+    []
+    (mapcat
+     (fn [[id it]]
+       (if (and (map? it) (= :slides/deck (:slides/kind it)))
+         (let [slides (:slides/slides it)
+               components (set (keys (:slides/components (design/deck-design it))))]
+           (concat
+            (when (and (contains? it :slides/theme)
+                       (not (valid-theme-override? (:slides/theme it))))
+              [(problem :warning :design/theme-override-invalid (str id "/theme")
+                        "theme override must be a map or keyword shorthand")])
+            (map (fn [k]
+                   (problem :warning :design/override-not-map (str id "/" (name k))
+                            "design override must be an EDN map"))
+                 (filter #(and (contains? it %)
+                               (not (map? (get it %))))
+                         design-override-keys))
+            (cond-> []
+              (not (sequential? slides))
+              (conj (problem :error :deck/slides-not-sequential id
+                             ":slides/slides must be sequential")))
+            (when (sequential? slides)
+              (mapcat (fn [[idx slide]]
+                        (slide-problems id components idx slide))
+                      (map-indexed vector slides)))))
+         []))
+     (:slides/items ws))))
+
 (defn link-problems [ws]
-  (if-not (sequential? (:slides/links ws))
+  (if-not (and (map? (:slides/items ws))
+               (sequential? (:slides/links ws)))
     []
     (let [ids (set (keys (:slides/items ws)))]
       (mapcat
@@ -73,6 +161,7 @@
 (defn problems [ws]
   (vec (concat (workspace-problems ws)
                (item-problems ws)
+               (deck-problems ws)
                (link-problems ws)
                (route-problems))))
 

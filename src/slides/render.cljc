@@ -18,9 +18,24 @@
          "</a>")))
 
 (defn item-row [it]
-  (str "<tr><td>" (esc (:slides/id it)) "</td>"
-       "<td>" (esc (:slides/kind it)) "</td>"
-       "<td>" (esc (:slides/title it)) "</td></tr>"))
+  (let [it (if (map? it)
+             it
+             {:slides/id (str it)
+              :slides/kind :unknown
+              :slides/title ""})]
+    (str "<tr><td>" (esc (:slides/id it)) "</td>"
+         "<td>" (esc (:slides/kind it)) "</td>"
+         "<td>" (esc (:slides/title it)) "</td></tr>")))
+
+(defn- render-items [ws]
+  (if (map? (:slides/items ws))
+    (model/items ws)
+    []))
+
+(defn- item-sort-key [it]
+  (str (if (map? it)
+         (:slides/id it)
+         it)))
 
 (defn index-html
   ([] (index-html (model/seed-workspace)))
@@ -45,6 +60,6 @@
         "<p>Portable CLJC model for slides, docs, drive, and sheets. The runtime surface is pure EDN; web hosts can render these four apps from the same workspace graph.</p>"
         "<section class=\"grid\">" (apply str (map app-card (routes/nav))) "</section>"
         "<h2>Seed Graph</h2><table><thead><tr><th>ID</th><th>Kind</th><th>Title</th></tr></thead><tbody>"
-        (apply str (map item-row (sort-by :slides/id (model/items ws))))
+        (apply str (map item-row (sort-by item-sort-key (render-items ws))))
         "</tbody></table>"
         "</main></body></html>")))

@@ -13,7 +13,11 @@
     "README.md"
   ],
   "scripts": {
-    "build:pages": "clojure -M:cljs",
-    "test": "clojure -X:test"
+    "build:pages": "clojure -M:pages && clojure -M:cljs",
+    "test": "clojure -X:test",
+    "test:e2e": "playwright test test/e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }

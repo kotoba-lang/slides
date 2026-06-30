@@ -13,6 +13,8 @@
                           {:local/root "../office"}
                           io.github.kotoba-lang/office-style
                           {:local/root "../office-style"}}}
+  :pages {:extra-deps {com.thheller/shadow-css {:mvn/version "0.6.1"}}
+          :main-opts ["-m" "slides.build"]}
   :cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.11.132"}}
          :main-opts ["-m" "cljs.main"
                      "--optimizations" "advanced"
