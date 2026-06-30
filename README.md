@@ -166,6 +166,7 @@ https://kotoba-lang.github.io/slides/
 clojure -X:test
 clojure -M:local:test
 npm run build:pages
+npm run coverage
 npm run test:e2e
 npm run test:all
 ```
@@ -183,5 +184,8 @@ browser shape, check the EDN conversion surface, download the browser-generated
 PPTX, and inspect the resulting Open XML slide/theme XML. They also apply an EDN
 deck with reusable components/styles and verify that the exported PPTX keeps
 editable text, font size, and color in the package XML.
+`npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
+85% aggregate coverage, so CI blocks broad regressions in the core model,
+Office/PPTX bridge, Pages Hiccup shell, and static build pipeline.
 Use `:local:test` when developing `slides`, `office`, and `office-style` from
 sibling checkouts in this workspace.

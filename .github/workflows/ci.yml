@@ -21,6 +21,8 @@ jobs:
         run: clojure -X:test
       - name: Test npm package script
         run: npm test
+      - name: Coverage gate
+        run: npm run coverage
       - name: Build GitHub Pages CLJS
         run: npm run build:pages
       - name: Install browser for e2e
