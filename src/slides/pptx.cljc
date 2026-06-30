@@ -97,15 +97,82 @@
                      "Target=\"slides/slide" idx ".xml\"/>")))
        "</Relationships>"))
 
-(def theme
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"kotoba\">
-  <a:themeElements>
-    <a:clrScheme name=\"kotoba\"><a:dk1><a:srgbClr val=\"17202A\"/></a:dk1><a:lt1><a:srgbClr val=\"FFFFFF\"/></a:lt1><a:dk2><a:srgbClr val=\"334155\"/></a:dk2><a:lt2><a:srgbClr val=\"F7F8FB\"/></a:lt2><a:accent1><a:srgbClr val=\"496B9A\"/></a:accent1><a:accent2><a:srgbClr val=\"7C9A4B\"/></a:accent2><a:accent3><a:srgbClr val=\"B46A55\"/></a:accent3><a:accent4><a:srgbClr val=\"5C6F7E\"/></a:accent4><a:accent5><a:srgbClr val=\"8A6F3D\"/></a:accent5><a:accent6><a:srgbClr val=\"6A5A8E\"/></a:accent6><a:hlink><a:srgbClr val=\"315D8C\"/></a:hlink><a:folHlink><a:srgbClr val=\"6A5A8E\"/></a:folHlink></a:clrScheme>
-    <a:fontScheme name=\"kotoba\"><a:majorFont><a:latin typeface=\"Aptos Display\"/></a:majorFont><a:minorFont><a:latin typeface=\"Aptos\"/></a:minorFont></a:fontScheme>
-    <a:fmtScheme name=\"kotoba\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w=\"6350\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>
-  </a:themeElements>
-</a:theme>")
+(def default-theme
+  {:slides/format "office-style"
+   :slides/colors {:office-style.color/dk1 "17202A"
+                  :office-style.color/lt1 "FFFFFF"
+                  :office-style.color/dk2 "334155"
+                  :office-style.color/lt2 "F7F8FB"
+                  :office-style.color/accent1 "496B9A"
+                  :office-style.color/accent2 "7C9A4B"
+                  :office-style.color/accent3 "B46A55"
+                  :office-style.color/accent4 "5C6F7E"
+                  :office-style.color/accent5 "8A6F3D"
+                  :office-style.color/accent6 "6A5A8E"
+                  :office-style.color/hlink "315D8C"
+                  :office-style.color/folHlink "6A5A8E"}
+   :slides/fonts {:office-style.font/majorFont "Aptos Display"
+                 :office-style.font/minorFont "Aptos"}})
+
+(defn- normalize-theme [value]
+  (cond
+    (nil? value) default-theme
+    (and (map? value) (:slides/theme value)) (:slides/theme value)
+    (map? value) value
+    :else default-theme))
+
+(defn- theme-colors [value]
+  (let [theme (normalize-theme value)]
+    (or (:slides/colors theme)
+        (:office-style/colors theme)
+        (:colors theme)
+        (:slides/colors default-theme))))
+
+(defn- theme-fonts [value]
+  (let [theme (normalize-theme value)]
+    (or (:slides/fonts theme)
+        (:office-style/fonts theme)
+        (:fonts theme)
+        (:slides/fonts default-theme))))
+
+(defn- theme-color [colors role fallback]
+  (hex-color (or (get colors role) fallback) fallback))
+
+(defn- theme-font [fonts role fallback]
+  (or (get fonts role) fallback))
+
+(defn theme-xml [theme]
+  (let [colors (theme-colors theme)
+        fonts (theme-fonts theme)]
+    (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+         "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"kotoba\">\n"
+         "<a:themeElements>\n"
+         "<a:clrScheme name=\"kotoba\">"
+         "<a:dk1><a:srgbClr val=\"" (theme-color colors :office-style.color/dk1 "17202A") "\"/></a:dk1>"
+         "<a:lt1><a:srgbClr val=\"" (theme-color colors :office-style.color/lt1 "FFFFFF") "\"/></a:lt1>"
+         "<a:dk2><a:srgbClr val=\"" (theme-color colors :office-style.color/dk2 "334155") "\"/></a:dk2>"
+         "<a:lt2><a:srgbClr val=\"" (theme-color colors :office-style.color/lt2 "F7F8FB") "\"/></a:lt2>"
+         "<a:accent1><a:srgbClr val=\"" (theme-color colors :office-style.color/accent1 "496B9A") "\"/></a:accent1>"
+         "<a:accent2><a:srgbClr val=\"" (theme-color colors :office-style.color/accent2 "7C9A4B") "\"/></a:accent2>"
+         "<a:accent3><a:srgbClr val=\"" (theme-color colors :office-style.color/accent3 "B46A55") "\"/></a:accent3>"
+         "<a:accent4><a:srgbClr val=\"" (theme-color colors :office-style.color/accent4 "5C6F7E") "\"/></a:accent4>"
+         "<a:accent5><a:srgbClr val=\"" (theme-color colors :office-style.color/accent5 "8A6F3D") "\"/></a:accent5>"
+         "<a:accent6><a:srgbClr val=\"" (theme-color colors :office-style.color/accent6 "6A5A8E") "\"/></a:accent6>"
+         "<a:hlink><a:srgbClr val=\"" (theme-color colors :office-style.color/hlink "315D8C") "\"/></a:hlink>"
+         "<a:folHlink><a:srgbClr val=\"" (theme-color colors :office-style.color/folHlink "6A5A8E") "\"/></a:folHlink>"
+         "</a:clrScheme>\n"
+         "<a:fontScheme name=\"kotoba\"><a:majorFont><a:latin typeface=\""
+         (theme-font fonts :office-style.font/majorFont "Aptos Display")
+         "\"/></a:majorFont><a:minorFont><a:latin typeface=\""
+         (theme-font fonts :office-style.font/minorFont "Aptos")
+         "\"/></a:minorFont></a:fontScheme>\n"
+         "<a:fmtScheme name=\"kotoba\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst>"
+         "<a:lnStyleLst><a:ln w=\"6350\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln></a:lnStyleLst>"
+         "<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>"
+         "<a:bgFillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:bgFillStyleLst>"
+         "</a:fmtScheme>\n"
+         "</a:themeElements>\n"
+         "</a:theme>")))
 
 (def slide-master
   "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -213,7 +280,7 @@
          (add-entry! zip "docProps/app.xml" (app-props (count slides)))
          (add-entry! zip "ppt/presentation.xml" (presentation (count slides) width height))
          (add-entry! zip "ppt/_rels/presentation.xml.rels" (presentation-rels (count slides)))
-         (add-entry! zip "ppt/theme/theme1.xml" theme)
+         (add-entry! zip "ppt/theme/theme1.xml" (theme-xml deck))
          (add-entry! zip "ppt/slideMasters/slideMaster1.xml" slide-master)
          (add-entry! zip "ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels)
          (add-entry! zip "ppt/slideLayouts/slideLayout1.xml" slide-layout)

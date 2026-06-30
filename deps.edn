@@ -1,7 +1,12 @@
 {:paths ["src" "resources"]
  ;; Zero third-party runtime deps. Every namespace is portable .cljc for JVM,
  ;; ClojureScript, and SCI-style hosts.
- :deps {}
+ :deps {io.github.kotoba-lang/office
+        {:git/url "https://github.com/kotoba-lang/office.git"
+         :git/sha "83c2f9014cfc30f64f3e3cc6eaac755852b77095"}
+        io.github.kotoba-lang/office-style
+        {:git/url "https://github.com/kotoba-lang/office-style.git"
+         :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}}
  :aliases
  {:cli {:main-opts ["-m" "slides.cli"]}
   :test {:extra-paths ["test"]

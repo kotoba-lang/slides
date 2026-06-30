@@ -38,6 +38,22 @@ core stays pure data and pure functions.
 ;;=> {:slides/host "kotoba-lang.github.io/slides", :slides/app :slides, ...}
 ```
 
+## Office PPTX のインポート (EDN/CLJC)
+
+`slides.office/deck-from-office-bytes` は `office` と `office-style` を使って
+`.pptx` を `slides` の deck EDN へ変換します。
+
+```clojure
+(require '[slides.office :as office])
+
+(def deck (office/deck-from-office-bytes pptx-bytes {:title "Q1 Update"}))
+```
+
+`deck` にはソースのスライド順（`:office-style/slides`）と
+テキストノード（`:office/kind :text`）を slide/shape として落とし込みます。  
+`:office-style` が欠落している場合は既定テーマと 16:9 サイズへフォールバックし、  
+テキストを含まないスライドでも空スライドを維持したまま変換します。
+
 ## Validation
 
 ```clojure
@@ -81,6 +97,7 @@ The core writer is CLJC. The npm package only provides a thin `node` bin wrapper
 that invokes the Clojure CLI, so `clojure` must be installed on the host.
 
 ```bash
+clojure -M:cli from-pptx deck.pptx deck.edn
 clojure -M:cli pptx deck.edn deck.pptx
 clojure -M:cli update base.pptx deck.edn updated.pptx
 
