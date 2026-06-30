@@ -38,7 +38,10 @@
      (:slides/links ws))))
 
 (defn route-problems []
-  (let [required #{"slides.gftd.ai" "docs.gftd.ai" "drive.gftd.ai" "sheets.gftd.ai"}
+  (let [required #{"kotoba-lang.github.io/slides"
+                   "kotoba-lang.github.io/docs"
+                   "kotoba-lang.github.io/drive"
+                   "kotoba-lang.github.io/sheets"}
         present (set (keys routes/hosts))]
     (for [host (sort (remove present required))]
       (problem :error :route/missing-host host "required host route is missing"))))

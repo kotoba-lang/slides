@@ -22,7 +22,7 @@
 
 (deftest host-routes
   (testing "required gftd hosts resolve"
-    (is (= :slides (:slides/app (routes/resolve-host "slides.gftd.ai"))))
-    (is (= :docs (:slides/app (routes/resolve-host "docs.gftd.ai"))))
-    (is (= :drive (:slides/app (routes/resolve-host "drive.gftd.ai"))))
-    (is (= :sheets (:slides/app (routes/resolve-host "sheets.gftd.ai"))))))
+    (is (= :slides (:slides/app (routes/resolve-host "kotoba-lang.github.io/slides"))))
+    (is (= :docs (:slides/app (routes/resolve-host "kotoba-lang.github.io/docs"))))
+    (is (= :drive (:slides/app (routes/resolve-host "kotoba-lang.github.io/drive"))))
+    (is (= :sheets (:slides/app (routes/resolve-host "kotoba-lang.github.io/sheets"))))))

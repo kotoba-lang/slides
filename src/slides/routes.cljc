@@ -1,19 +1,19 @@
 (ns slides.routes)
 
 (def apps
-  {:slides {:slides/host "slides.gftd.ai"
+  {:slides {:slides/host "kotoba-lang.github.io/slides"
             :slides/app :slides
             :slides/title "GFTD Slides"
             :slides/capabilities #{:deck/edit :deck/publish :notes/edit}}
-   :docs   {:slides/host "docs.gftd.ai"
+   :docs   {:slides/host "kotoba-lang.github.io/docs"
             :slides/app :docs
             :slides/title "GFTD Docs"
             :slides/capabilities #{:doc/edit :outline/edit :decision/log}}
-   :drive  {:slides/host "drive.gftd.ai"
+   :drive  {:slides/host "kotoba-lang.github.io/drive"
             :slides/app :drive
             :slides/title "GFTD Drive"
             :slides/capabilities #{:file/store :folder/share :object/ref}}
-   :sheets {:slides/host "sheets.gftd.ai"
+   :sheets {:slides/host "kotoba-lang.github.io/sheets"
             :slides/app :sheets
             :slides/title "GFTD Sheets"
             :slides/capabilities #{:sheet/edit :range/query :formula/eval}}})

@@ -4,10 +4,10 @@
 
 Portable CLJC model for the GFTD workspace surface:
 
-- `slides.gftd.ai` — decks, scenes, speaker notes, publishing
-- `docs.gftd.ai` — documents, outlines, decisions
-- `drive.gftd.ai` — files, folders, immutable object refs
-- `sheets.gftd.ai` — tables, ranges, formulas, facts
+- `kotoba-lang.github.io/slides/` — decks, scenes, speaker notes, publishing
+- `kotoba-lang.github.io/docs/` — documents, outlines, decisions
+- `kotoba-lang.github.io/drive/` — files, folders, immutable object refs
+- `kotoba-lang.github.io/sheets/` — tables, ranges, formulas, facts
 
 The library keeps those surfaces in one EDN-native workspace graph. Hosts can
 render it as web apps, persist it in Datomic/kotoba, or expose it over XRPC; the
@@ -34,8 +34,8 @@ core stays pure data and pure functions.
 ```clojure
 (require '[slides.routes :as r])
 
-(r/resolve-host "slides.gftd.ai")
-;;=> {:slides/host "slides.gftd.ai", :slides/app :slides, ...}
+(r/resolve-host "kotoba-lang.github.io/slides")
+;;=> {:slides/host "kotoba-lang.github.io/slides", :slides/app :slides, ...}
 ```
 
 ## Validation
