@@ -1,0 +1,5 @@
+/.cpcache/
+/target/
+/out/
+/.calva/
+/.lsp/
