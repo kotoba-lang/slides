@@ -1,5 +1,6 @@
 (ns slides.build
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [shadow.css.build :as css]
             [shitsuke.tokens :as tokens]
             [slides.site :as site]))
@@ -17,8 +18,9 @@
     ;; /--muted/... vars until the per-class shadow-css migration (follow-up).
     (let [out (io/file "docs" "main.css")
           existing (if (.exists out) (slurp out) "")
-          root-vars (tokens/css-variables)]
-      (spit out (str root-vars "\n" existing)))
+          root-vars (tokens/css-variables)
+          generated (str/replace existing (str root-vars "\n") "")]
+      (spit out (str root-vars "\n" generated)))
     result))
 
 (defn pages [& _]
