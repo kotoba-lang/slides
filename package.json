@@ -18,10 +18,10 @@
     "README.md"
   ],
   "scripts": {
-    "build:pages": "clojure -M:local:pages && clojure -M:local:cljs",
-    "coverage": "clojure -M:local:coverage",
-    "coverage:thresholds": "clojure -M:local:coverage-thresholds",
-    "test": "clojure -X:local:test",
+    "build:pages": "clojure -M:pages && clojure -M:cljs",
+    "coverage": "clojure -M:coverage",
+    "coverage:thresholds": "clojure -M:coverage-thresholds",
+    "test": "clojure -X:test",
     "test:all": "npm test && npm run coverage && npm run coverage:thresholds && npm run test:e2e",
     "test:e2e": "npm run build:pages && nbb test/e2e/slides_import.cljs"
   },
