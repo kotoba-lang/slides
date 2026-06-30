@@ -5,122 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>kotoba-lang/slides</title>
   <style>
-    :root{--ink:#17202a;--muted:#526170;--line:#d8dee8;--panel:#fff;--wash:#f7f8fb;--accent:#496b9a;--green:#657f3d}
+    :root{--ink:#17202a;--muted:#526170;--line:#d8dee8;--panel:#fff;--wash:#f7f8fb;--accent:#496b9a;--accent2:#657f3d;--danger:#9f3a38}
     *{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:var(--wash);color:var(--ink)}
-    main{max-width:1160px;margin:0 auto;padding:36px 20px 52px} h1{margin:0 0 10px;font-size:36px;line-height:1.1;letter-spacing:0}
-    p{max-width:820px;color:var(--muted);line-height:1.6}.bar{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0}
-    button,a.button{min-height:40px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#fff;padding:0 14px;font-weight:700;text-decoration:none;cursor:pointer}
-    a.secondary,button.secondary{background:transparent;color:var(--accent)} .work{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:16px;margin-top:22px}
-    textarea{width:100%;min-height:460px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:14px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:#fff;color:#101725}
-    .preview{min-height:460px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:16px;overflow:auto}.slide{aspect-ratio:16/9;border:1px solid var(--line);border-radius:8px;margin-bottom:14px;position:relative;background:#fff;overflow:hidden}
-    .shape{position:absolute;white-space:pre-wrap;color:#17202a}.rect{border:2px solid #496b9a;background:#eaf0f8}.label{font-size:12px;color:var(--muted);margin:0 0 8px}
-    code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--green)}
-    @media(max-width:820px){.work{grid-template-columns:1fr}}
+    button,input,textarea,select{font:inherit} button{border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-height:34px;padding:0 10px;cursor:pointer}
+    button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700} button.danger{border-color:#e5b7b6;color:var(--danger)}
+    a{color:var(--accent)} .top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+    h1{font-size:18px;margin:0}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.status{font-size:12px;color:var(--muted)}
+    main{display:grid;grid-template-columns:190px minmax(360px,1fr) 300px;min-height:calc(100vh - 64px)}
+    aside,.props{background:#fff;border-right:1px solid var(--line);padding:12px}.props{border-right:0;border-left:1px solid var(--line);overflow:auto}
+    .rail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}.thumb{display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;margin-bottom:8px;padding:10px;border-radius:6px;background:#fff}
+    .thumb.active{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)} .thumb span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thumb small{color:var(--muted)}
+    .workspace{padding:16px;overflow:auto}.mode-tabs{display:flex;gap:8px;margin-bottom:12px}.mode-tabs button{min-width:78px}.canvas-shell{max-width:980px;margin:0 auto}
+    .canvas{position:relative;width:100%;background:#fff;border:1px solid var(--line);box-shadow:0 10px 26px rgba(23,32,42,.08);overflow:hidden}
+    .shape{position:absolute;display:block;text-align:left;white-space:pre-wrap;border:0;background:transparent;padding:0;margin:0;overflow:hidden}
+    .shape.text{line-height:1.12}.shape.rect{border:2px solid #496b9a}.shape.selected{z-index:2}
+    .props label{display:block;margin:0 0 10px}.props span{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
+    .props input,.props textarea,.props select,#deck-edn{width:100%;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);padding:8px}
+    .props textarea{min-height:90px;resize:vertical}.panel-title{font-weight:800;margin:0 0 10px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #edn-pane{max-width:980px;margin:0 auto}#deck-edn{min-height:540px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.edn-actions{display:flex;gap:8px;margin-top:10px}
+    #error{min-height:18px;color:var(--danger);font-size:13px;margin-top:10px}.file-label{display:inline-flex;align-items:center;min-height:34px;border:1px solid var(--line);border-radius:6px;padding:0 10px;background:#fff;cursor:pointer}.file-label input{display:none}
+    @media(max-width:940px){main{grid-template-columns:1fr}.props,aside{border:0;border-bottom:1px solid var(--line)}aside{order:1}.workspace{order:2}.props{order:3}.top{position:static;align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
-<main>
-  <h1>kotoba-lang/slides</h1>
-  <p>CLJC EDN deck model and PPTX writer. Edit the deck data below, preview it,
-    then download a PowerPoint package generated in the browser. The JVM CLI
-    uses the same EDN shape via <code>slides.pptx/write-pptx!</code>.</p>
-  <div class="bar">
-    <button id="render">Preview</button>
-    <button id="download">Download PPTX</button>
-    <a class="button secondary" href="./sample.pptx">Sample PPTX</a>
-    <a class="button secondary" href="https://github.com/kotoba-lang/slides">GitHub</a>
-  </div>
-  <div class="work">
-    <section>
-      <div class="label">Deck EDN subset</div>
-      <textarea id="edn">{:slides/id "web-deck"
- :slides/title "Web generated deck"
- :slides/slides
- [{:slides/id "slide-1"
-   :slides/title "EDN to PPTX"
-   :slides/shapes
-   [{:slides/shape :text
-     :slides/id "title"
-     :slides/text "EDN to PPTX"
-     :slides/x 0.8 :slides/y 0.7 :slides/w 8.4 :slides/h 0.8
-     :slides/font-size 38}
-    {:slides/shape :text
-     :slides/id "body"
-     :slides/text "Generated by kotoba-lang/slides"
-     :slides/x 0.8 :slides/y 1.7 :slides/w 8.4 :slides/h 0.7
-     :slides/font-size 22}
-    {:slides/shape :rect
-     :slides/id "panel"
-     :slides/x 0.8 :slides/y 3.0 :slides/w 8.4 :slides/h 1.2
-     :slides/fill "EAF0F8"
-     :slides/line "496B9A"}]}
-  {:slides/id "slide-2"
-   :slides/title "Pure data"
-   :slides/shapes
-   [{:slides/shape :text
-     :slides/id "title"
-     :slides/text "Pure data deck model"
-     :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 0.8
-     :slides/font-size 34}
-    {:slides/shape :text
-     :slides/id "body"
-     :slides/text "Decks, slides, and shapes are EDN maps."
-     :slides/x 0.8 :slides/y 1.8 :slides/w 8.4 :slides/h 0.7
-     :slides/font-size 22}]}]}</textarea>
+  <header class="top">
+    <div>
+      <h1>kotoba-lang/slides</h1>
+      <div id="status" class="status"></div>
+    </div>
+    <div class="toolbar">
+      <button id="new-deck">New</button>
+      <label class="file-label">Open EDN<input id="edn-file" type="file" accept=".edn,text/plain"></label>
+      <button id="download-edn">Download EDN</button>
+      <button id="download-pptx" class="primary">Download PPTX</button>
+      <a href="https://github.com/kotoba-lang/slides">GitHub</a>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <div class="rail-actions">
+        <button id="add-slide">Add</button>
+        <button id="duplicate-slide">Copy</button>
+      </div>
+      <div id="slide-list"></div>
+    </aside>
+    <section class="workspace">
+      <div class="mode-tabs">
+        <button id="mode-visual">Visual</button>
+        <button id="mode-edn">EDN</button>
+        <button id="add-text">Text</button>
+        <button id="add-rect">Rect</button>
+      </div>
+      <div id="visual-pane" class="canvas-shell">
+        <div id="canvas-wrap"></div>
+      </div>
+      <div id="edn-pane" hidden>
+        <textarea id="deck-edn" spellcheck="false"></textarea>
+        <div class="edn-actions"><button id="apply-edn" class="primary">Apply EDN</button></div>
+      </div>
+      <div id="error"></div>
     </section>
-    <section>
-      <div class="label">Preview</div>
-      <div id="preview" class="preview"></div>
-    </section>
-  </div>
-</main>
-<script>
-const $ = (id) => document.getElementById(id);
-function parseDeck(src){
-  const s = src.replace(/:[A-Za-z0-9_.-]+\/([A-Za-z0-9_.-]+)/g, '"$1"')
-    .replace(/:([A-Za-z0-9_.-]+)/g, '"$1"');
-  const tokens = s.match(/"[^"]*"|[\{\}\[\]]|[^\s\{\}\[\]]+/g) || [];
-  let i=0; const atom=t=>t[0]==='"'?t.slice(1,-1):isFinite(+t)?+t:t;
-  function form(){ const t=tokens[i++]; if(t==="{"){const o={}; while(tokens[i]!=="}"){const k=atom(tokens[i++]); o[k]=form()} i++; return o}
-    if(t==="["){const a=[]; while(tokens[i]!=="]") a.push(form()); i++; return a} return atom(t)}
-  return form();
-}
-function esc(x){return String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function render(){
-  const deck=parseDeck($("edn").value), slides=deck.slides||[];
-  $("preview").innerHTML=slides.map((sl,n)=>`<div class="label">${esc(sl.title||sl.id||`slide ${n+1}`)}</div><div class="slide">${
-    (sl.shapes||[]).map(sh=>{
-      const st=`left:${(sh.x||0)*10}%;top:${(sh.y||0)/5.625*100}%;width:${(sh.w||1)*10}%;height:${(sh.h||1)/5.625*100}%;font-size:${sh["font-size"]||24}px;`;
-      return sh.shape==="rect"?`<div class="shape rect" style="${st};background:#${sh.fill||"EAF0F8"};border-color:#${sh.line||"496B9A"}"></div>`:`<div class="shape" style="${st}">${esc(sh.text||sh.title||"")}</div>`
-    }).join("")}</div>`).join("");
-  return deck;
-}
-const enc = new TextEncoder();
-function crc32(bytes){let c=~0; for(const b of bytes){c^=b; for(let k=0;k<8;k++) c=(c>>>1)^(0xEDB88320&-(c&1))} return ~c>>>0}
-function u16(n){return [n&255,n>>>8&255]} function u32(n){return [n&255,n>>>8&255,n>>>16&255,n>>>24&255]}
-function zip(files){let chunks=[],central=[],off=0; for(const [name,text] of files){const data=enc.encode(text), nm=enc.encode(name), crc=crc32(data);
-  const local=new Uint8Array([0x50,0x4b,3,4,20,0,0,0,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(nm.length),0,0,...nm]);
-  chunks.push(local,data); central.push(new Uint8Array([0x50,0x4b,1,2,20,0,20,0,0,0,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(nm.length),0,0,0,0,0,0,0,0,0,0,0,...u32(off),...nm])); off+=local.length+data.length}
-  const csize=central.reduce((n,b)=>n+b.length,0), end=new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(csize),...u32(off),0,0]);
-  return new Blob([...chunks,...central,end],{type:"application/vnd.openxmlformats-officedocument.presentationml.presentation"})}
-function xmlEscape(s){return esc(s).replace(/'/g,"&apos;")}
-function pptx(deck){const slides=deck.slides||[], files=[]; const add=(n,x)=>files.push([n,x]);
-  add("[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides.map((_,i)=>`<Override PartName="/ppt/slides/slide${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`).join("")}</Types>`);
-  add("_rels/.rels",`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/></Relationships>`);
-  add("ppt/presentation.xml",`<?xml version="1.0"?><p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slides.map((_,i)=>`<p:sldId id="${256+i}" r:id="rId${i+2}"/>`).join("")}</p:sldIdLst><p:sldSz cx="9144000" cy="5143500" type="wide"/></p:presentation>`);
-  add("ppt/_rels/presentation.xml.rels",`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>${slides.map((_,i)=>`<Relationship Id="rId${i+2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i+1}.xml"/>`).join("")}</Relationships>`);
-  add("ppt/theme/theme1.xml",`<?xml version="1.0"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="kotoba"><a:themeElements><a:clrScheme name="kotoba"><a:dk1><a:srgbClr val="17202A"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:accent1><a:srgbClr val="496B9A"/></a:accent1></a:clrScheme><a:fontScheme name="kotoba"><a:majorFont><a:latin typeface="Aptos Display"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/></a:minorFont></a:fontScheme><a:fmtScheme name="kotoba"/></a:themeElements></a:theme>`);
-  add("ppt/slideMasters/slideMaster1.xml",`<?xml version="1.0"?><p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>`);
-  add("ppt/slideMasters/_rels/slideMaster1.xml.rels",`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>`);
-  add("ppt/slideLayouts/slideLayout1.xml",`<?xml version="1.0"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld></p:sldLayout>`);
-  add("ppt/slideLayouts/_rels/slideLayout1.xml.rels",`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>`);
-  slides.forEach((sl,i)=>{const shapes=(sl.shapes||[]).map((sh,j)=>{const x=Math.round((sh.x||0)*914400), y=Math.round((sh.y||0)*914400), w=Math.round((sh.w||1)*914400), h=Math.round((sh.h||1)*914400);
-    const base=`<p:nvSpPr><p:cNvPr id="${10+j}" name="${xmlEscape(sh.id||"shape")}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`;
-    return sh.shape==="rect"?`<p:sp>${base}<a:solidFill><a:srgbClr val="${sh.fill||"EAF0F8"}"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="${sh.line||"496B9A"}"/></a:solidFill></a:ln></p:spPr></p:sp>`:`<p:sp>${base}<a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr sz="${(sh["font-size"]||24)*100}"/><a:t>${xmlEscape(sh.text||"")}</a:t></a:r></a:p></p:txBody></p:sp>`}).join("");
-    add(`ppt/slides/slide${i+1}.xml`,`<?xml version="1.0"?><p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${shapes}</p:spTree></p:cSld></p:sld>`);
-    add(`ppt/slides/_rels/slide${i+1}.xml.rels`,`<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>`)});
-  return zip(files)}
-$("render").onclick=()=>{try{render()}catch(e){alert(e.message)}}; $("download").onclick=()=>{try{const blob=pptx(render()),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="deck.pptx";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}catch(e){alert(e.message)}}; render();
-</script>
+    <section id="properties" class="props"></section>
+  </main>
+  <script src="./main.js"></script>
 </body>
 </html>

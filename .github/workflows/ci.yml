@@ -15,5 +15,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: clojure -X:test
-      - run: node bin/kotoba-slides.js
+      - name: Test CLJC
+        run: clojure -X:test
+      - name: Test npm package script
+        run: npm test
+      - name: Build GitHub Pages CLJS
+        run: npm run build:pages
+      - name: Smoke npm bin wrapper
+        run: node bin/kotoba-slides.js

@@ -19,8 +19,14 @@
       (str/replace "\"" "&quot;")
       (str/replace "'" "&apos;")))
 
+(defn- numeric [x fallback]
+  (if (number? x) x fallback))
+
+(defn- positive-numeric [x fallback]
+  (if (and (number? x) (pos? x)) x fallback))
+
 (defn- emu [inches]
-  (long (Math/round (* emu-per-inch (double (or inches 0))))))
+  (long (Math/round (* emu-per-inch (double (numeric inches 0))))))
 
 (defn- hex-color [x fallback]
   (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper-case)]
@@ -139,7 +145,7 @@
   (hex-color (or (get colors role) fallback) fallback))
 
 (defn- theme-font [fonts role fallback]
-  (or (get fonts role) fallback))
+  (esc (or (get fonts role) fallback)))
 
 (defn theme-xml [theme]
   (let [colors (theme-colors theme)
@@ -204,15 +210,15 @@
 </Relationships>")
 
 (defn- shape-xfrm [{:slides/keys [x y w h]}]
-  (str "<a:xfrm><a:off x=\"" (emu (or x 0)) "\" y=\"" (emu (or y 0)) "\"/>"
-       "<a:ext cx=\"" (emu (or w 1)) "\" cy=\"" (emu (or h 1)) "\"/></a:xfrm>"))
+  (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
+       "<a:ext cx=\"" (emu (positive-numeric w 1)) "\" cy=\"" (emu (positive-numeric h 1)) "\"/></a:xfrm>"))
 
 (defn- text-shape [idx {:slides/keys [id text font-size color] :as shape}]
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
        "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
        "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
-       "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"" (* 100 (long (or font-size 24))) "\">"
+       "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\">"
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
        "</a:rPr><a:t>" (esc text) "</a:t></a:r></a:p>"
        "</p:txBody></p:sp>"))
@@ -270,8 +276,8 @@
   [deck]
   #?(:clj
      (let [slides (vec (deck-slides deck))
-           width (:slides/width deck default-width-in)
-           height (:slides/height deck default-height-in)
+           width (positive-numeric (:slides/width deck) default-width-in)
+           height (positive-numeric (:slides/height deck) default-height-in)
            baos (ByteArrayOutputStream.)]
        (with-open [zip (ZipOutputStream. baos)]
          (add-entry! zip "[Content_Types].xml" (content-types (count slides)))

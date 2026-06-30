@@ -65,6 +65,41 @@
     (is (re-find #"496B9A" (entries "ppt/theme/theme1.xml")))
     (is (re-find #"F7F8FB" (entries "ppt/theme/theme1.xml")))))
 
+(deftest theme-fonts-are-escaped
+  (let [deck (-> (m/deck "deck" {:slides/title "Escaped theme"
+                                 :slides/theme {:slides/fonts {:office-style.font/majorFont "Aptos <Display>"
+                                                             :office-style.font/minorFont "Body & Text"}}})
+                 (m/add-slide (m/slide "s1" {:slides/title "Only"})))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        theme (entries "ppt/theme/theme1.xml")]
+    (is (re-find #"Aptos &lt;Display&gt;" theme))
+    (is (re-find #"Body &amp; Text" theme))))
+
+(deftest invalid-shape-geometry-and-font-size-fall-back
+  (let [deck (-> (m/deck "deck" {:slides/title "Invalid shape"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Only"})
+                      (m/add-shape (m/text-box "bad-text" "Bad"
+                                               {:slides/x "bad"
+                                                :slides/y nil
+                                                :slides/w -1
+                                                :slides/h "bad"
+                                                :slides/font-size "large"})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"off x=\"0\" y=\"0\"" slide))
+    (is (re-find #"ext cx=\"914400\" cy=\"914400\"" slide))
+    (is (re-find #"sz=\"2400\"" slide))))
+
+(deftest invalid-deck-size-falls-back-to-defaults
+  (let [deck (-> (m/deck "deck" {:slides/title "Invalid size"
+                                 :slides/width "wide"
+                                 :slides/height -1})
+                 (m/add-slide (m/slide "s1" {:slides/title "Only"})))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        presentation (entries "ppt/presentation.xml")]
+    (is (re-find #"p:sldSz cx=\"9144000\" cy=\"5143500\"" presentation))))
+
 (deftest writes-empty-deck-as-placeholder-slide
   (let [deck (m/deck "deck" {:slides/title "Empty deck"})
         entries (zip-entries (pptx/pptx-bytes deck))

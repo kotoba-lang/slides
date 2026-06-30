@@ -20,9 +20,9 @@ core stays pure data and pure functions.
 
 (def ws
   (-> (m/workspace "gftd")
-      (m/add-item (m/deck "deck-1" {:title "Investor update"}))
-      (m/add-item (m/doc "memo-1" {:title "Narrative"}))
-      (m/add-item (m/sheet "plan-1" {:title "Plan"}))
+      (m/add-item (m/deck "deck-1" {:slides/title "Investor update"}))
+      (m/add-item (m/doc "memo-1" {:slides/title "Narrative"}))
+      (m/add-item (m/sheet "plan-1" {:slides/title "Plan"}))
       (m/link "deck-1" "memo-1" :uses)
       (m/link "deck-1" "plan-1" :embeds)))
 
@@ -47,12 +47,17 @@ core stays pure data and pure functions.
 (require '[slides.office :as office])
 
 (def deck (office/deck-from-office-bytes pptx-bytes {:title "Q1 Update"}))
+(def deck-edn (office/deck-edn-from-office-bytes pptx-bytes {:title "Q1 Update"}))
+(def edited-pptx-bytes (office/pptx-bytes-from-deck-edn deck-edn))
 ```
 
 `deck` にはソースのスライド順（`:office-style/slides`）と
 テキストノード（`:office/kind :text`）を slide/shape として落とし込みます。  
 `:office-style` が欠落している場合は既定テーマと 16:9 サイズへフォールバックし、  
 テキストを含まないスライドでも空スライドを維持したまま変換します。
+空タイトルは `"Imported deck"` にフォールバックします。
+`deck-edn-from-office-bytes` と `pptx-bytes-from-deck-edn` を使うと、
+PPTX bytes → deck EDN → PPTX bytes の編集/export 境界を EDN だけにできます。
 
 ## Validation
 
@@ -73,6 +78,9 @@ checked-in Pages artifact is under `docs/`.
 `slides.pptx` writes a minimal PowerPoint Open XML package directly from EDN.
 It does not use `pptxgenjs`; the package parts and relationships are emitted by
 CLJC code and zipped on the JVM host.
+
+The writer escapes XML text and theme fonts, validates hex colors, falls back on
+invalid deck/shape geometry, and emits a placeholder slide for empty decks.
 
 ```clojure
 (require '[slides.model :as m]
@@ -112,3 +120,7 @@ https://kotoba-lang.github.io/slides/
 ```bash
 clojure -X:test
 ```
+
+The test suite covers the EDN workspace model, validation, routing, HTML render,
+Office PPTX import, CLI commands, theme handling, PPTX export/update, and
+fallback behavior for invalid geometry, colors, fonts, and empty decks.

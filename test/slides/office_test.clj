@@ -1,5 +1,6 @@
 (ns slides.office-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.edn :as edn]
+            [clojure.test :refer [deftest is]]
             [office-style.style :as office-style]
             [slides.office :as office]
             [slides.pptx :as pptx])
@@ -139,9 +140,36 @@
     (is (some? ordered-sources))
     (let [ordered (@ordered-sources graph {})]
       (is (= ["ppt/slides/slide1.xml"
-              "ppt/slides/slide10.xml"
-              "ppt/slides/slide2.xml"]
+              "ppt/slides/slide2.xml"
+              "ppt/slides/slide10.xml"]
              ordered)))))
+
+(deftest ordered-slide-sources-does-not-parse-huge-slide-numbers
+  (let [graph {:office/nodes [{:office/id "ppt/slides/slide99999999999999999999999999999999999999.xml" :office/kind :slide}
+                             {:office/id "ppt/slides/slide2.xml" :office/kind :slide}]}
+        ordered-sources (ns-resolve 'slides.office 'ordered-slide-sources)]
+    (is (some? ordered-sources))
+    (is (= ["ppt/slides/slide2.xml"
+            "ppt/slides/slide99999999999999999999999999999999999999.xml"]
+           (@ordered-sources graph {})))))
+
+(deftest office-import-and-export-can-stay-on-edn-boundary
+  (let [bytes (zip-bytes
+               {"[Content_Types].xml" "<Types/>"
+                "_rels/.rels" "<Relationships/>"
+                "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                "ppt/theme/theme1.xml" "<a:theme><a:clrScheme><a:accent1><a:srgbClr val=\"112233\"/></a:accent1></a:clrScheme></a:theme>"
+                "ppt/slides/slide1.xml" "<p:sld><a:t>Alpha</a:t></p:sld>"
+                "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+                "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"})
+        deck-edn (office/deck-edn-from-office-bytes bytes {:title "EDN Bridge"})
+        deck (edn/read-string deck-edn)
+        out-entries (entries-from-bytes (office/pptx-bytes-from-deck-edn deck-edn))]
+    (is (= "EDN Bridge" (:slides/title deck)))
+    (is (= "Alpha" (-> deck :slides/slides first :slides/shapes first :slides/text)))
+    (is (contains? out-entries "ppt/presentation.xml"))
+    (is (contains? out-entries "ppt/slides/slide1.xml"))
+    (is (re-find #"EDN Bridge" (get out-entries "docProps/core.xml")))))
 
 (deftest preserves-default-size-on-invalid-slide-size
   (let [bytes (zip-bytes

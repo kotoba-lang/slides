@@ -1,9 +1,11 @@
 (ns slides.office
   "Office PPTX to slides deck bridge (EDN/CLJC only)."
-  (:require [clojure.string :as str]
+  (:require [clojure.edn :as edn]
+            [clojure.string :as str]
             [office.graph :as office-graph]
             [office-style.style :as office-style]
-            [slides.model :as model]))
+            [slides.model :as model]
+            [slides.pptx :as pptx]))
 
 (def emu-per-inch 914400)
 
@@ -24,11 +26,18 @@
 (defn- title->id [title]
   (-> title sanitize-id))
 
+(defn- natural-sort-key [s]
+  (->> (re-seq #"\d+|\D+" (str s))
+       (mapv (fn [part]
+               (if (re-matches #"\d+" part)
+                 [0 (count part) part]
+                 [1 part])))))
+
 (defn- slide-sources-from-graph [graph]
   (->> (:office/nodes graph)
        (filter #(= :slide (:office/kind %)))
        (map :office/id)
-       sort
+       (sort-by natural-sort-key)
        vec))
 
 (defn- ordered-slide-sources [graph style-ir]
@@ -125,3 +134,15 @@
             (model/add-slide acc (build-slide source idx [] (:office-style/colors style-ir {}))))))
       deck
       (range (count effective-sources))))))
+
+(defn deck-edn-from-office-bytes
+  "Build printable deck EDN from Office package bytes."
+  ([bytes]
+   (deck-edn-from-office-bytes bytes {}))
+  ([bytes options]
+   (pr-str (deck-from-office-bytes bytes options))))
+
+(defn pptx-bytes-from-deck-edn
+  "Build PPTX bytes from printable deck EDN."
+  [deck-edn]
+  (pptx/pptx-bytes (edn/read-string deck-edn)))

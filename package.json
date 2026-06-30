@@ -13,6 +13,7 @@
     "README.md"
   ],
   "scripts": {
+    "build:pages": "clojure -M:cljs",
     "test": "clojure -X:test"
   }
 }
