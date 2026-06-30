@@ -52,6 +52,29 @@ core stays pure data and pure functions.
 `slides.render` emits static HTML for GitHub Pages and simple host shells. The
 checked-in Pages artifact is under `docs/`.
 
+## PPTX
+
+`slides.pptx` writes a minimal PowerPoint Open XML package directly from EDN.
+It does not use `pptxgenjs`; the package parts and relationships are emitted by
+CLJC code and zipped on the JVM host.
+
+```clojure
+(require '[slides.model :as m]
+         '[slides.pptx :as pptx])
+
+(def deck
+  (-> (m/deck "deck-1" {:slides/title "Investor update"})
+      (m/add-slide
+       (-> (m/slide "slide-1" {:slides/title "Overview"})
+           (m/add-shape (m/text-box "title" "Investor update"
+                                    {:slides/font-size 36}))
+           (m/add-shape (m/rect "panel"
+                                {:slides/y 2.0
+                                 :slides/fill "EAF0F8"}))))))
+
+(pptx/write-pptx! "deck.pptx" deck)
+```
+
 ## Test
 
 ```bash

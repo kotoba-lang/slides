@@ -39,6 +39,46 @@
 (defn deck [id attrs]
   (item :slides/deck id (merge {:slides/slides [] :slides/theme :gftd} attrs)))
 
+(defn slide
+  ([id] (slide id {}))
+  ([id attrs]
+   (merge {:slides/id id
+           :slides/title id
+           :slides/shapes []}
+          attrs)))
+
+(defn text-box
+  ([id text] (text-box id text {}))
+  ([id text attrs]
+   (merge {:slides/id id
+           :slides/shape :text
+           :slides/text text
+           :slides/x 0.8
+           :slides/y 0.8
+           :slides/w 8.4
+           :slides/h 1.0
+           :slides/font-size 28}
+          attrs)))
+
+(defn rect
+  ([id] (rect id {}))
+  ([id attrs]
+   (merge {:slides/id id
+           :slides/shape :rect
+           :slides/x 0.8
+           :slides/y 2.1
+           :slides/w 8.4
+           :slides/h 2.0
+           :slides/fill "EAF0F8"
+           :slides/line "496B9A"}
+          attrs)))
+
+(defn add-slide [deck slide]
+  (update deck :slides/slides conj slide))
+
+(defn add-shape [slide shape]
+  (update slide :slides/shapes conj shape))
+
 (defn doc [id attrs]
   (item :slides/doc id (merge {:slides/blocks []} attrs)))
 
@@ -96,7 +136,13 @@
 
 (defn seed-workspace []
   (-> (workspace "gftd" {:slides/title "GFTD Workspace"})
-      (add-item (deck "intro-deck" {:slides/title "GFTD intro deck"}))
+      (add-item
+       (-> (deck "intro-deck" {:slides/title "GFTD intro deck"})
+           (add-slide
+            (-> (slide "slide-1" {:slides/title "GFTD intro"})
+                (add-shape (text-box "title" "GFTD intro"))
+                (add-shape (text-box "body" "EDN-native CLJC workspace graph"
+                                      {:slides/y 2.0 :slides/font-size 20}))))))
       (add-item (doc "narrative-doc" {:slides/title "Narrative source"}))
       (add-item (folder "shared-drive" {:slides/title "Shared drive"}))
       (add-item (sheet "planning-sheet" {:slides/title "Planning sheet"}))
