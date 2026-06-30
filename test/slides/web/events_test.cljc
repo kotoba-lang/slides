@@ -21,7 +21,27 @@
   (is (= :visual @(rf/subscribe [:slides/mode])))
   (is (= 0 @(rf/subscribe [:slides/selected-slide-index])))
   (is (nil? @(rf/subscribe [:slides/selected-shape-index])))
-  (is (nil? @(rf/subscribe [:slides/error]))))
+  (is (nil? @(rf/subscribe [:slides/error])))
+  (is (= {:slides/width 10 :slides/height 5.625}
+         @(rf/subscribe [:slides/canvas-size])))
+  (is (seq (:slides/components @(rf/subscribe [:slides/deck-design])))))
+
+(deftest new-deck-and-edn-mode-snapshot-test
+  (rf/dispatch [:slides/select-slide 1])
+  (rf/dispatch [:slides/set-error "stale"])
+  (rf/dispatch [:slides/new-deck])
+  (let [db @(rf/subscribe [:slides/db])]
+    (is (= sample/sample-deck (:deck db)))
+    (is (= 0 (:selected-slide db)))
+    (is (nil? (:selected-shape db)))
+    (is (= :visual (:mode db)))
+    (is (nil? (:error db)))
+    (is (= (pr-str sample/sample-deck) (:edn-text db))))
+  (rf/dispatch [:slides/set-mode :edn])
+  (let [db @(rf/subscribe [:slides/db])]
+    (is (= :edn (:mode db)))
+    (is (= (pr-str (:deck db)) (:edn-text db)))
+    (is (= 1 (:edn-key db)))))
 
 (deftest select-slide-and-shape-test
   (rf/dispatch [:slides/select-slide 1])
@@ -56,6 +76,14 @@
     (is (= before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))))
     (is (nil? @(rf/subscribe [:slides/selected-shape-index])))))
 
+(deftest add-rect-shape-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/add-shape :rect])
+  (let [shape @(rf/subscribe [:slides/selected-shape])]
+    (is (= :rect (:slides/shape shape)))
+    (is (= "rect-7" (:slides/id shape)))
+    (is (= 4.0 (:slides/w shape)))))
+
 (deftest add-component-test
   (rf/dispatch [:slides/select-slide 0])
   (let [before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))]
@@ -68,6 +96,15 @@
   (rf/dispatch [:slides/update-shape-field :slides/x 2.5])
   (let [shape @(rf/subscribe [:slides/selected-shape])]
     (is (= 2.5 (:slides/x (design/resolve-shape @(rf/subscribe [:slides/deck]) shape))))))
+
+(deftest selected-shape-noop-transitions-test
+  (let [before @(rf/subscribe [:slides/db])]
+    (rf/dispatch [:slides/delete-shape])
+    (is (= before @(rf/subscribe [:slides/db])))
+    (rf/dispatch [:slides/update-shape-field :slides/x 9])
+    (is (= before @(rf/subscribe [:slides/db])))
+    (rf/dispatch [:slides/set-shape-kind :rect])
+    (is (= before @(rf/subscribe [:slides/db])))))
 
 (deftest set-shape-kind-swap-test
   (rf/dispatch [:slides/select-slide 0])
@@ -86,4 +123,25 @@
   (is (= "boom" @(rf/subscribe [:slides/error])))
   (rf/dispatch [:slides/apply-edn {:slides/id "x" :slides/slides []}])
   (is (nil? @(rf/subscribe [:slides/error])))
-  (is (= {:slides/id "x" :slides/slides []} @(rf/subscribe [:slides/deck]))))
+  (is (= {:slides/id "x" :slides/slides []} @(rf/subscribe [:slides/deck])))
+  (is (= (pr-str {:slides/id "x" :slides/slides []})
+         (:edn-text @(rf/subscribe [:slides/db])))))
+
+(deftest import-deck-clear-error-and-update-slide-test
+  (let [deck {:slides/id "imported"
+              :slides/width 12
+              :slides/height 7
+              :slides/slides [{:slides/id "slide-a"
+                               :slides/title "Before"
+                               :slides/shapes []}]}]
+    (rf/dispatch [:slides/set-error "import warning"])
+    (rf/dispatch [:slides/import-deck deck])
+    (is (= deck @(rf/subscribe [:slides/deck])))
+    (is (nil? @(rf/subscribe [:slides/error])))
+    (is (= {:slides/width 12 :slides/height 7}
+           @(rf/subscribe [:slides/canvas-size])))
+    (rf/dispatch [:slides/update-slide-field :slides/title "After"])
+    (is (= "After" (:slides/title @(rf/subscribe [:slides/selected-slide]))))
+    (rf/dispatch [:slides/set-error "temporary"])
+    (rf/dispatch [:slides/clear-error])
+    (is (nil? @(rf/subscribe [:slides/error])))))
