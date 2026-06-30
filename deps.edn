@@ -9,6 +9,10 @@
          :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}}
  :aliases
  {:cli {:main-opts ["-m" "slides.cli"]}
+  :local {:override-deps {io.github.kotoba-lang/office
+                          {:local/root "../office"}
+                          io.github.kotoba-lang/office-style
+                          {:local/root "../office-style"}}}
   :cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.11.132"}}
          :main-opts ["-m" "cljs.main"
                      "--optimizations" "advanced"

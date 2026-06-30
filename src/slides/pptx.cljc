@@ -3,7 +3,8 @@
 
   The public surface is data-first: pass a deck map with :slides/slides and
   receive a .pptx byte array or write it to disk on the JVM."
-  (:require [clojure.string :as str])
+  (:require [clojure.string :as str]
+            [slides.design :as design])
   #?(:clj (:import [java.io ByteArrayOutputStream FileOutputStream]
                    [java.util.zip ZipEntry ZipOutputStream])))
 
@@ -103,22 +104,7 @@
                      "Target=\"slides/slide" idx ".xml\"/>")))
        "</Relationships>"))
 
-(def default-theme
-  {:slides/format "office-style"
-   :slides/colors {:office-style.color/dk1 "17202A"
-                  :office-style.color/lt1 "FFFFFF"
-                  :office-style.color/dk2 "334155"
-                  :office-style.color/lt2 "F7F8FB"
-                  :office-style.color/accent1 "496B9A"
-                  :office-style.color/accent2 "7C9A4B"
-                  :office-style.color/accent3 "B46A55"
-                  :office-style.color/accent4 "5C6F7E"
-                  :office-style.color/accent5 "8A6F3D"
-                  :office-style.color/accent6 "6A5A8E"
-                  :office-style.color/hlink "315D8C"
-                  :office-style.color/folHlink "6A5A8E"}
-   :slides/fonts {:office-style.font/majorFont "Aptos Display"
-                 :office-style.font/minorFont "Aptos"}})
+(def default-theme (:slides/theme design/default-design))
 
 (defn- normalize-theme [value]
   (cond
@@ -129,15 +115,15 @@
 
 (defn- theme-colors [value]
   (let [theme (normalize-theme value)]
-    (or (:slides/colors theme)
-        (:office-style/colors theme)
+    (or (:office-style/colors theme)
+        (:slides/colors theme)
         (:colors theme)
         (:slides/colors default-theme))))
 
 (defn- theme-fonts [value]
   (let [theme (normalize-theme value)]
-    (or (:slides/fonts theme)
-        (:office-style/fonts theme)
+    (or (:office-style/fonts theme)
+        (:slides/fonts theme)
         (:fonts theme)
         (:slides/fonts default-theme))))
 
@@ -180,14 +166,17 @@
          "</a:themeElements>\n"
          "</a:theme>")))
 
-(def slide-master
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+(defn- master-background [deck]
+  (hex-color (:slides/background (design/master deck)) "FFFFFF"))
+
+(defn- slide-master [deck]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
-  <p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:cSld name=\"kotoba\"><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
   <p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst>
   <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
-</p:sldMaster>")
+</p:sldMaster>"))
 
 (def slide-master-rels
   "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -196,12 +185,12 @@
   <Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"../theme/theme1.xml\"/>
 </Relationships>")
 
-(def slide-layout
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+(defn- slide-layout [deck]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"blank\" preserve=\"1\">
-  <p:cSld name=\"Blank\"><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:cSld name=\"Blank\"><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sldLayout>")
+</p:sldLayout>"))
 
 (def slide-layout-rels
   "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -213,12 +202,19 @@
   (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
        "<a:ext cx=\"" (emu (positive-numeric w 1)) "\" cy=\"" (emu (positive-numeric h 1)) "\"/></a:xfrm>"))
 
-(defn- text-shape [idx {:slides/keys [id text font-size color] :as shape}]
+(defn- font-face [deck major?]
+  (get (design/fonts deck)
+       (if major? :office-style.font/majorFont :office-style.font/minorFont)
+       (if major? "Aptos Display" "Aptos")))
+
+(defn- text-shape [deck idx {:slides/keys [id text font-size color bold] :as shape}]
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
        "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
        "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
-       "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\">"
+       "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
+       (when bold " b=\"1\"")
+       "><a:latin typeface=\"" (esc (font-face deck (>= (positive-numeric font-size 24) 30))) "\"/>"
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
        "</a:rPr><a:t>" (esc text) "</a:t></a:r></a:p>"
        "</p:txBody></p:sp>"))
@@ -232,23 +228,59 @@
        "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>"
        "</p:spPr></p:sp>"))
 
-(defn- render-shape [idx shape]
-  (case (:slides/shape shape)
+(defn- render-shape [deck idx shape]
+  (let [shape (design/resolve-shape deck shape)]
+    (case (:slides/shape shape)
     :rect (rect-shape idx shape)
-    :text (text-shape idx shape)
-    (text-shape idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) "")))))
+    :text (text-shape deck idx shape)
+    (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) ""))))))
 
-(defn- slide-xml [slide]
+(defn- guide-shapes [deck]
+  (when (:slides/show-guides deck)
+    (let [guides (design/guides deck)
+          margin (get guides :slides/margin)
+          w (positive-numeric (:slides/width deck) default-width-in)
+          h (positive-numeric (:slides/height deck) default-height-in)
+          left (:slides/x margin 0.65)
+          top (:slides/y margin 0.55)
+          right (- w (:slides/right margin 0.65))
+          bottom (- h (:slides/bottom margin 0.48))]
+      [{:slides/shape :rect :slides/id "guide-frame"
+        :slides/x left :slides/y top :slides/w (- right left) :slides/h (- bottom top)
+        :slides/fill "FFFFFF" :slides/line "D8DEE8"}])))
+
+(defn- master-footer-shape [deck]
+  (let [footer (:slides/footer (design/master deck))]
+    (when (:slides/enabled footer)
+      (assoc footer
+             :slides/id "master-footer"
+             :slides/shape :text
+             :slides/text (or (:slides/text footer) (:slides/title deck ""))))))
+
+(defn- slide-shapes [deck slide]
+  (let [own-shapes (if (seq (:slides/shapes slide))
+                     (:slides/shapes slide)
+                     [{:slides/shape :text
+                       :slides/id "title"
+                       :slides/text (:slides/title slide)
+                       :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0
+                       :slides/font-size 32}])]
+    (vec (concat (guide-shapes deck)
+                own-shapes
+                (when-let [footer (master-footer-shape deck)] [footer])))))
+
+(defn- slide-xml [deck slide]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
        "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
        "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
-       "<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill></p:bgPr></p:bg>"
+       "<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg>"
        "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
        "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
-       (if (seq (:slides/shapes slide))
-         (apply str (map-indexed render-shape (:slides/shapes slide)))
-         (render-shape 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32}))
+       (let [shapes (slide-shapes deck slide)]
+         (if (seq shapes)
+           (apply str (map-indexed (partial render-shape deck) shapes))
+           (render-shape deck 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32})))
        "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"))
 
 (def slide-rels
@@ -257,13 +289,36 @@
   <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>
 </Relationships>")
 
-(defn- deck-slides [deck]
+(defn deck-slides [deck]
   (let [slides (:slides/slides deck)]
     (if (seq slides)
       slides
       [{:slides/id "slide-1"
         :slides/title (:slides/title deck (:slides/id deck "Slides"))
         :slides/shapes []}])))
+
+(defn pptx-files [deck]
+  (let [slides (vec (deck-slides deck))
+        width (positive-numeric (:slides/width deck) default-width-in)
+        height (positive-numeric (:slides/height deck) default-height-in)]
+    (vec
+     (concat
+      [["[Content_Types].xml" (content-types (count slides))]
+       ["_rels/.rels" root-rels]
+       ["docProps/core.xml" (core-props deck)]
+       ["docProps/app.xml" (app-props (count slides))]
+       ["ppt/presentation.xml" (presentation (count slides) width height)]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides))]
+       ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]
+       ["ppt/slideMasters/slideMaster1.xml" (slide-master deck)]
+       ["ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels]
+       ["ppt/slideLayouts/slideLayout1.xml" (slide-layout deck)]
+       ["ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels]]
+      (mapcat (fn [[idx slide]]
+                (let [n (inc idx)]
+                  [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide)]
+                   [(str "ppt/slides/_rels/slide" n ".xml.rels") slide-rels]]))
+              (map-indexed vector slides))))))
 
 #?(:clj
    (defn- add-entry! [^ZipOutputStream zip path content]
@@ -275,26 +330,10 @@
   "Returns a JVM byte array containing a .pptx generated from an EDN deck map."
   [deck]
   #?(:clj
-     (let [slides (vec (deck-slides deck))
-           width (positive-numeric (:slides/width deck) default-width-in)
-           height (positive-numeric (:slides/height deck) default-height-in)
-           baos (ByteArrayOutputStream.)]
+     (let [baos (ByteArrayOutputStream.)]
        (with-open [zip (ZipOutputStream. baos)]
-         (add-entry! zip "[Content_Types].xml" (content-types (count slides)))
-         (add-entry! zip "_rels/.rels" root-rels)
-         (add-entry! zip "docProps/core.xml" (core-props deck))
-         (add-entry! zip "docProps/app.xml" (app-props (count slides)))
-         (add-entry! zip "ppt/presentation.xml" (presentation (count slides) width height))
-         (add-entry! zip "ppt/_rels/presentation.xml.rels" (presentation-rels (count slides)))
-         (add-entry! zip "ppt/theme/theme1.xml" (theme-xml deck))
-         (add-entry! zip "ppt/slideMasters/slideMaster1.xml" slide-master)
-         (add-entry! zip "ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels)
-         (add-entry! zip "ppt/slideLayouts/slideLayout1.xml" slide-layout)
-         (add-entry! zip "ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels)
-         (doseq [[idx slide] (map-indexed vector slides)]
-           (let [n (inc idx)]
-             (add-entry! zip (str "ppt/slides/slide" n ".xml") (slide-xml slide))
-             (add-entry! zip (str "ppt/slides/_rels/slide" n ".xml.rels") slide-rels))))
+         (doseq [[path content] (pptx-files deck)]
+           (add-entry! zip path content)))
        (.toByteArray baos))
      :cljs
      (throw (ex-info "pptx byte writing requires a host zip implementation" {:feature :slides/pptx}))))

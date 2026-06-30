@@ -19,6 +19,26 @@
       (is (some #(= :item/missing-title (:slides/code %)) problems))
       (is (some #(= :error (:slides/severity %)) problems)))))
 
+(deftest detects-workspace-structure-problems
+  (let [problems (validate/problems {:slides/id "bad"
+                                     :slides/items []
+                                     :slides/links {}})]
+    (is (some #(= :workspace/items-not-map (:slides/code %)) problems))
+    (is (some #(= :workspace/links-not-sequential (:slides/code %)) problems))
+    (is (not (validate/valid? {:slides/id "bad"
+                               :slides/items []
+                               :slides/links {}})))))
+
+(deftest detects-non-map-items-and-links
+  (let [ws {:slides/id "ws"
+            :slides/type :workspace
+            :slides/items {"bad-item" "not a map"}
+            :slides/links ["not a map"]}
+        problems (validate/problems ws)]
+    (is (some #(= :item/not-map (:slides/code %)) problems))
+    (is (some #(= :link/not-map (:slides/code %)) problems))
+    (is (not (validate/valid? ws)))))
+
 (deftest detects-link-problems
   (let [ws (-> (model/workspace "ws")
                (model/add-item (model/deck "d1" {:slides/title "Deck"}))

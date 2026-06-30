@@ -81,6 +81,9 @@ CLJC code and zipped on the JVM host.
 
 The writer escapes XML text and theme fonts, validates hex colors, falls back on
 invalid deck/shape geometry, and emits a placeholder slide for empty decks.
+The browser editor and JVM CLI use the same `slides.pptx/pptx-files` package
+parts, so downloaded decks are normal ZIP/Open XML packages with editable text
+boxes and shapes.
 
 ```clojure
 (require '[slides.model :as m]
@@ -98,6 +101,39 @@ invalid deck/shape geometry, and emits a placeholder slide for empty decks.
 
 (pptx/write-pptx! "deck.pptx" deck)
 ```
+
+## EDN design system
+
+Reusable design lives in plain EDN under `:slides/design` or the top-level
+`:slides/theme`, `:slides/master`, `:slides/guides`, `:slides/text-styles`, and
+`:slides/components` keys. Shapes can reference components and styles instead
+of repeating coordinates and typography.
+
+```clojure
+(require '[slides.design :as design]
+         '[slides.model :as m])
+
+(def deck
+  (-> (m/deck "template"
+              {:slides/title "Template deck"
+               :slides/design design/default-design
+               :slides/master {:slides/background "FAFAFA"
+                               :slides/footer {:slides/enabled true
+                                               :slides/text "Confidential"}}
+               :slides/components {:hero-title {:slides/shape :text
+                                                :slides/text-style :title
+                                                :slides/x 0.8 :slides/y 0.9
+                                                :slides/w 8.4 :slides/h 0.9}}})
+      (m/add-slide
+       (-> (m/slide "s1" {:slides/title "Reusable"})
+           (m/add-shape {:slides/id "title"
+                         :slides/component :hero-title
+                         :slides/text "Beautiful EDN decks"})))))
+```
+
+The default design includes theme colors, title/body fonts, a clean slide
+master, layout guides, and reusable `:title`, `:subtitle`, `:body`, `:panel`,
+`:eyebrow`, and `:accent-bar` components.
 
 ## CLI / npm
 
@@ -119,8 +155,12 @@ https://kotoba-lang.github.io/slides/
 
 ```bash
 clojure -X:test
+clojure -M:local:test
 ```
 
 The test suite covers the EDN workspace model, validation, routing, HTML render,
 Office PPTX import, CLI commands, theme handling, PPTX export/update, and
-fallback behavior for invalid geometry, colors, fonts, and empty decks.
+fallback behavior for invalid geometry, colors, fonts, empty decks, and malformed
+workspace EDN structures.
+Use `:local:test` when developing `slides`, `office`, and `office-style` from
+sibling checkouts in this workspace.

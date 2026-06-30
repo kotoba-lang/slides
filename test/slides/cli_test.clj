@@ -39,6 +39,22 @@
       (finally
         (.delete tmp)))))
 
+(deftest read-deck-edn-requires-map
+  (let [tmp (java.io.File/createTempFile "slides-cli-deck" ".edn")
+        path (.getAbsolutePath tmp)
+        read-deck-fn (ns-resolve 'slides.cli 'read-deck-edn)]
+    (is (some? read-deck-fn))
+    (is (fn? @read-deck-fn))
+    (try
+      (spit tmp "[:not :a :map]")
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                            #"deck EDN must be a map"
+                            (@read-deck-fn path)))
+      (spit tmp "{:slides/title \"Deck\"}")
+      (is (= {:slides/title "Deck"} (@read-deck-fn path)))
+      (finally
+        (.delete tmp)))))
+
 (deftest unknown-command-shows-usage
   (is (re-find #"slides cli" (with-out-str (cli/-main "help")))))
 
@@ -75,7 +91,7 @@
                   :slides/slides 0}
         wrote (atom nil)]
     (try
-      (let [read-edn-var (ns-resolve 'slides.cli 'read-edn)
+      (let [read-edn-var (ns-resolve 'slides.cli 'read-deck-edn)
             write-pptx-var (ns-resolve 'slides.pptx 'write-pptx!)
             printed (with-out-str
                       (with-redefs-fn {read-edn-var (fn [path]
@@ -106,7 +122,7 @@
                   :slides/slides 0}
         wrote (atom nil)]
     (try
-      (let [read-edn-var (ns-resolve 'slides.cli 'read-edn)
+      (let [read-edn-var (ns-resolve 'slides.cli 'read-deck-edn)
             update-pptx-var (ns-resolve 'slides.pptx 'update-pptx!)
             printed (with-out-str
                       (with-redefs-fn {read-edn-var (fn [path]

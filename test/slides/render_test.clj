@@ -32,6 +32,14 @@
     (is (re-find #"<a class=\"card\"" html))
     (is (re-find (re-pattern (str (:slides/host (routes/apps (:app cfg))))) html))))
 
+(deftest app-card-escapes-attributes-and-tolerates-unknown-app
+  (let [html (render/app-card {:href "https://example.test/?q=\"x\"&ok=1"
+                               :label nil
+                               :app :unknown})]
+    (is (re-find #"href=\"https://example.test/\?q=&quot;x&quot;&amp;ok=1\"" html))
+    (is (re-find #"<span>unknown</span>" html))
+    (is (not (re-find #"nil" html)))))
+
 (deftest item-row-escapes-content
   (let [it {:slides/id "bad id"
             :slides/kind :slides/deck
@@ -39,3 +47,10 @@
         html (render/item-row it)]
     (is (re-find #"<tr><td>bad id</td>" html))
     (is (re-find #"<td>Unsafe &lt;tag&gt;</td>" html))))
+
+(deftest item-row-renders-nil-as-empty-cells
+  (let [html (render/item-row {:slides/id nil
+                               :slides/kind nil
+                               :slides/title nil})]
+    (is (re-find #"<tr><td></td><td></td><td></td></tr>" html))
+    (is (not (re-find #"nil" html)))))

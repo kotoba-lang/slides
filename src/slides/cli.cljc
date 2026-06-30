@@ -18,6 +18,13 @@
      :cljs
      (throw (ex-info "slides CLI file reader requires a JVM host" {:feature :slides/cli}))))
 
+(defn- read-deck-edn [path]
+  (let [deck (read-edn path)]
+    (when-not (map? deck)
+      (throw (ex-info "deck EDN must be a map" {:path path
+                                                :type (type deck)})))
+    deck))
+
 (defn- read-bytes [path]
   #?(:clj
      (java.nio.file.Files/readAllBytes
@@ -54,11 +61,11 @@
          "pptx" (let [[_ edn-path out-path] args]
                   (when-not (and edn-path out-path)
                     (throw (ex-info (usage) {})))
-                  (prn (pptx/write-pptx! out-path (read-edn edn-path))))
+                  (prn (pptx/write-pptx! out-path (read-deck-edn edn-path))))
          "update" (let [[_ base-path edn-path out-path] args]
                     (when-not (and base-path edn-path out-path)
                       (throw (ex-info (usage) {})))
-                    (prn (pptx/update-pptx! base-path out-path (read-edn edn-path))))
+                    (prn (pptx/update-pptx! base-path out-path (read-deck-edn edn-path))))
          (println (usage)))
        (catch Exception e
          (binding [*out* *err*]

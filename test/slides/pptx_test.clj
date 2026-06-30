@@ -91,6 +91,23 @@
     (is (re-find #"ext cx=\"914400\" cy=\"914400\"" slide))
     (is (re-find #"sz=\"2400\"" slide))))
 
+(deftest shape-xml-escapes-ids-and-unknown-shapes
+  (let [deck (-> (m/deck "deck" {:slides/title "Escaped shapes"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Only"})
+                      (m/add-shape {:slides/id "bad \"id\" & <tag>"
+                                    :slides/shape :text
+                                    :slides/text "Tom & Jerry <Q>"})
+                      (m/add-shape {:slides/id "unknown \"shape\""
+                                    :slides/title "Fallback <title>"
+                                    :slides/shape :unknown}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"bad &quot;id&quot; &amp; &lt;tag&gt;" slide))
+    (is (re-find #"Tom &amp; Jerry &lt;Q&gt;" slide))
+    (is (re-find #"unknown &quot;shape&quot;" slide))
+    (is (re-find #"Fallback &lt;title&gt;" slide))))
+
 (deftest invalid-deck-size-falls-back-to-defaults
   (let [deck (-> (m/deck "deck" {:slides/title "Invalid size"
                                  :slides/width "wide"
@@ -99,6 +116,33 @@
         entries (zip-entries (pptx/pptx-bytes deck))
         presentation (entries "ppt/presentation.xml")]
     (is (re-find #"p:sldSz cx=\"9144000\" cy=\"5143500\"" presentation))))
+
+(deftest components-and-master-design-render-to-editable-shapes
+  (let [deck (-> (m/deck "deck" {:slides/title "Design deck"
+                                 :slides/master {:slides/background "FAFAFA"
+                                                 :slides/footer {:slides/enabled true
+                                                                 :slides/text "Footer text"}}
+                                 :slides/components {:hero-title {:slides/shape :text
+                                                                  :slides/text-style :title
+                                                                  :slides/x 1 :slides/y 1
+                                                                  :slides/w 8 :slides/h 1}}
+                                 :slides/text-styles {:title {:slides/font-size 44
+                                                             :slides/color "123456"
+                                                             :slides/bold true}}})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Only"})
+                      (m/add-shape {:slides/id "hero"
+                                    :slides/component :hero-title
+                                    :slides/text "Component title"}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")
+        master (entries "ppt/slideMasters/slideMaster1.xml")]
+    (is (re-find #"Component title" slide))
+    (is (re-find #"sz=\"4400\"" slide))
+    (is (re-find #"b=\"1\"" slide))
+    (is (re-find #"123456" slide))
+    (is (re-find #"Footer text" slide))
+    (is (re-find #"FAFAFA" master))))
 
 (deftest writes-empty-deck-as-placeholder-slide
   (let [deck (m/deck "deck" {:slides/title "Empty deck"})

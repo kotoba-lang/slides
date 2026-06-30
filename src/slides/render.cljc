@@ -3,16 +3,17 @@
             [slides.routes :as routes]))
 
 (defn esc [s]
-  (-> (str s)
+  (-> (str (or s ""))
       (.replace "&" "&amp;")
       (.replace "<" "&lt;")
       (.replace ">" "&gt;")
       (.replace "\"" "&quot;")))
 
 (defn app-card [{:keys [href label app]}]
-  (let [cfg (routes/apps app)]
+  (let [cfg (routes/apps app)
+        fallback-label (some-> app name)]
     (str "<a class=\"card\" href=\"" (esc href) "\">"
-         "<span>" (esc label) "</span>"
+         "<span>" (esc (or label (:slides/title cfg) fallback-label)) "</span>"
          "<small>" (esc (:slides/host cfg)) "</small>"
          "</a>")))
 

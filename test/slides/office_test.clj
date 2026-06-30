@@ -1,6 +1,7 @@
 (ns slides.office-test
   (:require [clojure.edn :as edn]
             [clojure.test :refer [deftest is]]
+            [office.graph :as office-graph]
             [office-style.style :as office-style]
             [slides.office :as office]
             [slides.pptx :as pptx])
@@ -170,6 +171,24 @@
     (is (contains? out-entries "ppt/presentation.xml"))
     (is (contains? out-entries "ppt/slides/slide1.xml"))
     (is (re-find #"EDN Bridge" (get out-entries "docProps/core.xml")))))
+
+(deftest office-import-does-not-parse-huge-text-node-numbers
+  (let [graph {:office/nodes [{:office/id "ppt/slides/slide1.xml"
+                               :office/kind :slide}
+                              {:office/id "ppt/slides/slide1.xml#text-999999999999999999999999999999"
+                               :office/kind :text
+                               :office/source "ppt/slides/slide1.xml"
+                               :office/text "Huge"}
+                              {:office/id "ppt/slides/slide1.xml#text-2"
+                               :office/kind :text
+                               :office/source "ppt/slides/slide1.xml"
+                               :office/text "Two"}]
+               :office/edges []}]
+    (with-redefs [office-graph/analyze-bytes (fn [_] graph)
+                  office-style/extract-bytes (fn [_] {})]
+      (let [deck (office/deck-from-office-bytes (.getBytes "ignored" "UTF-8"))
+            texts (map :slides/text (-> deck :slides/slides first :slides/shapes))]
+        (is (= ["Two" "Huge"] texts))))))
 
 (deftest preserves-default-size-on-invalid-slide-size
   (let [bytes (zip-bytes

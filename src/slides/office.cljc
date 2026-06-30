@@ -33,6 +33,11 @@
                  [0 (count part) part]
                  [1 part])))))
 
+(defn- text-node-sort-key [node]
+  (if-let [suffix (second (re-find #"#text-(\d+)$" (str (:office/id node))))]
+    [[0 (count suffix) suffix]]
+    [[1 (str (:office/id node))]]))
+
 (defn- slide-sources-from-graph [graph]
   (->> (:office/nodes graph)
        (filter #(= :slide (:office/kind %)))
@@ -73,11 +78,7 @@
 (defn- build-slide [source idx text-nodes colors]
   (let [text-color (or (get colors :office-style.color/accent1) "17202A")
         shapes (->> text-nodes
-                    (sort-by (fn [node]
-                               (or (some-> (re-find #"#text-(\\d+)$" (:office/id node))
-                                           second
-                                           Long/parseLong)
-                                   0)))
+                    (sort-by text-node-sort-key)
                     (map-indexed (fn [i node] (text-shape-for-node node i text-color)))
                     vec)]
     (-> (model/slide (slide-id source idx)
