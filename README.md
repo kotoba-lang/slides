@@ -244,6 +244,10 @@ browser shape, check the EDN conversion surface, download the browser-generated
 PPTX, and inspect the resulting Open XML slide/theme XML. They also apply an EDN
 deck with reusable components/styles and verify that the exported PPTX keeps
 editable text, font size, and color in the package XML.
+`test/slides/fixtures/pptx_roundtrip_matrix.edn` records the real-world PPTX
+roundtrip matrix. `:guarded` rows run in CI through Office import -> causal PPTX
+export -> Office re-import; `:target` rows document remaining compatibility gaps
+such as grouped shapes, charts, embedded workbooks, and placeholder semantics.
 `npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
 85% aggregate coverage. `npm run coverage:thresholds` then checks the generated
 LCOV report against namespace-level floors, with a 90% aggregate floor, so CI

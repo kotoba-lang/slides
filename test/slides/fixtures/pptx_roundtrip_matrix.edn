@@ -1,0 +1,133 @@
+{:version 1
+ :description "Representative PPTX roundtrip fixture matrix. :guarded cases run in CI; :target cases document remaining compatibility gaps."
+ :cases
+ [{:id :powerpoint/basic-text-theme
+   :source :powerpoint-like
+   :support :guarded
+   :features #{:text :theme :multi-slide}
+   :input
+   {:kind :deck
+    :deck {:slides/id "ppt-basic"
+           :slides/title "PowerPoint Basic"
+           :slides/theme {:slides/colors {:office-style.color/accent1 "2454FF"
+                                           :office-style.color/lt1 "FFFFFF"}
+                          :slides/fonts {:office-style.font/majorFont "Aptos Display"
+                                          :office-style.font/minorFont "Aptos"}}
+           :slides/slides [{:slides/id "slide-1"
+                            :slides/title "Intro"
+                            :slides/shapes [{:slides/id "title"
+                                             :slides/shape :text
+                                             :slides/text "Quarterly update"
+                                             :slides/x 0.8
+                                             :slides/y 0.7
+                                             :slides/w 8.4
+                                             :slides/h 0.8
+                                             :slides/font-size 34
+                                             :slides/color "17202A"}
+                                            {:slides/id "body"
+                                             :slides/shape :text
+                                             :slides/text "Revenue, margin, and roadmap"
+                                             :slides/x 0.9
+                                             :slides/y 1.8
+                                             :slides/w 7.8
+                                             :slides/h 0.6
+                                             :slides/font-size 20
+                                             :slides/color "334155"}]}
+                           {:slides/id "slide-2"
+                            :slides/title "Plan"
+                            :slides/shapes [{:slides/id "title"
+                                             :slides/shape :text
+                                             :slides/text "Execution plan"
+                                             :slides/x 0.8
+                                             :slides/y 0.8
+                                             :slides/w 8.0
+                                             :slides/h 0.8
+                                             :slides/font-size 30}]}]}}
+   :expect {:slides 2
+            :text ["Quarterly update" "Revenue, margin, and roadmap" "Execution plan"]
+            :theme-colors {:office-style.color/accent1 "2454FF"}}}
+
+  {:id :google-slides/styled-shapes
+   :source :google-slides-like
+   :support :guarded
+   :features #{:text :rect :fill :line :geometry}
+   :input
+   {:kind :deck
+    :deck {:slides/id "google-styled"
+           :slides/title "Google Slides Styled Shapes"
+           :slides/slides [{:slides/id "slide-1"
+                            :slides/title "Styled"
+                            :slides/shapes [{:slides/id "panel"
+                                             :slides/shape :rect
+                                             :slides/x 0.7
+                                             :slides/y 1.4
+                                             :slides/w 8.6
+                                             :slides/h 3.2
+                                             :slides/fill "E8F0FE"
+                                             :slides/line "2454FF"}
+                                            {:slides/id "label"
+                                             :slides/shape :text
+                                             :slides/text "Styled panel"
+                                             :slides/x 1.0
+                                             :slides/y 1.7
+                                             :slides/w 4.0
+                                             :slides/h 0.6
+                                             :slides/font-size 24
+                                             :slides/color "1F2937"}]}]}}
+   :expect {:slides 1
+            :text ["Styled panel"]
+            :rects 1
+            :fills ["E8F0FE"]
+            :lines ["2454FF"]}}
+
+  {:id :canva/picture-placeholder
+   :source :canva-like
+   :support :guarded
+   :features #{:picture :placeholder :text}
+   :input
+   {:kind :entries
+    :entries {"[Content_Types].xml" "<Types/>"
+              "_rels/.rels" "<Relationships/>"
+              "docProps/core.xml" "<cp:coreProperties><dc:title>Canva Picture</dc:title></cp:coreProperties>"
+              "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+              "ppt/slides/slide1.xml" "<p:sld><p:cSld><p:spTree><p:pic><p:nvPicPr><p:cNvPr id=\"4\" name=\"Hero Image\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"2057400\"/></a:xfrm></p:spPr></p:pic><p:sp><p:nvSpPr><p:cNvPr id=\"5\" name=\"Caption\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"914400\" y=\"3200400\"/><a:ext cx=\"3657600\" cy=\"548640\"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Image caption</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"
+              "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+              "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"}}
+   :expect {:slides 1
+            :text ["Hero Image" "Image caption"]
+            :source-kinds [:drawingml/pic]}}
+
+  {:id :powerpoint/table-text
+   :source :powerpoint-like
+   :support :guarded
+   :features #{:table :text}
+   :input
+   {:kind :entries
+    :entries {"[Content_Types].xml" "<Types/>"
+              "_rels/.rels" "<Relationships/>"
+              "docProps/core.xml" "<cp:coreProperties><dc:title>Table Deck</dc:title></cp:coreProperties>"
+              "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+              "ppt/slides/slide1.xml" "<p:sld><p:cSld><p:spTree><p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"9\" name=\"Forecast Table\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"5486400\" cy=\"1828800\"/></p:xfrm><a:graphic><a:graphicData><a:tbl><a:tr><a:tc><a:txBody><a:p><a:r><a:t>Q1</a:t></a:r></a:p></a:txBody></a:tc><a:tc><a:txBody><a:p><a:r><a:t>Q2</a:t></a:r></a:p></a:txBody></a:tc></a:tr><a:tr><a:tc><a:txBody><a:p><a:r><a:t>10</a:t></a:r></a:p></a:txBody></a:tc><a:tc><a:txBody><a:p><a:r><a:t>20</a:t></a:r></a:p></a:txBody></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>"
+              "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+              "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"}}
+   :expect {:slides 1
+            :text ["Q1\nQ2\n10\n20"]
+            :source-kinds [:drawingml/table]}}
+
+  {:id :powerpoint/group-shapes
+   :source :powerpoint-like
+   :support :target
+   :features #{:group :nested-shapes}
+   :gap "Group hierarchy is not preserved yet; child text can be extracted only when flattened by the parser."}
+
+  {:id :powerpoint/chart
+   :source :powerpoint-like
+   :support :target
+   :features #{:chart :embedded-workbook}
+   :gap "Chart parts and embedded workbook relationships are not projected into deck EDN yet."}
+
+  {:id :keynote/master-placeholders
+   :source :keynote-like
+   :support :target
+   :features #{:master :layout :placeholder}
+   :gap "Theme/master/layout metadata is emitted on export, but imported placeholder semantics are not preserved yet."}]}
