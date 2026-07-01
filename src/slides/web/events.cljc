@@ -9,6 +9,7 @@
   slides.web.app around dispatch, not inside event handlers."
   (:require #?(:cljs [re-frame.core :as rf]
                :clj [shitsuke.re-frame.core :as rf])
+            [kotoba.editor :as editor]
             [slides.design :as design]
             [slides.model :as model]
             [slides.web.sample :as sample]))
@@ -42,39 +43,15 @@
                            (fn [xs]
                              (vec (map-indexed (fn [i x] (if (= i shape-idx) (f x) x)) xs)))))))
 
-(defn- selected-shapes-set [db]
-  (set (or (:selected-shapes db)
-           (when-let [idx (:selected-shape db)] #{idx})
-           #{})))
-
-(def ^:private history-limit 80)
-
 (defn- snapshot [db]
-  (select-keys db [:deck :selected-slide :selected-shape :selected-shapes]))
+  (editor/snapshot db [:deck :selected-slide :selected-shape :selected-shapes]))
 
 (defn- refresh-edn [db]
   (assoc db :edn-text (pr-str (:deck db))
             :edn-key (inc (or (:edn-key db) 0))))
 
-(defn- push-undo [db]
-  (let [snap (snapshot db)
-        stack (vec (:undo-stack db))]
-    (if (= snap (peek stack))
-      db
-      (assoc db
-             :undo-stack (->> (conj stack snap)
-                              (take-last history-limit)
-                              vec)
-             :redo-stack []))))
-
 (defn- with-history [handler]
-  (fn [db event]
-    (let [next-db (handler db event)]
-      (if (= (:deck db) (:deck next-db))
-        next-db
-        (-> next-db
-            (assoc :undo-stack (:undo-stack (push-undo db))
-                   :redo-stack []))))))
+  (editor/with-history handler :deck snapshot editor/default-history-limit))
 
 (defn- restore-snapshot [db snap]
   (-> db
@@ -95,20 +72,13 @@
    :zoom 1.0 :edn-text (pr-str sample/sample-deck) :edn-key 0 :undo-stack [] :redo-stack []})
 
 (defn select-slide-handler [db [_ idx]]
-  (assoc db :selected-slide idx :selected-shape nil :selected-shapes #{}))
+  (assoc (editor/clear-selection db) :selected-slide idx))
 
 (defn select-shape-handler [db [_ idx]]
-  (assoc db :selected-shape idx :selected-shapes (if (some? idx) #{idx} #{})))
+  (editor/select-one db idx))
 
 (defn toggle-shape-selection-handler [db [_ idx]]
-  (let [selected (selected-shapes-set db)
-        next-selected (if (contains? selected idx)
-                        (disj selected idx)
-                        (conj selected idx))
-        primary (or (when (contains? next-selected (:selected-shape db))
-                      (:selected-shape db))
-                    (first (sort next-selected)))]
-    (assoc db :selected-shape primary :selected-shapes next-selected)))
+  (editor/toggle-selection db idx))
 
 (defn set-mode-handler [db [_ mode]]
   (cond-> (assoc db :mode mode)
@@ -216,51 +186,42 @@
                  #(assoc % :slides/x x :slides/y y :slides/w w :slides/h h)))
 
 (defn nudge-shape-handler [db [_ dx dy]]
-  (let [shape-idxs (selected-shapes-set db)]
+  (let [shape-idxs (editor/selected-set db)]
     (if (seq shape-idxs)
-      (reduce (fn [acc shape-idx]
-                (replace-shape acc (slide-index acc) shape-idx
-                               (fn [shape]
-                                 (-> shape
-                                     (update :slides/x (fnil + 0) dx)
-                                     (update :slides/y (fnil + 0) dy)))))
-              db
-              shape-idxs)
+      (editor/nudge-selected
+       db
+       shape-idxs
+       (fn [acc shape-idx f] (replace-shape acc (slide-index acc) shape-idx f))
+       (fn [shape]
+         (-> shape
+             (update :slides/x (fnil + 0) dx)
+             (update :slides/y (fnil + 0) dy))))
       db)))
 
 (defn align-selected-handler [db [_ axis position]]
-  (let [shape-idxs (selected-shapes-set db)
+  (let [shape-idxs (editor/selected-set db)
         slide-idx (slide-index db)
         deck (:deck db)
         shapes (vec (get-in db [:deck :slides/slides slide-idx :slides/shapes]))
         selected (keep (fn [idx]
                          (when-let [shape (get shapes idx)]
-                           [idx (design/resolve-shape deck shape)]))
+                           (let [resolved (design/resolve-shape deck shape)]
+                             [idx {:x (:slides/x resolved 0)
+                                   :y (:slides/y resolved 0)
+                                   :w (:slides/w resolved 1)
+                                   :h (:slides/h resolved 1)}])))
                        shape-idxs)]
     (if (< (count selected) 2)
       db
-      (let [left (apply min (map (comp :slides/x second) selected))
-            top (apply min (map (comp :slides/y second) selected))
-            right (apply max (map (fn [[_ shape]] (+ (:slides/x shape 0) (:slides/w shape 1))) selected))
-            bottom (apply max (map (fn [[_ shape]] (+ (:slides/y shape 0) (:slides/h shape 1))) selected))
-            center-x (/ (+ left right) 2)
-            center-y (/ (+ top bottom) 2)]
+      (let [updates (editor/align-rects selected axis position)]
         (reduce (fn [acc [idx shape]]
                   (replace-shape acc slide-idx idx
                                  (fn [raw]
-                                   (case axis
-                                     :x (assoc raw :slides/x
-                                               (case position
-                                                 :start left
-                                                 :center (- center-x (/ (:slides/w shape 1) 2))
-                                                 :end (- right (:slides/w shape 1))))
-                                     :y (assoc raw :slides/y
-                                               (case position
-                                                 :start top
-                                                 :center (- center-y (/ (:slides/h shape 1) 2))
-                                                 :end (- bottom (:slides/h shape 1))))))))
+                                   (cond-> raw
+                                     (contains? shape :x) (assoc :slides/x (:x shape))
+                                     (contains? shape :y) (assoc :slides/y (:y shape))))))
                 db
-                selected)))))
+                updates)))))
 
 (defn set-shape-kind-handler [db [_ kind]]
   (if-let [shape-idx (:selected-shape db)]
@@ -294,23 +255,13 @@
   (assoc db :error nil))
 
 (defn mark-undo-handler [db _]
-  (push-undo db))
+  (editor/push-undo db (snapshot db) editor/default-history-limit))
 
 (defn undo-handler [db _]
-  (if-let [snap (peek (:undo-stack db))]
-    (-> db
-        (assoc :undo-stack (pop (vec (:undo-stack db)))
-               :redo-stack (conj (vec (:redo-stack db)) (snapshot db)))
-        (restore-snapshot snap))
-    db))
+  (editor/undo db snapshot restore-snapshot))
 
 (defn redo-handler [db _]
-  (if-let [snap (peek (:redo-stack db))]
-    (-> db
-        (assoc :redo-stack (pop (vec (:redo-stack db)))
-               :undo-stack (conj (vec (:undo-stack db)) (snapshot db)))
-        (restore-snapshot snap))
-    db))
+  (editor/redo db snapshot restore-snapshot))
 
 ;; ---------------------------------------------------------------------------
 ;; subscription handlers
@@ -326,7 +277,7 @@
     (get ss (slide-index db))))
 
 (defn selected-shape-index-sub [db _] (:selected-shape db))
-(defn selected-shapes-sub [db _] (selected-shapes-set db))
+(defn selected-shapes-sub [db _] (editor/selected-set db))
 
 (defn selected-shape-sub [db _]
   (when-let [idx (:selected-shape db)]
@@ -336,8 +287,8 @@
 (defn mode-sub [db _] (:mode db))
 (defn error-sub [db _] (:error db))
 (defn zoom-sub [db _] (:zoom db))
-(defn can-undo-sub [db _] (seq (:undo-stack db)))
-(defn can-redo-sub [db _] (seq (:redo-stack db)))
+(defn can-undo-sub [db _] (editor/can-undo? db))
+(defn can-redo-sub [db _] (editor/can-redo? db))
 
 (defn deck-design-sub [db _]
   (design/deck-design (:deck db)))

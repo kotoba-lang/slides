@@ -5,7 +5,8 @@
 (def default-lcov-path "target/coverage/lcov.info")
 
 (def namespace-thresholds
-  {"slides/build.clj" 85.0
+  {"kotoba/editor.cljc" 85.0
+   "slides/build.clj" 85.0
    "slides/cli.cljc" 85.0
    "slides/design.cljc" 90.0
    "slides/hiccup.cljc" 85.0
@@ -24,7 +25,7 @@
 (def aggregate-threshold 90.0)
 
 (defn- tracked-path [source-file]
-  (when-let [[_ path] (re-find #"(?:^|/)src/(slides/.+)$" (str source-file))]
+  (when-let [[_ path] (re-find #"(?:^|/)src/((?:slides|kotoba)/.+)$" (str source-file))]
     path))
 
 (defn- parse-da [line]
