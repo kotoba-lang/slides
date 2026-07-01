@@ -9,10 +9,10 @@
          :git/sha "4b87825e63ecc78bf97f26d98ff87c8bac7a26cd"}
         io.github.kotoba-lang/drawingml
         {:git/url "https://github.com/kotoba-lang/drawingml.git"
-         :git/sha "3ce239d800e8ed1d25c17b4e3f2783e0eb9ccf6f"}
+         :git/sha "42d2ab4d0c5175ef954879215e80d21fbc3ac177"}
         io.github.kotoba-lang/presentationml
         {:git/url "https://github.com/kotoba-lang/presentationml.git"
-         :git/sha "1eec72b75ea33c99a25bf0922a643a5c79eb4f8e"}
+         :git/sha "6156f488080ba9d384db9a740d2432bc720a4be0"}
         io.github.kotoba-lang/office-style
         {:git/url "https://github.com/kotoba-lang/office-style.git"
          :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}
