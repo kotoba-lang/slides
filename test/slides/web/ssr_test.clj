@@ -12,6 +12,8 @@
     (is (clojure.string/includes? html "kotoba-lang/slides"))
     (is (clojure.string/includes? html "data-act=\"new-deck\""))
     (is (clojure.string/includes? html "data-act=\"download-pptx\""))
+    (is (clojure.string/includes? html "data-act=\"zoom-in\""))
+    (is (clojure.string/includes? html "thumb-preview"))
     (is (clojure.string/includes? html "data-slide=\"0\""))))
 
 (deftest shape-selection-renders-properties-test
@@ -22,7 +24,8 @@
   (testing "shape selected → shape properties panel"
     (let [html (hic/->html (views/root (ssr/sample-db 0 0)))]
       (is (clojure.string/includes? html "panel-title\">Shape"))
-      (is (clojure.string/includes? html "data-field=\"shape.x\"")))))
+      (is (clojure.string/includes? html "data-field=\"shape.x\""))
+      (is (clojure.string/includes? html "data-act=\"duplicate-shape\"")))))
 
 (deftest canvas-shape-inline-style-test
   "shape inline style (reagent :style map) renders to CSS string via shitsuke.hiccup."

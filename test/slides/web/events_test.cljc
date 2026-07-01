@@ -22,6 +22,7 @@
   (is (= 0 @(rf/subscribe [:slides/selected-slide-index])))
   (is (nil? @(rf/subscribe [:slides/selected-shape-index])))
   (is (nil? @(rf/subscribe [:slides/error])))
+  (is (= 1.0 @(rf/subscribe [:slides/zoom])))
   (is (= {:slides/width 10 :slides/height 5.625}
          @(rf/subscribe [:slides/canvas-size])))
   (is (seq (:slides/components @(rf/subscribe [:slides/deck-design])))))
@@ -36,6 +37,7 @@
     (is (nil? (:selected-shape db)))
     (is (= :visual (:mode db)))
     (is (nil? (:error db)))
+    (is (= 1.0 (:zoom db)))
     (is (= (pr-str sample/sample-deck) (:edn-text db))))
   (rf/dispatch [:slides/set-mode :edn])
   (let [db @(rf/subscribe [:slides/db])]
@@ -76,6 +78,17 @@
     (is (= before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))))
     (is (nil? @(rf/subscribe [:slides/selected-shape-index])))))
 
+(deftest duplicate-and-nudge-shape-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (let [before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))]
+    (rf/dispatch [:slides/duplicate-shape])
+    (is (= (inc before) (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))))
+    (is (= before @(rf/subscribe [:slides/selected-shape-index])))
+    (let [x (:slides/x @(rf/subscribe [:slides/selected-shape]))]
+      (rf/dispatch [:slides/nudge-shape 0.1 -0.1])
+      (is (= (+ x 0.1) (:slides/x @(rf/subscribe [:slides/selected-shape])))))))
+
 (deftest add-rect-shape-test
   (rf/dispatch [:slides/select-slide 0])
   (rf/dispatch [:slides/add-shape :rect])
@@ -102,6 +115,10 @@
     (rf/dispatch [:slides/delete-shape])
     (is (= before @(rf/subscribe [:slides/db])))
     (rf/dispatch [:slides/update-shape-field :slides/x 9])
+    (is (= before @(rf/subscribe [:slides/db])))
+    (rf/dispatch [:slides/duplicate-shape])
+    (is (= before @(rf/subscribe [:slides/db])))
+    (rf/dispatch [:slides/nudge-shape 1 1])
     (is (= before @(rf/subscribe [:slides/db])))
     (rf/dispatch [:slides/set-shape-kind :rect])
     (is (= before @(rf/subscribe [:slides/db])))))
@@ -145,3 +162,11 @@
     (rf/dispatch [:slides/set-error "temporary"])
     (rf/dispatch [:slides/clear-error])
     (is (nil? @(rf/subscribe [:slides/error])))))
+
+(deftest set-zoom-clamps-test
+  (rf/dispatch [:slides/set-zoom 1.2])
+  (is (= 1.2 @(rf/subscribe [:slides/zoom])))
+  (rf/dispatch [:slides/set-zoom 9])
+  (is (= 1.5 @(rf/subscribe [:slides/zoom])))
+  (rf/dispatch [:slides/set-zoom 0])
+  (is (= 0.5 @(rf/subscribe [:slides/zoom]))))

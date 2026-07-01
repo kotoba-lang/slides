@@ -28,6 +28,9 @@
 (defn- next-id [prefix xs]
   (str prefix "-" (inc (count xs))))
 
+(defn- clamp [lo hi x]
+  (min hi (max lo x)))
+
 (defn- replace-slide [db idx f]
   (update-in db [:deck :slides/slides]
              (fn [xs] (vec (map-indexed (fn [i x] (if (= i idx) (f x) x)) xs)))))
@@ -45,11 +48,11 @@
 
 (defn init-handler [_ [_ deck]]
   {:deck deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
-   :edn-text (pr-str deck) :edn-key 0})
+   :zoom 1.0 :edn-text (pr-str deck) :edn-key 0})
 
 (defn new-deck-handler [_ _]
   {:deck sample/sample-deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
-   :edn-text (pr-str sample/sample-deck) :edn-key 0})
+   :zoom 1.0 :edn-text (pr-str sample/sample-deck) :edn-key 0})
 
 (defn select-slide-handler [db [_ idx]]
   (assoc db :selected-slide idx :selected-shape nil))
@@ -122,6 +125,20 @@
         (replace-slide idx #(update % :slides/shapes conj shape))
         (assoc :selected-shape (count shapes) :error nil))))
 
+(defn duplicate-shape-handler [db _]
+  (if-let [shape-idx (:selected-shape db)]
+    (let [slide-idx (slide-index db)
+          shapes (vec (get-in db [:deck :slides/slides slide-idx :slides/shapes]))
+          shape (get shapes shape-idx)
+          copy (-> shape
+                   (assoc :slides/id (next-id (or (some-> (:slides/shape shape) name) "shape") shapes))
+                   (update :slides/x (fnil + 0) 0.18)
+                   (update :slides/y (fnil + 0) 0.18))]
+      (-> db
+          (replace-slide slide-idx #(update % :slides/shapes conj copy))
+          (assoc :selected-shape (count shapes) :error nil)))
+    db))
+
 (defn delete-shape-handler [db _]
   (if-let [shape-idx (:selected-shape db)]
     (let [idx (slide-index db)]
@@ -138,6 +155,15 @@
 (defn update-shape-field-handler [db [_ field value]]
   (if-let [shape-idx (:selected-shape db)]
     (replace-shape db (slide-index db) shape-idx #(assoc % field value))
+    db))
+
+(defn nudge-shape-handler [db [_ dx dy]]
+  (if-let [shape-idx (:selected-shape db)]
+    (replace-shape db (slide-index db) shape-idx
+                   (fn [shape]
+                     (-> shape
+                         (update :slides/x (fnil + 0) dx)
+                         (update :slides/y (fnil + 0) dy))))
     db))
 
 (defn set-shape-kind-handler [db [_ kind]]
@@ -161,6 +187,9 @@
 (defn import-deck-handler [db [_ deck]]
   (assoc db :deck deck :selected-slide 0 :selected-shape nil :error nil :mode :visual
          :edn-text (pr-str deck) :edn-key (inc (or (:edn-key db) 0))))
+
+(defn set-zoom-handler [db [_ zoom]]
+  (assoc db :zoom (clamp 0.5 1.5 zoom)))
 
 (defn set-error-handler [db [_ msg]]
   (assoc db :error msg))
@@ -190,6 +219,7 @@
 
 (defn mode-sub [db _] (:mode db))
 (defn error-sub [db _] (:error db))
+(defn zoom-sub [db _] (:zoom db))
 
 (defn deck-design-sub [db _]
   (design/deck-design (:deck db)))
@@ -217,12 +247,15 @@
   (rf/reg-event-db :slides/delete-slide delete-slide-handler)
   (rf/reg-event-db :slides/add-shape add-shape-handler)
   (rf/reg-event-db :slides/add-component add-component-handler)
+  (rf/reg-event-db :slides/duplicate-shape duplicate-shape-handler)
   (rf/reg-event-db :slides/delete-shape delete-shape-handler)
   (rf/reg-event-db :slides/update-shape-field update-shape-field-handler)
+  (rf/reg-event-db :slides/nudge-shape nudge-shape-handler)
   (rf/reg-event-db :slides/set-shape-kind set-shape-kind-handler)
   (rf/reg-event-db :slides/update-slide-field update-slide-field-handler)
   (rf/reg-event-db :slides/apply-edn apply-edn-handler)
   (rf/reg-event-db :slides/import-deck import-deck-handler)
+  (rf/reg-event-db :slides/set-zoom set-zoom-handler)
   (rf/reg-event-db :slides/set-error set-error-handler)
   (rf/reg-event-db :slides/clear-error clear-error-handler)
   (rf/reg-sub :slides/db db-sub)
@@ -234,6 +267,7 @@
   (rf/reg-sub :slides/selected-shape selected-shape-sub)
   (rf/reg-sub :slides/mode mode-sub)
   (rf/reg-sub :slides/error error-sub)
+  (rf/reg-sub :slides/zoom zoom-sub)
   (rf/reg-sub :slides/deck-design deck-design-sub)
   (rf/reg-sub :slides/canvas-size canvas-size-sub)
   nil)

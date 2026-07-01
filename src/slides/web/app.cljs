@@ -65,6 +65,9 @@
 (defn- deck-sub []
   @(rf/subscribe [:slides/deck]))
 
+(defn- zoom-sub []
+  @(rf/subscribe [:slides/zoom]))
+
 (defn- act-handler [act]
   (case act
     "new-deck"        (rf/dispatch [:slides/new-deck])
@@ -74,8 +77,12 @@
     "add-rect"        (rf/dispatch [:slides/add-shape :rect])
     "add-title"       (rf/dispatch [:slides/add-component :title])
     "add-panel"       (rf/dispatch [:slides/add-component :panel])
+    "duplicate-shape" (rf/dispatch [:slides/duplicate-shape])
     "delete-slide"    (rf/dispatch [:slides/delete-slide])
     "delete-shape"    (rf/dispatch [:slides/delete-shape])
+    "zoom-out"        (rf/dispatch [:slides/set-zoom (- (zoom-sub) 0.1)])
+    "zoom-in"         (rf/dispatch [:slides/set-zoom (+ (zoom-sub) 0.1)])
+    "zoom-reset"      (rf/dispatch [:slides/set-zoom 1.0])
     "mode-visual"     (rf/dispatch [:slides/set-mode :visual])
     "mode-edn"        (rf/dispatch [:slides/set-mode :edn])
     "download-edn"    (effects/download! "deck.edn" "application/edn;charset=utf-8" (pr-str (deck-sub)))
@@ -101,7 +108,9 @@
                          (when-let [shape-el (.closest target "[data-shape]")]
                            (.stopPropagation event)
                            (rf/dispatch [:slides/select-shape
-                                         (js/parseInt (.getAttribute shape-el "data-shape") 10)])))))
+                                         (js/parseInt (.getAttribute shape-el "data-shape") 10)]))
+                         (when (= "canvas" (.-id target))
+                           (rf/dispatch [:slides/select-shape nil])))))
   (.addEventListener js/document "change"
                      (fn [event]
                        (let [target (.-target event)]
@@ -130,6 +139,32 @@
                                     (.getAttribute target "data-field"))
                            (dispatch-field (.getAttribute target "data-field")
                                            (.-value target)))))))
+  (.addEventListener js/document "keydown"
+                     (fn [event]
+                       (let [target (.-target event)
+                             tag (some-> (.-tagName target) str/lower-case)
+                             editing? (#{"input" "textarea" "select"} tag)
+                             key (.-key event)]
+                         (when-not editing?
+                           (case key
+                             "Delete" (do (.preventDefault event)
+                                          (rf/dispatch [:slides/delete-shape]))
+                             "Backspace" (do (.preventDefault event)
+                                             (rf/dispatch [:slides/delete-shape]))
+                             "ArrowLeft" (do (.preventDefault event)
+                                             (rf/dispatch [:slides/nudge-shape -0.1 0]))
+                             "ArrowRight" (do (.preventDefault event)
+                                              (rf/dispatch [:slides/nudge-shape 0.1 0]))
+                             "ArrowUp" (do (.preventDefault event)
+                                           (rf/dispatch [:slides/nudge-shape 0 -0.1]))
+                             "ArrowDown" (do (.preventDefault event)
+                                             (rf/dispatch [:slides/nudge-shape 0 0.1]))
+                             nil))
+                         (when (and (not editing?)
+                                    (or (.-metaKey event) (.-ctrlKey event))
+                                    (= "d" (str/lower-case key)))
+                           (.preventDefault event)
+                           (rf/dispatch [:slides/duplicate-shape])))))
 
 ;; ---------------------------------------------------------------------------
 ;; mount

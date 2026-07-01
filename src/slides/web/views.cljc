@@ -51,16 +51,38 @@
 ;; slide list / canvas
 ;; ---------------------------------------------------------------------------
 
-(defn slide-thumb [idx slide selected?]
+(defn thumb-shape [deck idx shape]
+  (let [resolved (design/resolve-shape deck shape)
+        width (positive (:slides/width deck) 10)
+        height (positive (:slides/height deck) 5.625)
+        style {:left (str (/ (* 100 (numeric (:slides/x resolved) 0)) width) "%")
+               :top (str (/ (* 100 (numeric (:slides/y resolved) 0)) height) "%")
+               :width (str (/ (* 100 (positive (:slides/w resolved) 1)) width) "%")
+               :height (str (/ (* 100 (positive (:slides/h resolved) 1)) height) "%")}]
+    [:i {:class (str "thumb-shape " (name (:slides/shape resolved :text)))
+         :style (cond-> style
+                  (= :rect (:slides/shape resolved))
+                  (assoc :background (str "#" (valid-hex (:slides/fill resolved) "EAF0F8")))
+                  (not= :rect (:slides/shape resolved))
+                  (assoc :background (if (zero? idx) "#17202A" "#526170")))}]))
+
+(defn thumb-preview [deck slide]
+  [:div.thumb-preview
+   (map-indexed (fn [i shape] (thumb-shape deck i shape))
+                (take 5 (:slides/shapes slide)))])
+
+(defn slide-thumb [deck idx slide selected?]
   [:button.thumb {:class (when selected? "active") :data-slide idx :type "button"}
    [:small (inc idx)]
+   (thumb-preview deck slide)
    [:span (:slides/title slide (:slides/id slide))]
    [:em (str (count (:slides/shapes slide)))]])
 
 (defn slide-list [db]
-  (let [ss (vec (:slides/slides (:deck db)))
+  (let [deck (:deck db)
+        ss (vec (:slides/slides deck))
         sel (slide-index db)]
-    (into [:div] (map-indexed (fn [i s] (slide-thumb i s (= i sel))) ss))))
+    (into [:div] (map-indexed (fn [i s] (slide-thumb deck i s (= i sel))) ss))))
 
 (defn shape-style [deck-width deck-height shape selected?]
   (let [x (/ (* 100 (numeric (:slides/x shape) 0)) deck-width)
@@ -152,7 +174,9 @@
        [:div.grid2
         (property-input "Font" "shape-font-size" "shape.font-size" (:slides/font-size shape 24) {:type "number" :step "1"})
         (property-input "Color" "shape-color" "shape.color" (:slides/color shape "17202A") {})])
-     [:button#delete-shape.danger {:data-act "delete-shape" :type "button"} "Delete Shape"]]))
+     [:div.inspector-actions
+      [:button#duplicate-shape {:data-act "duplicate-shape" :type "button"} "Duplicate"]
+      [:button#delete-shape.danger {:data-act "delete-shape" :type "button"} "Delete"]]]))
 
 (defn slide-properties [db]
   (let [slide (selected-slide db)]
@@ -173,25 +197,39 @@
 
 (defn mode-tabs [mode]
   [:div.mode-tabs
-   [:button#mode-visual {:data-act "mode-visual" :type "button"} "Visual"]
-   [:button#mode-edn {:data-act "mode-edn" :type "button"} "EDN"]
+   [:button#mode-visual {:class (when (= :visual mode) "active") :data-act "mode-visual" :type "button"} "Visual"]
+   [:button#mode-edn {:class (when (= :edn mode) "active") :data-act "mode-edn" :type "button"} "EDN"]])
+
+(defn insert-bar []
+  [:div.insert-bar
    [:button#add-text {:data-act "add-text" :type "button"} "Text"]
    [:button#add-rect {:data-act "add-rect" :type "button"} "Rect"]
    [:button#add-title {:data-act "add-title" :type "button"} "Title"]
    [:button#add-panel {:data-act "add-panel" :type "button"} "Panel"]])
 
+(defn zoom-controls [zoom]
+  [:div.zoom-controls
+   [:button#zoom-out {:data-act "zoom-out" :type "button"} "-"]
+   [:button#zoom-reset {:data-act "zoom-reset" :type "button"} (str (long (* 100 (positive zoom 1))) "%")]
+   [:button#zoom-in {:data-act "zoom-in" :type "button"} "+"]])
+
 (defn workspace [db]
   (let [mode (:mode db)
         deck (:deck db)
-        slide (selected-slide db)]
+        slide (selected-slide db)
+        zoom (positive (:zoom db) 1)]
     [:section.workspace
      [:div.workspace-head
       [:div
        [:h2 (:slides/title deck "Untitled deck")]
        [:p (str (:slides/title slide (:slides/id slide "Slide")))]]
-      (mode-tabs mode)]
-     [:div#visual-pane.canvas-shell {:hidden (not= :visual mode)}
-      (canvas db)]
+      [:div.workspace-tools
+       (mode-tabs mode)
+       (insert-bar)
+       (zoom-controls zoom)]]
+     [:div#visual-pane.stage {:hidden (not= :visual mode)}
+      [:div.canvas-shell {:style {:transform (str "scale(" zoom ")")}}
+       (canvas db)]]
      [:div#edn-pane {:hidden (not= :edn mode)}
       ;; Uncontrolled textarea keyed by deck content: React won't revert user
       ;; edits (no :on-change), and it remounts with the current deck's pr-str
@@ -227,7 +265,7 @@
   [:div.toolbar
    [:div.brand
     [:h1 "kotoba-lang/slides"]
-    [:p "EDN-native deck editor"]]
+    [:p (:slides/title deck "Untitled deck")]]
    [:div.deck-meta
     [:span (:slides/id deck "deck")]
     [:span (str slide-count " slides")]
