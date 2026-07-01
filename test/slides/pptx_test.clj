@@ -1,9 +1,10 @@
 (ns slides.pptx-test
   (:require [clojure.test :refer [deftest is]]
             [slides.model :as m]
+            [slides.office :as office]
             [slides.pptx :as pptx])
   (:import [java.io ByteArrayInputStream]
-           [java.util.zip ZipInputStream]))
+           [java.util.zip ZipEntry ZipInputStream ZipOutputStream]))
 
 (defn zip-entries [bytes]
   (with-open [zip (ZipInputStream. (ByteArrayInputStream. bytes))]
@@ -18,6 +19,15 @@
                 (recur))))
           (recur (assoc entries (.getName entry) (.toString out "UTF-8"))))
         entries))))
+
+(defn zip-bytes [entries]
+  (let [out (java.io.ByteArrayOutputStream.)]
+    (with-open [zip (ZipOutputStream. out)]
+      (doseq [[path text] entries]
+        (.putNextEntry zip (ZipEntry. path))
+        (.write zip (.getBytes text "UTF-8"))
+        (.closeEntry zip)))
+    (.toByteArray out)))
 
 (deftest writes-pptx-package-from-edn
   (let [deck (-> (m/deck "deck" {:slides/title "Board update"})
@@ -263,3 +273,39 @@
     (is (re-find #"sz=\"3200\"" slide))
     (is (re-find #"ABCDEF" slide))
     (is (not (contains? entries "ppt/theme/theme1.xml")))))
+
+(deftest update-pptx-preserves-group-placeholder-chart-and-workbook-parts
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "docProps/core.xml" "<cp:coreProperties><dc:title>Semantics Deck</dc:title></cp:coreProperties>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:grpSp><p:nvGrpSpPr><p:cNvPr id=\"7\" name=\"Group 1\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm/></p:grpSpPr>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"8\" name=\"Grouped Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr><p:ph type=\"title\" idx=\"1\"/></p:nvPr></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Grouped Title</a:t></a:r></a:p></p:txBody></p:sp></p:grpSp>"
+                                                    "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"12\" name=\"Revenue Chart\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+                                                    "<p:xfrm><a:off x=\"914400\" y=\"1371600\"/><a:ext cx=\"5486400\" cy=\"2743200\"/></p:xfrm>"
+                                                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"rId2\"/></a:graphicData></a:graphic></p:graphicFrame>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/slides/_rels/slide1.xml.rels" "<Relationships><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/></Relationships>"
+                      "ppt/charts/chart1.xml" "<c:chartSpace><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Revenue</a:t></a:r></a:p></c:rich></c:tx></c:title></c:chart></c:chartSpace>"
+                      "ppt/charts/_rels/chart1.xml.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/package\" Target=\"../embeddings/Microsoft_Excel_Worksheet1.xlsx\"/></Relationships>"
+                      "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx" "workbook-bytes"}
+        base-bytes (zip-bytes base-entries)
+        imported (office/deck-from-office-bytes base-bytes {:source "semantics.pptx"})
+        grouped (-> imported :slides/slides first :slides/shapes first)
+        chart (-> imported :slides/slides first :slides/shapes second)
+        edited (assoc-in imported [:slides/slides 0 :slides/shapes 0 :slides/text] "Patched Grouped Title")
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes edited))
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (= {:index 0 :id "Group 1"} (:slides/group grouped)))
+    (is (= {:type "title" :idx "1"} (:slides/placeholder grouped)))
+    (is (= "ppt/charts/chart1.xml" (:slides/chart-part chart)))
+    (is (= "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx" (:slides/workbook-part chart)))
+    (is (re-find #"<p:grpSp>" slide))
+    (is (re-find #"<p:ph type=\"title\" idx=\"1\"/>" slide))
+    (is (re-find #"Patched Grouped Title" slide))
+    (is (= (base-entries "ppt/charts/chart1.xml") (entries "ppt/charts/chart1.xml")))
+    (is (= (base-entries "ppt/charts/_rels/chart1.xml.rels") (entries "ppt/charts/_rels/chart1.xml.rels")))
+    (is (= "workbook-bytes" (entries "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")))))

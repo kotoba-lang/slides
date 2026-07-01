@@ -197,6 +197,11 @@ npx @kotoba-lang/slides pptx deck.edn deck.pptx
 When imported shapes carry `:ooxml/source` locators, `update` patches matching
 source slide XML parts in the base PPTX and preserves unrelated package entries.
 Decks without locators still fall back to normalized PPTX regeneration.
+Imported OOXML semantics are retained in EDN metadata for patch-safe workflows:
+group membership is carried as `:slides/group`, placeholders as
+`:slides/placeholder`, and charts record their slide relationship, chart part,
+and embedded workbook part via `:slides/chart-rel-id`, `:slides/chart-part`, and
+`:slides/workbook-part`.
 
 GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
 `.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,
@@ -250,8 +255,10 @@ deck with reusable components/styles and verify that the exported PPTX keeps
 editable text, font size, and color in the package XML.
 `test/slides/fixtures/pptx_roundtrip_matrix.edn` records the real-world PPTX
 roundtrip matrix. `:guarded` rows run in CI through Office import -> causal PPTX
-export -> Office re-import; `:target` rows document remaining compatibility gaps
-such as grouped shapes, chart data/workbooks, and placeholder semantics.
+export -> Office re-import, and include grouped shapes, chart data/workbook
+relationships, and placeholder semantics. Source-aware `update` tests additionally
+verify that the original group XML, placeholder tags, chart parts, chart rels,
+and embedded workbook entries are preserved while patched slide text is updated.
 `npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
 85% aggregate coverage. `npm run coverage:thresholds` then checks the generated
 LCOV report against namespace-level floors, with a 90% aggregate floor, so CI

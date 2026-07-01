@@ -55,6 +55,18 @@
 (defn- source-kinds [deck]
   (set (keep :slides/source-kind (shapes deck))))
 
+(defn- groups [deck]
+  (set (keep :slides/group (shapes deck))))
+
+(defn- placeholders [deck]
+  (set (keep :slides/placeholder (shapes deck))))
+
+(defn- chart-parts [deck]
+  (set (keep :slides/chart-part (shapes deck))))
+
+(defn- workbook-parts [deck]
+  (set (keep :slides/workbook-part (shapes deck))))
+
 (defn- rects [deck]
   (filter #(= :rect (:slides/shape %)) (shapes deck)))
 
@@ -70,6 +82,14 @@
       (is (= (frequencies expected-text) (frequencies (texts roundtripped)))))
     (when-let [expected-kinds (:source-kinds expect)]
       (is (every? (source-kinds imported) expected-kinds)))
+    (when-let [expected-groups (:groups expect)]
+      (is (every? (groups imported) expected-groups)))
+    (when-let [expected-placeholders (:placeholders expect)]
+      (is (every? (placeholders imported) expected-placeholders)))
+    (when-let [expected-chart-parts (:chart-parts expect)]
+      (is (every? (chart-parts imported) expected-chart-parts)))
+    (when-let [expected-workbook-parts (:workbook-parts expect)]
+      (is (every? (workbook-parts imported) expected-workbook-parts)))
     (when-let [expected-rects (:rects expect)]
       (is (<= expected-rects (count (rects roundtripped)))))
     (when-let [expected-fills (:fills expect)]
@@ -91,7 +111,6 @@
     (is (= 1 (:version matrix)))
     (is (seq cases))
     (is (some #(= :guarded (:support %)) cases))
-    (is (some #(= :target (:support %)) cases))
     (doseq [case cases]
       (testing (:id case)
         (is (:id case))

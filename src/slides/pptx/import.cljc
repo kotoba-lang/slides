@@ -44,6 +44,11 @@
     (:drawingml/fill shape) (assoc :slides/fill (:drawingml/fill shape))
     (:drawingml/line shape) (assoc :slides/line (:drawingml/line shape))
     (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))
+    (:drawingml/group shape) (assoc :slides/group (:drawingml/group shape))
+    (:drawingml/placeholder shape) (assoc :slides/placeholder (:drawingml/placeholder shape))
+    (:drawingml/chart-rel-id shape) (assoc :slides/chart-rel-id (:drawingml/chart-rel-id shape))
+    (:drawingml/chart-part shape) (assoc :slides/chart-part (:drawingml/chart-part shape))
+    (:drawingml/workbook-part shape) (assoc :slides/workbook-part (:drawingml/workbook-part shape))
     (:ooxml/source shape) (assoc :ooxml/source (:ooxml/source shape))))
 
 (defn- slide->slides [slide]
