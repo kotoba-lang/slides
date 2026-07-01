@@ -369,6 +369,210 @@
   #?(:clj (String. ^bytes bytes "UTF-8")
      :cljs bytes))
 
+(declare replace-nth-element)
+
+(defn- xml-attr [xml attr]
+  (second (re-find (re-pattern (str "\\b" attr "=\"([^\"]*)\"")) (or xml ""))))
+
+(defn- dirname [path]
+  (if-let [idx (str/last-index-of (str path) "/")]
+    (subs (str path) 0 idx)
+    ""))
+
+(defn- normalize-part-path [path]
+  (->> (str/split (str/replace-first (str path) #"^/" "") #"/")
+       (reduce (fn [parts part]
+                 (case part
+                   "" parts
+                   "." parts
+                   ".." (vec (butlast parts))
+                   (conj parts part)))
+               [])
+       (str/join "/")))
+
+(defn- resolve-part-target [source-part target]
+  (let [target (str target)]
+    (cond
+      (str/blank? target) target
+      (str/starts-with? target "/") (normalize-part-path target)
+      (re-find #"^[A-Za-z][A-Za-z0-9+.-]*:" target) target
+      :else (normalize-part-path (str (dirname source-part) "/" target)))))
+
+(defn- rels-path [part-path]
+  (let [path (str part-path)
+        idx (str/last-index-of path "/")]
+    (if idx
+      (str (subs path 0 idx) "/_rels/" (subs path (inc idx)) ".rels")
+      (str "_rels/" path ".rels"))))
+
+(defn- relationships-from-entries [entries part-path]
+  (let [rels-xml (some-> (entries (rels-path part-path)) bytes->text)]
+    (into {}
+          (keep (fn [tag]
+                  (when-let [id (xml-attr tag "Id")]
+                    (let [target (xml-attr tag "Target")]
+                      [id {:id id
+                           :type (xml-attr tag "Type")
+                           :target target
+                           :target-path (resolve-part-target part-path target)}]))))
+          (re-seq #"<Relationship\b[^>]*/?>" (or rels-xml "")))))
+
+(defn- workbook-sheet-paths [workbook-entries]
+  (let [workbook-xml (bytes->text (get workbook-entries "xl/workbook.xml"))
+        rels (relationships-from-entries workbook-entries "xl/workbook.xml")]
+    (into {}
+          (keep (fn [tag]
+                  (let [name (xml-attr tag "name")
+                        rel-id (xml-attr tag "r:id")
+                        target (get-in rels [rel-id :target-path])]
+                    (when (and name target)
+                      [name target]))))
+          (re-seq #"<sheet\b[^>]*/?>" (or workbook-xml "")))))
+
+(defn- col->index [col]
+  (reduce (fn [acc ch]
+            (+ (* acc 26) (- (int ch) 64)))
+          0
+          (str/upper-case (str col))))
+
+(defn- index->col [idx]
+  (loop [n idx
+         out ""]
+    (if (pos? n)
+      (let [n' (dec n)
+            ch (char (+ 65 (mod n' 26)))]
+        (recur (quot n' 26) (str ch out)))
+      out)))
+
+(defn- cell-ref-parts [ref]
+  (when-let [[_ col row] (re-matches #"([A-Za-z]+)(\d+)" (str ref))]
+    {:col col
+     :col-index (col->index col)
+     :row #?(:clj (Long/parseLong row)
+             :cljs (js/parseInt row 10))}))
+
+(defn- offset-cell-ref [anchor row-idx col-idx]
+  (let [{:keys [col-index row]} (cell-ref-parts anchor)]
+    (str (index->col (+ col-index col-idx)) (+ row row-idx))))
+
+(defn- cell-value-xml [ref value]
+  (cond
+    (nil? value)
+    (str "<c r=\"" ref "\"/>")
+
+    (number? value)
+    (str "<c r=\"" ref "\"><v>" value "</v></c>")
+
+    (boolean? value)
+    (str "<c r=\"" ref "\" t=\"b\"><v>" (if value 1 0) "</v></c>")
+
+    :else
+    (str "<c r=\"" ref "\" t=\"inlineStr\"><is><t>" (esc value) "</t></is></c>")))
+
+(defn- patch-sheet-cell [sheet-xml ref value]
+  (let [cell-xml (cell-value-xml ref value)
+        row (some-> (cell-ref-parts ref) :row)
+        cell-pattern (re-pattern (str "<c\\b(?=[^>]*\\br=\"" ref "\")[\\s\\S]*?</c>"))
+        row-pattern (re-pattern (str "<row\\b(?=[^>]*\\br=\"" row "\")[\\s\\S]*?</row>"))]
+    (cond
+      (re-find cell-pattern sheet-xml)
+      (str/replace-first sheet-xml cell-pattern cell-xml)
+
+      (and row (re-find row-pattern sheet-xml))
+      (str/replace-first sheet-xml row-pattern
+                         (fn [row-xml]
+                           (str/replace row-xml #"</row>\s*$" (str cell-xml "</row>"))))
+
+      (str/includes? sheet-xml "</sheetData>")
+      (str/replace-first sheet-xml #"</sheetData>"
+                         (str "<row r=\"" row "\">" cell-xml "</row></sheetData>"))
+
+      :else sheet-xml)))
+
+(defn- chart-data-cells [{:keys [sheet anchor rows cells]}]
+  (let [sheet (or sheet "Sheet1")
+        anchor (or anchor "A1")
+        row-cells (for [[r row] (map-indexed vector rows)
+                        [c value] (map-indexed vector row)]
+                    {:sheet sheet
+                     :ref (offset-cell-ref anchor r c)
+                     :value value})
+        explicit-cells (for [[ref value] cells
+                             :let [[sheet-name cell-ref] (if (str/includes? (str ref) "!")
+                                                           (str/split (str ref) #"!" 2)
+                                                           [sheet (str ref)])]]
+                         {:sheet sheet-name
+                          :ref cell-ref
+                          :value value})]
+    (concat row-cells explicit-cells)))
+
+#?(:clj
+   (defn- patch-workbook-bytes [workbook-bytes chart-data]
+     (let [workbook-entries (zip-entries-bytes workbook-bytes)
+           sheet-paths (workbook-sheet-paths workbook-entries)
+           by-sheet (group-by :sheet (chart-data-cells chart-data))
+           patched (reduce (fn [entries [sheet cells]]
+                             (if-let [path (get sheet-paths sheet)]
+                               (if-let [sheet-bytes (get entries path)]
+                                 (let [patched-xml (reduce (fn [xml {:keys [ref value]}]
+                                                             (patch-sheet-cell xml ref value))
+                                                           (bytes->text sheet-bytes)
+                                                           cells)]
+                                   (assoc entries path (text-entry-bytes patched-xml)))
+                                 entries)
+                               entries))
+                           workbook-entries
+                           by-sheet)]
+       (zip-bytes-from-entries patched))))
+
+(defn- cache-pt [idx value numeric?]
+  (str "<c:pt idx=\"" idx "\">"
+       (when numeric? "<c:v>")
+       (if numeric? value (str "<c:v>" (esc value) "</c:v>"))
+       (when numeric? "</c:v>")
+       "</c:pt>"))
+
+(defn- str-cache [values]
+  (str "<c:strCache><c:ptCount val=\"" (count values) "\"/>"
+       (apply str (map-indexed #(cache-pt %1 %2 false) values))
+       "</c:strCache>"))
+
+(defn- num-cache [values]
+  (str "<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"" (count values) "\"/>"
+       (apply str (map-indexed #(cache-pt %1 %2 true) values))
+       "</c:numCache>"))
+
+(defn- chart-series-from-rows [{:keys [rows]}]
+  (when (and (seq rows) (> (count (first rows)) 1))
+    (let [headers (vec (first rows))
+          body (vec (rest rows))
+          categories (mapv first body)]
+      (mapv (fn [idx]
+              {:name (nth headers idx)
+               :categories categories
+               :values (mapv #(nth % idx nil) body)})
+            (range 1 (count headers))))))
+
+(defn- patch-chart-series-block [block {:keys [name categories values]}]
+  (let [tx (str "<c:tx><c:v>" (esc name) "</c:v></c:tx>")
+        cat (str "<c:cat><c:strRef>" (str-cache categories) "</c:strRef></c:cat>")
+        val (str "<c:val><c:numRef>" (num-cache values) "</c:numRef></c:val>")]
+    (-> block
+        (cond-> (re-find #"<c:tx\b[\s\S]*?</c:tx>" block)
+          (str/replace-first #"<c:tx\b[\s\S]*?</c:tx>" tx))
+        (cond-> (re-find #"<c:cat\b[\s\S]*?</c:cat>" block)
+          (str/replace-first #"<c:cat\b[\s\S]*?</c:cat>" cat))
+        (cond-> (re-find #"<c:val\b[\s\S]*?</c:val>" block)
+          (str/replace-first #"<c:val\b[\s\S]*?</c:val>" val)))))
+
+(defn- patch-chart-xml [chart-xml chart-data]
+  (if-let [series (seq (chart-series-from-rows chart-data))]
+    (reduce (fn [xml [idx data]]
+              (replace-nth-element xml "c:ser" idx #(patch-chart-series-block % data)))
+            chart-xml
+            (map-indexed vector series))
+    chart-xml))
+
 (defn pptx-bytes
   "Returns a JVM byte array containing a .pptx generated from an EDN deck map."
   [deck]
@@ -499,6 +703,30 @@
             entries
             by-part)))
 
+(defn- chart-data-shapes [deck]
+  (->> (deck-slides deck)
+       (mapcat :slides/shapes)
+       (filter #(and (:slides/chart-data %)
+                     (:slides/chart-part %)))
+       vec))
+
+#?(:clj
+   (defn- patch-chart-data-entries [entries deck]
+     (reduce (fn [acc shape]
+               (let [chart-data (:slides/chart-data shape)
+                     chart-part (:slides/chart-part shape)
+                     workbook-part (:slides/workbook-part shape)
+                     acc (if-let [chart-bytes (get acc chart-part)]
+                           (assoc acc chart-part
+                                  (text-entry-bytes
+                                   (patch-chart-xml (bytes->text chart-bytes) chart-data)))
+                           acc)]
+                 (if-let [workbook-bytes (get acc workbook-part)]
+                   (assoc acc workbook-part (patch-workbook-bytes workbook-bytes chart-data))
+                   acc)))
+             entries
+             (chart-data-shapes deck))))
+
 (defn update-pptx-bytes
   "Returns .pptx bytes for deck EDN.
 
@@ -511,6 +739,7 @@
        (if (seq patches)
          (-> (zip-entries-bytes base-bytes)
              (patch-base-entries deck)
+             (patch-chart-data-entries deck)
              zip-bytes-from-entries)
          (pptx-bytes deck)))
      :cljs

@@ -20,12 +20,27 @@
           (recur (assoc entries (.getName entry) (.toString out "UTF-8"))))
         entries))))
 
+(defn zip-entry-bytes [bytes path]
+  (with-open [zip (ZipInputStream. (ByteArrayInputStream. bytes))]
+    (loop []
+      (when-let [entry (.getNextEntry zip)]
+        (let [buf (byte-array 8192)
+              out (java.io.ByteArrayOutputStream.)]
+          (loop []
+            (let [n (.read zip buf)]
+              (when (pos? n)
+                (.write out buf 0 n)
+                (recur))))
+          (if (= path (.getName entry))
+            (.toByteArray out)
+            (recur)))))))
+
 (defn zip-bytes [entries]
   (let [out (java.io.ByteArrayOutputStream.)]
     (with-open [zip (ZipOutputStream. out)]
       (doseq [[path text] entries]
         (.putNextEntry zip (ZipEntry. path))
-        (.write zip (.getBytes text "UTF-8"))
+        (.write zip (if (string? text) (.getBytes text "UTF-8") text))
         (.closeEntry zip)))
     (.toByteArray out)))
 
@@ -309,3 +324,37 @@
     (is (= (base-entries "ppt/charts/chart1.xml") (entries "ppt/charts/chart1.xml")))
     (is (= (base-entries "ppt/charts/_rels/chart1.xml.rels") (entries "ppt/charts/_rels/chart1.xml.rels")))
     (is (= "workbook-bytes" (entries "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")))))
+
+(deftest update-pptx-patches-chart-data-into-chart-cache-and-workbook
+  (let [workbook-bytes (zip-bytes {"xl/workbook.xml" "<workbook><sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"
+                                   "xl/_rels/workbook.xml.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>"
+                                   "xl/worksheets/sheet1.xml" "<worksheet><sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Quarter</t></is></c><c r=\"B1\" t=\"inlineStr\"><is><t>Revenue</t></is></c></row><row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Q1</t></is></c><c r=\"B2\"><v>10</v></c></row><row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Q2</t></is></c><c r=\"B3\"><v>20</v></c></row></sheetData></worksheet>"})
+        base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "docProps/core.xml" "<cp:coreProperties><dc:title>Chart Data Deck</dc:title></cp:coreProperties>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"12\" name=\"Revenue Chart\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+                                                    "<a:graphic><a:graphicData><c:chart r:id=\"rId2\"/></a:graphicData></a:graphic></p:graphicFrame>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/slides/_rels/slide1.xml.rels" "<Relationships><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/></Relationships>"
+                      "ppt/charts/chart1.xml" "<c:chartSpace><c:chart><c:plotArea><c:barChart><c:ser><c:tx><c:v>Revenue</c:v></c:tx><c:cat><c:strRef><c:strCache><c:ptCount val=\"2\"/><c:pt idx=\"0\"><c:v>Q1</c:v></c:pt><c:pt idx=\"1\"><c:v>Q2</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache><c:ptCount val=\"2\"/><c:pt idx=\"0\"><c:v>10</c:v></c:pt><c:pt idx=\"1\"><c:v>20</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>"
+                      "ppt/charts/_rels/chart1.xml.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/package\" Target=\"../embeddings/Microsoft_Excel_Worksheet1.xlsx\"/></Relationships>"
+                      "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx" workbook-bytes}
+        base-bytes (zip-bytes base-entries)
+        imported (office/deck-from-office-bytes base-bytes {:source "chart-data.pptx"})
+        edited (assoc-in imported [:slides/slides 0 :slides/shapes 0 :slides/chart-data]
+                         {:sheet "Sheet1"
+                          :anchor "A1"
+                          :rows [["Quarter" "Revenue"]
+                                 ["Q1" 120]
+                                 ["Q2" 180]]})
+        updated (pptx/update-pptx-bytes base-bytes edited)
+        entries (zip-entries updated)
+        chart (entries "ppt/charts/chart1.xml")
+        workbook (zip-entries (zip-entry-bytes updated "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx"))
+        sheet (workbook "xl/worksheets/sheet1.xml")]
+    (is (re-find #"<c:v>120</c:v>" chart))
+    (is (re-find #"<c:v>180</c:v>" chart))
+    (is (re-find #"<c r=\"B2\"><v>120</v></c>" sheet))
+    (is (re-find #"<c r=\"B3\"><v>180</v></c>" sheet))))

@@ -202,6 +202,19 @@ group membership is carried as `:slides/group`, placeholders as
 `:slides/placeholder`, and charts record their slide relationship, chart part,
 and embedded workbook part via `:slides/chart-rel-id`, `:slides/chart-part`, and
 `:slides/workbook-part`.
+Chart data can be edited semantically by adding `:slides/chart-data` to an
+imported chart shape:
+
+```clojure
+{:slides/chart-data {:sheet "Sheet1"
+                     :anchor "A1"
+                     :rows [["Quarter" "Revenue"]
+                            ["Q1" 120]
+                            ["Q2" 180]]}}
+```
+
+`update` patches both the chart cache XML and the embedded workbook `.xlsx`
+entry while preserving the rest of the original PPTX package.
 
 GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
 `.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,

@@ -16,6 +16,7 @@
    "slides/routes.cljc" 90.0
    "slides/site.clj" 85.0
    "slides/validate.cljc" 90.0
+   "slides/wire.cljc" 90.0
    "slides/web/events.cljc" 90.0
    "slides/web/sample.cljc" 100.0
    "slides/web/ssr.clj" 90.0
