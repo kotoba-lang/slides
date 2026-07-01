@@ -42,17 +42,52 @@
                            (fn [xs]
                              (vec (map-indexed (fn [i x] (if (= i shape-idx) (f x) x)) xs)))))))
 
+(def ^:private history-limit 80)
+
+(defn- snapshot [db]
+  (select-keys db [:deck :selected-slide :selected-shape]))
+
+(defn- refresh-edn [db]
+  (assoc db :edn-text (pr-str (:deck db))
+            :edn-key (inc (or (:edn-key db) 0))))
+
+(defn- push-undo [db]
+  (let [snap (snapshot db)
+        stack (vec (:undo-stack db))]
+    (if (= snap (peek stack))
+      db
+      (assoc db
+             :undo-stack (->> (conj stack snap)
+                              (take-last history-limit)
+                              vec)
+             :redo-stack []))))
+
+(defn- with-history [handler]
+  (fn [db event]
+    (let [next-db (handler db event)]
+      (if (= (:deck db) (:deck next-db))
+        next-db
+        (-> next-db
+            (assoc :undo-stack (:undo-stack (push-undo db))
+                   :redo-stack []))))))
+
+(defn- restore-snapshot [db snap]
+  (-> db
+      (merge snap)
+      (assoc :error nil)
+      (refresh-edn)))
+
 ;; ---------------------------------------------------------------------------
 ;; event handlers (top-level fns so the call graph is trivial to read)
 ;; ---------------------------------------------------------------------------
 
 (defn init-handler [_ [_ deck]]
   {:deck deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
-   :zoom 1.0 :edn-text (pr-str deck) :edn-key 0})
+   :zoom 1.0 :edn-text (pr-str deck) :edn-key 0 :undo-stack [] :redo-stack []})
 
 (defn new-deck-handler [_ _]
   {:deck sample/sample-deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
-   :zoom 1.0 :edn-text (pr-str sample/sample-deck) :edn-key 0})
+   :zoom 1.0 :edn-text (pr-str sample/sample-deck) :edn-key 0 :undo-stack [] :redo-stack []})
 
 (defn select-slide-handler [db [_ idx]]
   (assoc db :selected-slide idx :selected-shape nil))
@@ -205,6 +240,25 @@
 (defn clear-error-handler [db _]
   (assoc db :error nil))
 
+(defn mark-undo-handler [db _]
+  (push-undo db))
+
+(defn undo-handler [db _]
+  (if-let [snap (peek (:undo-stack db))]
+    (-> db
+        (assoc :undo-stack (pop (vec (:undo-stack db)))
+               :redo-stack (conj (vec (:redo-stack db)) (snapshot db)))
+        (restore-snapshot snap))
+    db))
+
+(defn redo-handler [db _]
+  (if-let [snap (peek (:redo-stack db))]
+    (-> db
+        (assoc :redo-stack (pop (vec (:redo-stack db)))
+               :undo-stack (conj (vec (:undo-stack db)) (snapshot db)))
+        (restore-snapshot snap))
+    db))
+
 ;; ---------------------------------------------------------------------------
 ;; subscription handlers
 ;; ---------------------------------------------------------------------------
@@ -228,6 +282,8 @@
 (defn mode-sub [db _] (:mode db))
 (defn error-sub [db _] (:error db))
 (defn zoom-sub [db _] (:zoom db))
+(defn can-undo-sub [db _] (seq (:undo-stack db)))
+(defn can-redo-sub [db _] (seq (:redo-stack db)))
 
 (defn deck-design-sub [db _]
   (design/deck-design (:deck db)))
@@ -246,28 +302,31 @@
   (mini runtime on JVM, real re-frame on cljs). Idempotent."
   []
   (rf/reg-event-db :slides/init init-handler)
-  (rf/reg-event-db :slides/new-deck new-deck-handler)
+  (rf/reg-event-db :slides/new-deck (with-history new-deck-handler))
   (rf/reg-event-db :slides/select-slide select-slide-handler)
   (rf/reg-event-db :slides/select-shape select-shape-handler)
   (rf/reg-event-db :slides/set-mode set-mode-handler)
-  (rf/reg-event-db :slides/add-slide add-slide-handler)
-  (rf/reg-event-db :slides/duplicate-slide duplicate-slide-handler)
-  (rf/reg-event-db :slides/delete-slide delete-slide-handler)
-  (rf/reg-event-db :slides/add-shape add-shape-handler)
-  (rf/reg-event-db :slides/add-component add-component-handler)
-  (rf/reg-event-db :slides/duplicate-shape duplicate-shape-handler)
-  (rf/reg-event-db :slides/delete-shape delete-shape-handler)
-  (rf/reg-event-db :slides/update-shape-field update-shape-field-handler)
+  (rf/reg-event-db :slides/add-slide (with-history add-slide-handler))
+  (rf/reg-event-db :slides/duplicate-slide (with-history duplicate-slide-handler))
+  (rf/reg-event-db :slides/delete-slide (with-history delete-slide-handler))
+  (rf/reg-event-db :slides/add-shape (with-history add-shape-handler))
+  (rf/reg-event-db :slides/add-component (with-history add-component-handler))
+  (rf/reg-event-db :slides/duplicate-shape (with-history duplicate-shape-handler))
+  (rf/reg-event-db :slides/delete-shape (with-history delete-shape-handler))
+  (rf/reg-event-db :slides/update-shape-field (with-history update-shape-field-handler))
   (rf/reg-event-db :slides/set-shape-position set-shape-position-handler)
   (rf/reg-event-db :slides/set-shape-frame set-shape-frame-handler)
-  (rf/reg-event-db :slides/nudge-shape nudge-shape-handler)
-  (rf/reg-event-db :slides/set-shape-kind set-shape-kind-handler)
-  (rf/reg-event-db :slides/update-slide-field update-slide-field-handler)
-  (rf/reg-event-db :slides/apply-edn apply-edn-handler)
-  (rf/reg-event-db :slides/import-deck import-deck-handler)
+  (rf/reg-event-db :slides/nudge-shape (with-history nudge-shape-handler))
+  (rf/reg-event-db :slides/set-shape-kind (with-history set-shape-kind-handler))
+  (rf/reg-event-db :slides/update-slide-field (with-history update-slide-field-handler))
+  (rf/reg-event-db :slides/apply-edn (with-history apply-edn-handler))
+  (rf/reg-event-db :slides/import-deck (with-history import-deck-handler))
   (rf/reg-event-db :slides/set-zoom set-zoom-handler)
   (rf/reg-event-db :slides/set-error set-error-handler)
   (rf/reg-event-db :slides/clear-error clear-error-handler)
+  (rf/reg-event-db :slides/mark-undo mark-undo-handler)
+  (rf/reg-event-db :slides/undo undo-handler)
+  (rf/reg-event-db :slides/redo redo-handler)
   (rf/reg-sub :slides/db db-sub)
   (rf/reg-sub :slides/deck deck-sub)
   (rf/reg-sub :slides/slides slides-sub)
@@ -278,6 +337,8 @@
   (rf/reg-sub :slides/mode mode-sub)
   (rf/reg-sub :slides/error error-sub)
   (rf/reg-sub :slides/zoom zoom-sub)
+  (rf/reg-sub :slides/can-undo can-undo-sub)
+  (rf/reg-sub :slides/can-redo can-redo-sub)
   (rf/reg-sub :slides/deck-design deck-design-sub)
   (rf/reg-sub :slides/canvas-size canvas-size-sub)
   nil)

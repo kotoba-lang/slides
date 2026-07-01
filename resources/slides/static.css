@@ -5,6 +5,8 @@ body{margin:0;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:va
 button,input,textarea,select{font:inherit}
 button{border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);min-height:34px;padding:0 10px;cursor:pointer;white-space:nowrap}
 button:hover,.file-label:hover{border-color:#9dafc2;background:#f9fbfd}
+button:disabled{cursor:default;opacity:.45;background:#f3f5f8}
+button:disabled:hover{border-color:var(--line);background:#f3f5f8}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 button.danger{border-color:#e5b7b6;color:var(--danger)}
 a{color:var(--accent)}

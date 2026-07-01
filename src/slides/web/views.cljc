@@ -284,6 +284,8 @@
     [:span "causal PPTX"]]
    [:div.toolbar-actions
     [:button#new-deck {:data-act "new-deck" :type "button"} "New"]
+    [:button#undo {:data-act "undo" :type "button" :disabled (empty? (:undo-stack db))} "Undo"]
+    [:button#redo {:data-act "redo" :type "button" :disabled (empty? (:redo-stack db))} "Redo"]
     [:label.file-label "Open EDN"
      [:input#edn-file {:type "file" :accept ".edn,text/plain"}]]
     [:label.file-label "Open PPTX"

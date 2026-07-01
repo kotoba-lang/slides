@@ -97,6 +97,7 @@
           deck-height (or (:slides/height deck) 5.625)]
       (.preventDefault event)
       (rf/dispatch [:slides/select-shape shape-idx])
+      (rf/dispatch [:slides/mark-undo])
       (reset! drag-state
               {:interaction (if resize-handle :resize :move)
                :handle resize-handle
@@ -155,6 +156,8 @@
     "add-title"       (rf/dispatch [:slides/add-component :title])
     "add-panel"       (rf/dispatch [:slides/add-component :panel])
     "duplicate-shape" (rf/dispatch [:slides/duplicate-shape])
+    "undo"            (rf/dispatch [:slides/undo])
+    "redo"            (rf/dispatch [:slides/redo])
     "delete-slide"    (rf/dispatch [:slides/delete-slide])
     "delete-shape"    (rf/dispatch [:slides/delete-shape])
     "zoom-out"        (rf/dispatch [:slides/set-zoom (- (zoom-sub) 0.1)])
@@ -247,6 +250,13 @@
                              "ArrowDown" (do (.preventDefault event)
                                              (rf/dispatch [:slides/nudge-shape 0 0.1]))
                              nil))
+                         (when (and (not editing?)
+                                    (or (.-metaKey event) (.-ctrlKey event))
+                                    (= "z" (str/lower-case key)))
+                           (.preventDefault event)
+                           (if (.-shiftKey event)
+                             (rf/dispatch [:slides/redo])
+                             (rf/dispatch [:slides/undo])))
                          (when (and (not editing?)
                                     (or (.-metaKey event) (.-ctrlKey event))
                                     (= "d" (str/lower-case key)))

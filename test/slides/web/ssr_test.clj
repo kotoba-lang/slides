@@ -11,6 +11,8 @@
     (is (clojure.string/starts-with? html "<div class=\"shitsuke__app\">"))
     (is (clojure.string/includes? html "kotoba-lang/slides"))
     (is (clojure.string/includes? html "data-act=\"new-deck\""))
+    (is (clojure.string/includes? html "data-act=\"undo\""))
+    (is (clojure.string/includes? html "data-act=\"redo\""))
     (is (clojure.string/includes? html "data-act=\"download-pptx\""))
     (is (clojure.string/includes? html "data-act=\"zoom-in\""))
     (is (clojure.string/includes? html "thumb-preview"))

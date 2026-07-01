@@ -23,6 +23,8 @@
   (is (nil? @(rf/subscribe [:slides/selected-shape-index])))
   (is (nil? @(rf/subscribe [:slides/error])))
   (is (= 1.0 @(rf/subscribe [:slides/zoom])))
+  (is (nil? @(rf/subscribe [:slides/can-undo])))
+  (is (nil? @(rf/subscribe [:slides/can-redo])))
   (is (= {:slides/width 10 :slides/height 5.625}
          @(rf/subscribe [:slides/canvas-size])))
   (is (seq (:slides/components @(rf/subscribe [:slides/deck-design])))))
@@ -127,6 +129,32 @@
     (is (= 2.5 (:slides/y shape)))
     (is (= 3.5 (:slides/w shape)))
     (is (= 1.5 (:slides/h shape)))))
+
+(deftest undo-redo-shape-edit-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (let [before @(rf/subscribe [:slides/selected-shape])]
+    (rf/dispatch [:slides/update-shape-field :slides/text "Undoable"])
+    (is (seq @(rf/subscribe [:slides/can-undo])))
+    (is (= "Undoable" (:slides/text @(rf/subscribe [:slides/selected-shape]))))
+    (rf/dispatch [:slides/undo])
+    (is (= (:slides/text before) (:slides/text @(rf/subscribe [:slides/selected-shape]))))
+    (is (seq @(rf/subscribe [:slides/can-redo])))
+    (rf/dispatch [:slides/redo])
+    (is (= "Undoable" (:slides/text @(rf/subscribe [:slides/selected-shape]))))))
+
+(deftest undo-redo-direct-drag-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (let [before @(rf/subscribe [:slides/selected-shape])]
+    (rf/dispatch [:slides/mark-undo])
+    (rf/dispatch [:slides/set-shape-position 0 1.25 2.5])
+    (rf/dispatch [:slides/set-shape-position 0 1.5 2.75])
+    (is (= 1.5 (:slides/x @(rf/subscribe [:slides/selected-shape]))))
+    (rf/dispatch [:slides/undo])
+    (is (= (:slides/x before) (:slides/x @(rf/subscribe [:slides/selected-shape]))))
+    (rf/dispatch [:slides/redo])
+    (is (= 1.5 (:slides/x @(rf/subscribe [:slides/selected-shape]))))))
 
 (deftest selected-shape-noop-transitions-test
   (let [before @(rf/subscribe [:slides/db])]
