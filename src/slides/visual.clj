@@ -4,9 +4,12 @@
   The renderer intentionally shells out to installed document renderers instead
   of adding heavyweight Java dependencies to slides itself."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.string :as str])
+  (:import [java.nio.file CopyOption Files Path StandardCopyOption]
+           [java.util.concurrent TimeUnit]))
 
 (def default-dpi 160)
+(def default-timeout-seconds 120)
 (def supported-renderers [:libreoffice])
 
 (defn- abs-path [path]
@@ -21,22 +24,41 @@
     (.mkdirs dir)
     (.getAbsolutePath dir)))
 
-(defn- process-result [cmd]
+(defn- file-uri [path]
+  (str (.toURI (io/file path))))
+
+(defn- copy-file! [from to]
+  (Files/copy ^Path (.toPath (io/file from))
+              ^Path (.toPath (io/file to))
+              (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))
+  (abs-path to))
+
+(defn- process-result [cmd timeout-seconds]
   (let [pb (doto (ProcessBuilder. ^java.util.List (mapv str cmd))
              (.redirectErrorStream false))
         process (.start pb)
-        stdout-future (future (slurp (.getInputStream process)))
-        stderr-future (future (slurp (.getErrorStream process)))
-        exit (.waitFor process)]
-    {:cmd (mapv str cmd)
-     :exit exit
-     :stdout @stdout-future
-     :stderr @stderr-future}))
+        stdout-stream (.getInputStream process)
+        stderr-stream (.getErrorStream process)
+        finished? (.waitFor process (long timeout-seconds) TimeUnit/SECONDS)]
+    (if finished?
+      {:cmd (mapv str cmd)
+       :exit (.exitValue process)
+       :stdout (String. (.readAllBytes stdout-stream) "UTF-8")
+       :stderr (String. (.readAllBytes stderr-stream) "UTF-8")}
+      (do
+        (.destroyForcibly process)
+        (.close stdout-stream)
+        (.close stderr-stream)
+        (throw (ex-info (str "command timed out: " (str/join " " (mapv str cmd)))
+                        {:cmd (mapv str cmd)
+                         :timeout-seconds timeout-seconds}))))))
 
 (defn run-command!
   ([cmd] (run-command! cmd {}))
-  ([cmd {:keys [allow-exit] :or {allow-exit #{0}}}]
-   (let [result (process-result cmd)
+  ([cmd {:keys [allow-exit timeout-seconds]
+         :or {allow-exit #{0}
+              timeout-seconds default-timeout-seconds}}]
+   (let [result (process-result cmd timeout-seconds)
          allowed? (contains? (set allow-exit) (:exit result))]
      (when-not allowed?
        (throw (ex-info (str "command failed: " (str/join " " (:cmd result)))
@@ -82,17 +104,25 @@
   Returns a map containing the intermediate PDF path and generated PNG paths.
   Throws ex-info with :missing when required external tools are unavailable."
   ([pptx-path out-dir] (render-pptx-pngs! pptx-path out-dir {}))
-  ([pptx-path out-dir {:keys [dpi tools] :or {dpi default-dpi}}]
+  ([pptx-path out-dir {:keys [dpi tools] :or {dpi default-dpi} :as opts}]
    (let [tools (require-tools! (or tools (available-tools)))
-         pptx (abs-path pptx-path)
+         source-pptx (abs-path pptx-path)
          out-dir (ensure-dir! out-dir)
-         pdf-path (str out-dir "/" (basename pptx) ".pdf")
+         pptx (copy-file! source-pptx (str out-dir "/input.pptx"))
+         pdf-path (str out-dir "/input.pdf")
          png-prefix (str out-dir "/slide")]
      (run-command! [(:libreoffice tools)
                     "--headless"
+                    "--invisible"
+                    "--nologo"
+                    "--nodefault"
+                    "--nofirststartwizard"
+                    "--nolockcheck"
+                    (str "-env:UserInstallation=" (file-uri (str out-dir "/lo-profile")))
                     "--convert-to" "pdf"
                     "--outdir" out-dir
-                    pptx])
+                    pptx]
+                   {:timeout-seconds (:timeout-seconds opts default-timeout-seconds)})
      (when-not (.exists (io/file pdf-path))
        (throw (ex-info "LibreOffice did not produce the expected PDF"
                        {:pptx pptx
@@ -102,16 +132,18 @@
                     "-png"
                     "-r" (str dpi)
                     pdf-path
-                    png-prefix])
+                    png-prefix]
+                   {:timeout-seconds (:timeout-seconds opts default-timeout-seconds)})
      (let [pngs (png-files out-dir)]
        (when-not (seq pngs)
          (throw (ex-info "pdftoppm did not produce slide PNGs"
                          {:pptx pptx
                           :pdf pdf-path
                           :out-dir out-dir})))
-       {:slides/renderer :libreoffice
+        {:slides/renderer :libreoffice
         :slides/dpi dpi
-        :slides/pptx pptx
+        :slides/pptx source-pptx
+        :slides/render-input pptx
         :slides/pdf pdf-path
         :slides/pngs pngs
         :slides/slides (count pngs)}))))

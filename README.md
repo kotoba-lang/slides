@@ -190,8 +190,8 @@ clojure -M:cli pptx-causal deck.edn deck-causal.pptx
 clojure -M:cli causal-deck deck-causal.pptx recovered.edn
 clojure -M:cli svgraph deck.edn deck.svgraph.edn
 clojure -M:cli update base.pptx deck.edn updated.pptx
-clojure -M:cli render-pptx deck.pptx target/visual/deck
-clojure -M:cli visual-diff before.pptx after.pptx target/visual/diff
+clojure -M:cli render-pptx deck.pptx target/visual/deck 120 96
+clojure -M:cli visual-diff before.pptx after.pptx target/visual/diff 120 96
 
 npx @kotoba-lang/slides pptx deck.edn deck.pptx
 ```

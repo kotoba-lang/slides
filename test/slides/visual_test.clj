@@ -19,8 +19,7 @@
                                           (swap! commands conj (mapv str cmd))
                                           (cond
                                             (some #{"--convert-to"} cmd)
-                                            (spit (str out-dir "/" (.replaceFirst (.getName pptx) "\\.pptx$" ".pdf"))
-                                                  "%PDF")
+                                            (spit (str out-dir "/input.pdf") "%PDF")
 
                                             (some #{"-png"} cmd)
                                             (spit (str out-dir "/slide-1.png") "PNG"))
@@ -32,6 +31,8 @@
                                :pdftoppm "/usr/bin/pdftoppm"}})]
           (is (= :libreoffice (:slides/renderer result)))
           (is (= 1 (:slides/slides result)))
+          (is (= (.getAbsolutePath pptx) (:slides/pptx result)))
+          (is (= (str out-dir "/input.pptx") (:slides/render-input result)))
           (is (= [(str out-dir "/slide-1.png")] (:slides/pngs result)))
           (is (= "/usr/bin/soffice" (ffirst @commands)))
           (is (= "/usr/bin/pdftoppm" (first (second @commands))))))
@@ -69,3 +70,11 @@
        #"PNG sequence lengths differ"
        (visual/compare-pngs! ["a.png"] [] "/tmp/slides-visual-diff"
                              {:tools {:compare "/usr/bin/compare"}}))))
+
+(deftest run-command-times-out
+  (let [started (System/currentTimeMillis)]
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"command timed out"
+         (visual/run-command! ["sh" "-lc" "sleep 3"] {:timeout-seconds 1})))
+    (is (< (- (System/currentTimeMillis) started) 5000))))

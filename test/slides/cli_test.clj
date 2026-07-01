@@ -183,9 +183,10 @@
       (.delete (java.io.File. out-dir))
       (let [render-var (ns-resolve 'slides.visual 'render-pptx-pngs!)
             printed (with-out-str
-                      (with-redefs-fn {render-var (fn [path dir]
+                      (with-redefs-fn {render-var (fn [path dir opts]
                                                     (is (= (.getAbsolutePath pptx) path))
                                                     (is (= out-dir dir))
+                                                    (is (= {} opts))
                                                     (reset! rendered expected)
                                                     expected)}
                         #(cli/-main "render-pptx" (.getAbsolutePath pptx) out-dir)))]
@@ -204,10 +205,11 @@
       (.delete (java.io.File. out-dir))
       (let [compare-var (ns-resolve 'slides.visual 'compare-pptx!)
             printed (with-out-str
-                      (with-redefs-fn {compare-var (fn [before-path after-path dir]
+                      (with-redefs-fn {compare-var (fn [before-path after-path dir opts]
                                                      (is (= (.getAbsolutePath before) before-path))
                                                      (is (= (.getAbsolutePath after) after-path))
                                                      (is (= out-dir dir))
+                                                     (is (= {} opts))
                                                      (reset! compared expected)
                                                      expected)}
                         #(cli/-main "visual-diff"
@@ -219,6 +221,21 @@
       (finally
         (.delete before)
         (.delete after)))))
+
+(deftest render-pptx-command-accepts-timeout
+  (let [pptx (java.io.File/createTempFile "slides-cli-render-timeout" ".pptx")
+        out-dir (str (.getAbsolutePath (java.io.File/createTempFile "slides-cli-render-timeout-out" "")) "-dir")
+        opts-seen (atom nil)]
+    (try
+      (let [render-var (ns-resolve 'slides.visual 'render-pptx-pngs!)]
+        (with-out-str
+          (with-redefs-fn {render-var (fn [_ _ opts]
+                                        (reset! opts-seen opts)
+                                        {:slides/slides 0})}
+            #(cli/-main "render-pptx" (.getAbsolutePath pptx) out-dir "20" "72"))))
+      (is (= {:timeout-seconds 20 :dpi 72} @opts-seen))
+      (finally
+        (.delete pptx)))))
 
 (deftest pptx-causal-command-writes-causal-pptx
   (let [deck {:slides/title "Causal editor"}

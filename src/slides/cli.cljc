@@ -18,8 +18,8 @@
        "  causal-deck <deck.pptx> <out.edn>           read embedded slides deck from PPTX\n"
        "  svgraph <deck.edn> <out.edn>                EDN deck -> svgraph presentation EDN\n"
        "  update <base.pptx> <deck.edn> <out.pptx>    update workflow using EDN deck\n"
-       "  render-pptx <deck.pptx> <out-dir>           render PPTX slides to PNGs via LibreOffice\n"
-       "  visual-diff <before.pptx> <after.pptx> <out-dir> compare rendered PPTX slide PNGs\n"))
+       "  render-pptx <deck.pptx> <out-dir> [timeout-seconds] [dpi] render PPTX slides to PNGs via LibreOffice\n"
+       "  visual-diff <before.pptx> <after.pptx> <out-dir> [timeout-seconds] [dpi] compare rendered PPTX slide PNGs\n"))
 
 (defn- read-edn [path]
   #?(:clj (edn/read-string (slurp path))
@@ -54,6 +54,11 @@
 (defn- require-args! [& xs]
   (when-not (every? some? xs)
     (throw (ex-info (usage) {}))))
+
+(defn- visual-opts [timeout-seconds dpi]
+  (cond-> {}
+    timeout-seconds (assoc :timeout-seconds (parse-long (str timeout-seconds)))
+    dpi (assoc :dpi (parse-long (str dpi)))))
 
 (defn -main [& args]
   #?(:clj
@@ -95,12 +100,14 @@
          "update" (let [[_ base-path edn-path out-path] args]
                     (require-args! base-path edn-path out-path)
                     (prn (pptx/update-pptx! base-path out-path (read-deck-edn edn-path))))
-         "render-pptx" (let [[_ pptx-path out-dir] args]
+         "render-pptx" (let [[_ pptx-path out-dir timeout-seconds dpi] args]
                          (require-args! pptx-path out-dir)
-                         (prn (visual/render-pptx-pngs! pptx-path out-dir)))
-         "visual-diff" (let [[_ before-path after-path out-dir] args]
+                         (prn (visual/render-pptx-pngs! pptx-path out-dir
+                                                        (visual-opts timeout-seconds dpi))))
+         "visual-diff" (let [[_ before-path after-path out-dir timeout-seconds dpi] args]
                          (require-args! before-path after-path out-dir)
-                         (prn (visual/compare-pptx! before-path after-path out-dir)))
+                         (prn (visual/compare-pptx! before-path after-path out-dir
+                                                    (visual-opts timeout-seconds dpi))))
          (println (usage)))
        (catch Exception e
          (binding [*out* *err*]
