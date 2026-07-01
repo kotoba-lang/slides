@@ -161,6 +161,10 @@
   (replace-shape db (slide-index db) shape-idx
                  #(assoc % :slides/x x :slides/y y)))
 
+(defn set-shape-frame-handler [db [_ shape-idx x y w h]]
+  (replace-shape db (slide-index db) shape-idx
+                 #(assoc % :slides/x x :slides/y y :slides/w w :slides/h h)))
+
 (defn nudge-shape-handler [db [_ dx dy]]
   (if-let [shape-idx (:selected-shape db)]
     (replace-shape db (slide-index db) shape-idx
@@ -255,6 +259,7 @@
   (rf/reg-event-db :slides/delete-shape delete-shape-handler)
   (rf/reg-event-db :slides/update-shape-field update-shape-field-handler)
   (rf/reg-event-db :slides/set-shape-position set-shape-position-handler)
+  (rf/reg-event-db :slides/set-shape-frame set-shape-frame-handler)
   (rf/reg-event-db :slides/nudge-shape nudge-shape-handler)
   (rf/reg-event-db :slides/set-shape-kind set-shape-kind-handler)
   (rf/reg-event-db :slides/update-slide-field update-slide-field-handler)

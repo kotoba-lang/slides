@@ -74,6 +74,9 @@
 (defn- round2 [x]
   (/ (js/Math.round (* x 100)) 100))
 
+(defn- clamp-number [lo hi x]
+  (min hi (max lo x)))
+
 (defn- selected-slide []
   (let [deck (deck-sub)
         idx (or (:selected-slide @rfdb/app-db) 0)]
@@ -82,7 +85,7 @@
 (defn- shape-at [idx]
   (get (vec (:slides/shapes (selected-slide))) idx))
 
-(defn- start-drag! [event shape-el]
+(defn- start-drag! [event shape-el resize-handle]
   (when (= 0 (.-button event))
     (let [shape-idx (js/parseInt (.getAttribute shape-el "data-shape") 10)
           canvas (.getElementById js/document "canvas")
@@ -95,7 +98,9 @@
       (.preventDefault event)
       (rf/dispatch [:slides/select-shape shape-idx])
       (reset! drag-state
-              {:shape-idx shape-idx
+              {:interaction (if resize-handle :resize :move)
+               :handle resize-handle
+               :shape-idx shape-idx
                :start-client-x (.-clientX event)
                :start-client-y (.-clientY event)
                :start-x (or (:slides/x resolved) 0)
@@ -108,16 +113,37 @@
                :canvas-height (.-height rect)}))))
 
 (defn- drag! [event]
-  (when-let [{:keys [shape-idx start-client-x start-client-y start-x start-y
+  (when-let [{:keys [interaction handle shape-idx start-client-x start-client-y start-x start-y
                      shape-w shape-h deck-width deck-height canvas-width canvas-height]} @drag-state]
     (let [dx (* (- (.-clientX event) start-client-x) (/ deck-width canvas-width))
           dy (* (- (.-clientY event) start-client-y) (/ deck-height canvas-height))
           max-x (max 0 (- deck-width shape-w))
-          max-y (max 0 (- deck-height shape-h))
-          x (min max-x (max 0 (+ start-x dx)))
-          y (min max-y (max 0 (+ start-y dy)))]
+          max-y (max 0 (- deck-height shape-h))]
       (.preventDefault event)
-      (rf/dispatch [:slides/set-shape-position shape-idx (round2 x) (round2 y)]))))
+      (if (= :resize interaction)
+        (let [right (+ start-x shape-w)
+              bottom (+ start-y shape-h)
+              min-w 0.25
+              min-h 0.25
+              west? (str/includes? handle "w")
+              east? (str/includes? handle "e")
+              north? (str/includes? handle "n")
+              south? (str/includes? handle "s")
+              raw-x (if west? (clamp-number 0 (- right min-w) (+ start-x dx)) start-x)
+              raw-y (if north? (clamp-number 0 (- bottom min-h) (+ start-y dy)) start-y)
+              raw-w (cond
+                      east? (clamp-number min-w (- deck-width start-x) (+ shape-w dx))
+                      west? (- right raw-x)
+                      :else shape-w)
+              raw-h (cond
+                      south? (clamp-number min-h (- deck-height start-y) (+ shape-h dy))
+                      north? (- bottom raw-y)
+                      :else shape-h)]
+          (rf/dispatch [:slides/set-shape-frame shape-idx
+                        (round2 raw-x) (round2 raw-y) (round2 raw-w) (round2 raw-h)]))
+        (let [x (min max-x (max 0 (+ start-x dx)))
+              y (min max-y (max 0 (+ start-y dy)))]
+          (rf/dispatch [:slides/set-shape-position shape-idx (round2 x) (round2 y)]))))))
 
 (defn- act-handler [act]
   (case act
@@ -164,8 +190,11 @@
                            (rf/dispatch [:slides/select-shape nil])))))
   (.addEventListener js/document "pointerdown"
                      (fn [event]
-                       (when-let [shape-el (.closest (.-target event) "[data-shape]")]
-                         (start-drag! event shape-el))))
+                       (let [target (.-target event)
+                             resize-el (.closest target "[data-resize]")
+                             shape-el (.closest target "[data-shape]")]
+                         (when shape-el
+                           (start-drag! event shape-el (some-> resize-el (.getAttribute "data-resize")))))))
   (.addEventListener js/document "pointermove" drag!)
   (.addEventListener js/document "pointerup" #(reset! drag-state nil))
   (.addEventListener js/document "pointercancel" #(reset! drag-state nil))

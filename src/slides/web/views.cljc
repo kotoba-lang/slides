@@ -110,9 +110,21 @@
       [:button {:class base :data-shape idx :type "button"
                 :style (assoc style
                               :background (str "#" (valid-hex (:slides/fill resolved) "EAF0F8"))
-                              :border-color (str "#" (valid-hex (:slides/line resolved) "496B9A")))}]
+                              :border-color (str "#" (valid-hex (:slides/line resolved) "496B9A")))}
+       (when selected?
+         [:span.resize-handles
+          [:span.resize-handle.nw {:data-resize "nw"}]
+          [:span.resize-handle.ne {:data-resize "ne"}]
+          [:span.resize-handle.sw {:data-resize "sw"}]
+          [:span.resize-handle.se {:id "resize-se" :data-resize "se"}]])]
       [:button {:class base :data-shape idx :type "button" :style style}
-       (:slides/text resolved "")])))
+       (:slides/text resolved "")
+       (when selected?
+         [:span.resize-handles
+          [:span.resize-handle.nw {:data-resize "nw"}]
+          [:span.resize-handle.ne {:data-resize "ne"}]
+          [:span.resize-handle.sw {:data-resize "sw"}]
+          [:span.resize-handle.se {:id "resize-se" :data-resize "se"}]])])))
 
 (defn canvas [db]
   (let [d (:deck db)

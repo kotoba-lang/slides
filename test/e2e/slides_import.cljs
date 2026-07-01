@@ -218,10 +218,15 @@
                      (fn [_] (click! page "#apply-edn"))
                      (fn [_] (wait-text! page "[data-shape=\"0\"]" #"EDN Component Title"))
                      (fn [_] (drag! page "[data-shape=\"0\"]" 80 40))
+                     (fn [_] (click! page "[data-shape=\"0\"]"))
+                     (fn [_] (wait-visible! page "#resize-se"))
+                     (fn [_] (drag! page "#resize-se" 80 40))
+                     (fn [_] (wait-value! page "#shape-w" #"8\.[1-9]|9"))
                      (fn [_] (click! page "#mode-edn"))
                      (fn [_] (wait-value! page "#deck-edn" #":slides/component :hero"))
                      (fn [_] (wait-value! page "#deck-edn" #":slides/x "))
                      (fn [_] (wait-value! page "#deck-edn" #":slides/y "))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/w "))
                      (fn [_] (save-download! page "#download-pptx" out))
                      (fn [_]
                        (let [slide-xml (unzip-text out "ppt/slides/slide1.xml")]

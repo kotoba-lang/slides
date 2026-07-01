@@ -52,6 +52,12 @@ aside{background:var(--rail);overflow:auto}
 .shape.text{line-height:1.12}
 .shape.rect{border:2px solid #496b9a}
 .shape.selected{z-index:2;box-shadow:0 0 0 1px rgba(255,255,255,.9),0 10px 22px rgba(23,32,42,.12)}
+.resize-handles{position:absolute;inset:0;pointer-events:none}
+.resize-handle{position:absolute;width:10px;height:10px;border:1px solid #fff;border-radius:999px;background:#17202a;box-shadow:0 2px 6px rgba(23,32,42,.2);pointer-events:auto}
+.resize-handle.nw{left:2px;top:2px;cursor:nwse-resize}
+.resize-handle.ne{right:2px;top:2px;cursor:nesw-resize}
+.resize-handle.sw{left:2px;bottom:2px;cursor:nesw-resize}
+.resize-handle.se{right:2px;bottom:2px;cursor:nwse-resize}
 .props label{display:block;margin:0 0 10px}
 .props span{display:block;font-size:12px;color:var(--muted);margin:0 0 4px}
 .props input,.props textarea,.props select,#deck-edn{width:100%;border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:8px}

@@ -25,6 +25,7 @@
     (let [html (hic/->html (views/root (ssr/sample-db 0 0)))]
       (is (clojure.string/includes? html "panel-title\">Shape"))
       (is (clojure.string/includes? html "data-field=\"shape.x\""))
+      (is (clojure.string/includes? html "data-resize=\"se\""))
       (is (clojure.string/includes? html "data-act=\"duplicate-shape\"")))))
 
 (deftest canvas-shape-inline-style-test

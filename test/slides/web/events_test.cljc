@@ -118,6 +118,16 @@
     (is (= 1.25 (:slides/x shape)))
     (is (= 2.5 (:slides/y shape)))))
 
+(deftest set-shape-frame-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (rf/dispatch [:slides/set-shape-frame 0 1.25 2.5 3.5 1.5])
+  (let [shape @(rf/subscribe [:slides/selected-shape])]
+    (is (= 1.25 (:slides/x shape)))
+    (is (= 2.5 (:slides/y shape)))
+    (is (= 3.5 (:slides/w shape)))
+    (is (= 1.5 (:slides/h shape)))))
+
 (deftest selected-shape-noop-transitions-test
   (let [before @(rf/subscribe [:slides/db])]
     (rf/dispatch [:slides/delete-shape])
