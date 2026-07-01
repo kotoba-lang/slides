@@ -47,6 +47,11 @@
     (let [slide (selected-slide db)]
       (get (:slides/shapes slide) idx))))
 
+(defn selected-shapes-set [db]
+  (set (or (:selected-shapes db)
+           (when-let [idx (:selected-shape db)] #{idx})
+           #{})))
+
 ;; ---------------------------------------------------------------------------
 ;; slide list / canvas
 ;; ---------------------------------------------------------------------------
@@ -102,7 +107,7 @@
         resolved (design/resolve-shape d shape)
         width (positive (:slides/width d) 10)
         height (positive (:slides/height d) 5.625)
-        selected? (= idx (:selected-shape db))
+        selected? (contains? (selected-shapes-set db) idx)
         base (str "shape " (name (:slides/shape resolved :text)) (when selected? " selected"))
         style (shape-style width height resolved selected?)]
     (case (:slides/shape resolved)
@@ -198,9 +203,31 @@
      (property-input "Title" "slide-title" "slide.title" (:slides/title slide "") {})
      [:button#delete-slide.danger {:data-act "delete-slide" :type "button"} "Delete Slide"]]))
 
+(defn selection-properties [db]
+  (let [n (count (selected-shapes-set db))]
+    [:div
+     [:div.panel-title "Selection"]
+     [:div.selection-count
+      [:strong (str n)]
+      [:span "shapes selected"]]
+     [:div.panel-title "Align"]
+     [:div.align-grid
+      [:button#align-left {:data-act "align-left" :type "button"} "Left"]
+      [:button#align-center {:data-act "align-center" :type "button"} "Center"]
+      [:button#align-right {:data-act "align-right" :type "button"} "Right"]
+      [:button#align-top {:data-act "align-top" :type "button"} "Top"]
+      [:button#align-middle {:data-act "align-middle" :type "button"} "Middle"]
+      [:button#align-bottom {:data-act "align-bottom" :type "button"} "Bottom"]]]))
+
 (defn properties-panel [db]
-  (if (some? (:selected-shape db))
+  (cond
+    (> (count (selected-shapes-set db)) 1)
+    (selection-properties db)
+
+    (some? (:selected-shape db))
     (shape-properties db)
+
+    :else
     (slide-properties db)))
 
 ;; ---------------------------------------------------------------------------

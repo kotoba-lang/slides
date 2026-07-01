@@ -21,6 +21,7 @@
   (is (= :visual @(rf/subscribe [:slides/mode])))
   (is (= 0 @(rf/subscribe [:slides/selected-slide-index])))
   (is (nil? @(rf/subscribe [:slides/selected-shape-index])))
+  (is (= #{} @(rf/subscribe [:slides/selected-shapes])))
   (is (nil? @(rf/subscribe [:slides/error])))
   (is (= 1.0 @(rf/subscribe [:slides/zoom])))
   (is (nil? @(rf/subscribe [:slides/can-undo])))
@@ -53,7 +54,21 @@
   (is (nil? @(rf/subscribe [:slides/selected-shape-index]))) ; selecting a slide clears shape
   (rf/dispatch [:slides/select-shape 0])
   (is (= 0 @(rf/subscribe [:slides/selected-shape-index])))
+  (is (= #{0} @(rf/subscribe [:slides/selected-shapes])))
   (is (some? @(rf/subscribe [:slides/selected-shape]))))
+
+(deftest toggle-shape-selection-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (rf/dispatch [:slides/toggle-shape-selection 1])
+  (is (= #{0 1} @(rf/subscribe [:slides/selected-shapes])))
+  (is (= 0 @(rf/subscribe [:slides/selected-shape-index])))
+  (rf/dispatch [:slides/toggle-shape-selection 0])
+  (is (= #{1} @(rf/subscribe [:slides/selected-shapes])))
+  (is (= 1 @(rf/subscribe [:slides/selected-shape-index])))
+  (rf/dispatch [:slides/toggle-shape-selection 1])
+  (is (= #{} @(rf/subscribe [:slides/selected-shapes])))
+  (is (nil? @(rf/subscribe [:slides/selected-shape-index]))))
 
 (deftest add-slide-test
   (let [before (count @(rf/subscribe [:slides/slides]))]
@@ -155,6 +170,21 @@
     (is (= (:slides/x before) (:slides/x @(rf/subscribe [:slides/selected-shape]))))
     (rf/dispatch [:slides/redo])
     (is (= 1.5 (:slides/x @(rf/subscribe [:slides/selected-shape]))))))
+
+(deftest align-selected-shapes-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (rf/dispatch [:slides/toggle-shape-selection 1])
+  (rf/dispatch [:slides/align-selected :x :start])
+  (let [shapes (:slides/shapes @(rf/subscribe [:slides/selected-slide]))
+        x0 (:slides/x (nth shapes 0))
+        x1 (:slides/x (nth shapes 1))]
+    (is (= x0 x1)))
+  (rf/dispatch [:slides/undo])
+  (rf/dispatch [:slides/redo])
+  (let [shapes (:slides/shapes @(rf/subscribe [:slides/selected-slide]))]
+    (is (= (:slides/x (nth shapes 0))
+           (:slides/x (nth shapes 1))))))
 
 (deftest selected-shape-noop-transitions-test
   (let [before @(rf/subscribe [:slides/db])]

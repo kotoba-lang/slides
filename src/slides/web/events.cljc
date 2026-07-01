@@ -42,10 +42,15 @@
                            (fn [xs]
                              (vec (map-indexed (fn [i x] (if (= i shape-idx) (f x) x)) xs)))))))
 
+(defn- selected-shapes-set [db]
+  (set (or (:selected-shapes db)
+           (when-let [idx (:selected-shape db)] #{idx})
+           #{})))
+
 (def ^:private history-limit 80)
 
 (defn- snapshot [db]
-  (select-keys db [:deck :selected-slide :selected-shape]))
+  (select-keys db [:deck :selected-slide :selected-shape :selected-shapes]))
 
 (defn- refresh-edn [db]
   (assoc db :edn-text (pr-str (:deck db))
@@ -82,18 +87,28 @@
 ;; ---------------------------------------------------------------------------
 
 (defn init-handler [_ [_ deck]]
-  {:deck deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
+  {:deck deck :selected-slide 0 :selected-shape nil :selected-shapes #{} :mode :visual :error nil
    :zoom 1.0 :edn-text (pr-str deck) :edn-key 0 :undo-stack [] :redo-stack []})
 
 (defn new-deck-handler [_ _]
-  {:deck sample/sample-deck :selected-slide 0 :selected-shape nil :mode :visual :error nil
+  {:deck sample/sample-deck :selected-slide 0 :selected-shape nil :selected-shapes #{} :mode :visual :error nil
    :zoom 1.0 :edn-text (pr-str sample/sample-deck) :edn-key 0 :undo-stack [] :redo-stack []})
 
 (defn select-slide-handler [db [_ idx]]
-  (assoc db :selected-slide idx :selected-shape nil))
+  (assoc db :selected-slide idx :selected-shape nil :selected-shapes #{}))
 
 (defn select-shape-handler [db [_ idx]]
-  (assoc db :selected-shape idx))
+  (assoc db :selected-shape idx :selected-shapes (if (some? idx) #{idx} #{})))
+
+(defn toggle-shape-selection-handler [db [_ idx]]
+  (let [selected (selected-shapes-set db)
+        next-selected (if (contains? selected idx)
+                        (disj selected idx)
+                        (conj selected idx))
+        primary (or (when (contains? next-selected (:selected-shape db))
+                      (:selected-shape db))
+                    (first (sort next-selected)))]
+    (assoc db :selected-shape primary :selected-shapes next-selected)))
 
 (defn set-mode-handler [db [_ mode]]
   (cond-> (assoc db :mode mode)
@@ -108,7 +123,7 @@
                       (model/add-shape (model/text-box "title" "New slide" {:slides/font-size 34})))]
     (-> db
         (update-in [:deck :slides/slides] conj new-slide)
-        (assoc :selected-slide (count ss) :selected-shape nil :error nil))))
+        (assoc :selected-slide (count ss) :selected-shape nil :selected-shapes #{} :error nil))))
 
 (defn duplicate-slide-handler [db _]
   (let [idx (slide-index db)
@@ -120,7 +135,7 @@
     (-> db
         (update-in [:deck :slides/slides]
                    (fn [xs] (vec (concat (subvec xs 0 (inc idx)) [copy] (subvec xs (inc idx))))))
-        (assoc :selected-slide (inc idx) :selected-shape nil :error nil))))
+        (assoc :selected-slide (inc idx) :selected-shape nil :selected-shapes #{} :error nil))))
 
 (defn delete-slide-handler [db _]
   (let [ss (vec (:slides/slides (:deck db)))]
@@ -130,7 +145,7 @@
         (-> db
             (update-in [:deck :slides/slides]
                        (fn [xs] (vec (concat (subvec xs 0 idx) (subvec xs (inc idx))))))
-            (assoc :selected-slide (max 0 (dec idx)) :selected-shape nil :error nil))))))
+            (assoc :selected-slide (max 0 (dec idx)) :selected-shape nil :selected-shapes #{} :error nil))))))
 
 (defn add-shape-handler [db [_ kind]]
   (let [idx (slide-index db)
@@ -143,7 +158,7 @@
                                  :slides/font-size 28}))]
     (-> db
         (replace-slide idx #(update % :slides/shapes conj shape))
-        (assoc :selected-shape (count shapes) :error nil))))
+        (assoc :selected-shape (count shapes) :selected-shapes #{(count shapes)} :error nil))))
 
 (defn add-component-handler [db [_ component-id]]
   (let [idx (slide-index db)
@@ -158,7 +173,7 @@
                               "")}]
     (-> db
         (replace-slide idx #(update % :slides/shapes conj shape))
-        (assoc :selected-shape (count shapes) :error nil))))
+        (assoc :selected-shape (count shapes) :selected-shapes #{(count shapes)} :error nil))))
 
 (defn duplicate-shape-handler [db _]
   (if-let [shape-idx (:selected-shape db)]
@@ -171,7 +186,7 @@
                    (update :slides/y (fnil + 0) 0.18))]
       (-> db
           (replace-slide slide-idx #(update % :slides/shapes conj copy))
-          (assoc :selected-shape (count shapes) :error nil)))
+          (assoc :selected-shape (count shapes) :selected-shapes #{(count shapes)} :error nil)))
     db))
 
 (defn delete-shape-handler [db _]
@@ -184,7 +199,7 @@
                              (assoc slide :slides/shapes
                                     (vec (concat (subvec xs 0 shape-idx)
                                                  (subvec xs (inc shape-idx))))))))
-          (assoc :selected-shape nil :error nil)))
+          (assoc :selected-shape nil :selected-shapes #{} :error nil)))
     db))
 
 (defn update-shape-field-handler [db [_ field value]]
@@ -201,13 +216,51 @@
                  #(assoc % :slides/x x :slides/y y :slides/w w :slides/h h)))
 
 (defn nudge-shape-handler [db [_ dx dy]]
-  (if-let [shape-idx (:selected-shape db)]
-    (replace-shape db (slide-index db) shape-idx
-                   (fn [shape]
-                     (-> shape
-                         (update :slides/x (fnil + 0) dx)
-                         (update :slides/y (fnil + 0) dy))))
-    db))
+  (let [shape-idxs (selected-shapes-set db)]
+    (if (seq shape-idxs)
+      (reduce (fn [acc shape-idx]
+                (replace-shape acc (slide-index acc) shape-idx
+                               (fn [shape]
+                                 (-> shape
+                                     (update :slides/x (fnil + 0) dx)
+                                     (update :slides/y (fnil + 0) dy)))))
+              db
+              shape-idxs)
+      db)))
+
+(defn align-selected-handler [db [_ axis position]]
+  (let [shape-idxs (selected-shapes-set db)
+        slide-idx (slide-index db)
+        deck (:deck db)
+        shapes (vec (get-in db [:deck :slides/slides slide-idx :slides/shapes]))
+        selected (keep (fn [idx]
+                         (when-let [shape (get shapes idx)]
+                           [idx (design/resolve-shape deck shape)]))
+                       shape-idxs)]
+    (if (< (count selected) 2)
+      db
+      (let [left (apply min (map (comp :slides/x second) selected))
+            top (apply min (map (comp :slides/y second) selected))
+            right (apply max (map (fn [[_ shape]] (+ (:slides/x shape 0) (:slides/w shape 1))) selected))
+            bottom (apply max (map (fn [[_ shape]] (+ (:slides/y shape 0) (:slides/h shape 1))) selected))
+            center-x (/ (+ left right) 2)
+            center-y (/ (+ top bottom) 2)]
+        (reduce (fn [acc [idx shape]]
+                  (replace-shape acc slide-idx idx
+                                 (fn [raw]
+                                   (case axis
+                                     :x (assoc raw :slides/x
+                                               (case position
+                                                 :start left
+                                                 :center (- center-x (/ (:slides/w shape 1) 2))
+                                                 :end (- right (:slides/w shape 1))))
+                                     :y (assoc raw :slides/y
+                                               (case position
+                                                 :start top
+                                                 :center (- center-y (/ (:slides/h shape 1) 2))
+                                                 :end (- bottom (:slides/h shape 1))))))))
+                db
+                selected)))))
 
 (defn set-shape-kind-handler [db [_ kind]]
   (if-let [shape-idx (:selected-shape db)]
@@ -224,11 +277,11 @@
   (replace-slide db (slide-index db) #(assoc % field value)))
 
 (defn apply-edn-handler [db [_ deck]]
-  (assoc db :deck deck :selected-slide 0 :selected-shape nil :error nil :mode :visual
+  (assoc db :deck deck :selected-slide 0 :selected-shape nil :selected-shapes #{} :error nil :mode :visual
          :edn-text (pr-str deck) :edn-key (inc (or (:edn-key db) 0))))
 
 (defn import-deck-handler [db [_ deck]]
-  (assoc db :deck deck :selected-slide 0 :selected-shape nil :error nil :mode :visual
+  (assoc db :deck deck :selected-slide 0 :selected-shape nil :selected-shapes #{} :error nil :mode :visual
          :edn-text (pr-str deck) :edn-key (inc (or (:edn-key db) 0))))
 
 (defn set-zoom-handler [db [_ zoom]]
@@ -273,6 +326,7 @@
     (get ss (slide-index db))))
 
 (defn selected-shape-index-sub [db _] (:selected-shape db))
+(defn selected-shapes-sub [db _] (selected-shapes-set db))
 
 (defn selected-shape-sub [db _]
   (when-let [idx (:selected-shape db)]
@@ -305,6 +359,7 @@
   (rf/reg-event-db :slides/new-deck (with-history new-deck-handler))
   (rf/reg-event-db :slides/select-slide select-slide-handler)
   (rf/reg-event-db :slides/select-shape select-shape-handler)
+  (rf/reg-event-db :slides/toggle-shape-selection toggle-shape-selection-handler)
   (rf/reg-event-db :slides/set-mode set-mode-handler)
   (rf/reg-event-db :slides/add-slide (with-history add-slide-handler))
   (rf/reg-event-db :slides/duplicate-slide (with-history duplicate-slide-handler))
@@ -317,6 +372,7 @@
   (rf/reg-event-db :slides/set-shape-position set-shape-position-handler)
   (rf/reg-event-db :slides/set-shape-frame set-shape-frame-handler)
   (rf/reg-event-db :slides/nudge-shape (with-history nudge-shape-handler))
+  (rf/reg-event-db :slides/align-selected (with-history align-selected-handler))
   (rf/reg-event-db :slides/set-shape-kind (with-history set-shape-kind-handler))
   (rf/reg-event-db :slides/update-slide-field (with-history update-slide-field-handler))
   (rf/reg-event-db :slides/apply-edn (with-history apply-edn-handler))
@@ -333,6 +389,7 @@
   (rf/reg-sub :slides/selected-slide-index selected-slide-index-sub)
   (rf/reg-sub :slides/selected-slide selected-slide-sub)
   (rf/reg-sub :slides/selected-shape-index selected-shape-index-sub)
+  (rf/reg-sub :slides/selected-shapes selected-shapes-sub)
   (rf/reg-sub :slides/selected-shape selected-shape-sub)
   (rf/reg-sub :slides/mode mode-sub)
   (rf/reg-sub :slides/error error-sub)

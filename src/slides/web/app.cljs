@@ -156,6 +156,12 @@
     "add-title"       (rf/dispatch [:slides/add-component :title])
     "add-panel"       (rf/dispatch [:slides/add-component :panel])
     "duplicate-shape" (rf/dispatch [:slides/duplicate-shape])
+    "align-left"      (rf/dispatch [:slides/align-selected :x :start])
+    "align-center"    (rf/dispatch [:slides/align-selected :x :center])
+    "align-right"     (rf/dispatch [:slides/align-selected :x :end])
+    "align-top"       (rf/dispatch [:slides/align-selected :y :start])
+    "align-middle"    (rf/dispatch [:slides/align-selected :y :center])
+    "align-bottom"    (rf/dispatch [:slides/align-selected :y :end])
     "undo"            (rf/dispatch [:slides/undo])
     "redo"            (rf/dispatch [:slides/redo])
     "delete-slide"    (rf/dispatch [:slides/delete-slide])
@@ -187,8 +193,10 @@
                                          (js/parseInt (.getAttribute slide-el "data-slide") 10)]))
                          (when-let [shape-el (.closest target "[data-shape]")]
                            (.stopPropagation event)
-                           (rf/dispatch [:slides/select-shape
-                                         (js/parseInt (.getAttribute shape-el "data-shape") 10)]))
+                           (let [shape-idx (js/parseInt (.getAttribute shape-el "data-shape") 10)]
+                             (if (.-shiftKey event)
+                               (rf/dispatch [:slides/toggle-shape-selection shape-idx])
+                               (rf/dispatch [:slides/select-shape shape-idx]))))
                          (when (= "canvas" (.-id target))
                            (rf/dispatch [:slides/select-shape nil])))))
   (.addEventListener js/document "pointerdown"
@@ -196,7 +204,7 @@
                        (let [target (.-target event)
                              resize-el (.closest target "[data-resize]")
                              shape-el (.closest target "[data-shape]")]
-                         (when shape-el
+                         (when (and shape-el (not (.-shiftKey event)))
                            (start-drag! event shape-el (some-> resize-el (.getAttribute "data-resize")))))))
   (.addEventListener js/document "pointermove" drag!)
   (.addEventListener js/document "pointerup" #(reset! drag-state nil))

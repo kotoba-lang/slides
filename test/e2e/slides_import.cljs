@@ -79,6 +79,9 @@
 (defn click! [page selector]
   (invoke (locator page selector) "click"))
 
+(defn shift-click! [page selector]
+  (invoke (locator page selector) "click" #js {:modifiers #js ["Shift"]}))
+
 (defn fill! [page selector value]
   (invoke (locator page selector) "fill" value))
 
@@ -263,6 +266,27 @@
                      (ok (empty? @errors) (str "unexpected browser errors: " (pr-str @errors)))
                      (close-page! page)))))))
 
+(defn multi-select-aligns-shapes! [browser]
+  (then (open-app! browser)
+        (fn [page]
+          (let [errors (track-browser-errors! page)]
+            (chain nil
+                   (fn [_] (wait-visible! page "[data-shape=\"2\"]"))
+                   (fn [_] (click! page "[data-shape=\"2\"]"))
+                   (fn [_] (shift-click! page "[data-shape=\"3\"]"))
+                   (fn [_] (wait-text! page "#properties" #"2shapes selected"))
+                   (fn [_] (click! page "#align-left"))
+                   (fn [_]
+                     (then (invoke (locator page "[data-shape=\"2\"]") "boundingBox")
+                           (fn [a]
+                             (then (invoke (locator page "[data-shape=\"3\"]") "boundingBox")
+                                   (fn [b]
+                                     (ok (< (js/Math.abs (- (.-x a) (.-x b))) 0.75)
+                                         "aligned shapes should share the same left edge"))))))
+                   (fn [_]
+                     (expect-no-browser-errors! page errors))
+                   (fn [_] (close-page! page)))))))
+
 (defn surfaces-unsupported-pptx-input-as-editor-error! [browser]
   (let [bad-path (path/join downloads-root "kotoba-slides-not-a-pptx.txt")]
     (then (open-app! browser)
@@ -291,6 +315,7 @@
               (chain nil
                      (fn [_] (imports-pptx-edits-shape-and-writes-pptx! b))
                      (fn [_] (applies-edn-components-and-exports-editable-pptx! b))
+                     (fn [_] (multi-select-aligns-shapes! b))
                      (fn [_] (surfaces-invalid-edn-without-losing-current-deck! b))
                      (fn [_] (surfaces-unsupported-pptx-input-as-editor-error! b)))))
       (then (fn [_]

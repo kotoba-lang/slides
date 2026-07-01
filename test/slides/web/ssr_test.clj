@@ -30,6 +30,13 @@
       (is (clojure.string/includes? html "data-resize=\"se\""))
       (is (clojure.string/includes? html "data-act=\"duplicate-shape\"")))))
 
+(deftest multi-selection-renders-alignment-test
+  (let [html (hic/->html (views/root (assoc (ssr/sample-db 0 0)
+                                            :selected-shapes #{0 1})))]
+    (is (clojure.string/includes? html "panel-title\">Selection"))
+    (is (clojure.string/includes? html "data-act=\"align-left\""))
+    (is (clojure.string/includes? html "data-act=\"align-middle\""))))
+
 (deftest canvas-shape-inline-style-test
   "shape inline style (reagent :style map) renders to CSS string via shitsuke.hiccup."
   (let [html (hic/->html (views/root (ssr/sample-db 0 0)))]
