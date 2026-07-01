@@ -106,6 +106,19 @@
       (rf/dispatch [:slides/nudge-shape 0.1 -0.1])
       (is (= (+ x 0.1) (:slides/x @(rf/subscribe [:slides/selected-shape])))))))
 
+(deftest multi-duplicate-and-delete-shapes-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 1])
+  (rf/dispatch [:slides/toggle-shape-selection 2])
+  (let [before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))]
+    (rf/dispatch [:slides/duplicate-shape])
+    (is (= (+ before 2) (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))))
+    (is (= #{before (inc before)} @(rf/subscribe [:slides/selected-shapes])))
+    (rf/dispatch [:slides/delete-shape])
+    (is (= before (count (:slides/shapes @(rf/subscribe [:slides/selected-slide])))))
+    (is (= #{} @(rf/subscribe [:slides/selected-shapes])))
+    (is (nil? @(rf/subscribe [:slides/selected-shape-index])))))
+
 (deftest add-rect-shape-test
   (rf/dispatch [:slides/select-slide 0])
   (rf/dispatch [:slides/add-shape :rect])

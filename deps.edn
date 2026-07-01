@@ -21,7 +21,7 @@
         ;; real reagent/re-frame come via the :cljs alias below.
         io.github.kotoba-lang/shitsuke
         {:git/url "https://github.com/kotoba-lang/shitsuke.git"
-         :git/sha "88b32f17932f8c8b55b01e1c439fdffe97a0115a"}}
+         :git/sha "d7988c24f5cb37074b6bfc1f0c2e223f4e218f84"}}
  :aliases
  {:cli {:main-opts ["-m" "slides.cli"]}
   :local {:override-deps {io.github.kotoba-lang/office

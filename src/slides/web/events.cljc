@@ -146,31 +146,39 @@
         (assoc :selected-shape (count shapes) :selected-shapes #{(count shapes)} :error nil))))
 
 (defn duplicate-shape-handler [db _]
-  (if-let [shape-idx (:selected-shape db)]
-    (let [slide-idx (slide-index db)
-          shapes (vec (get-in db [:deck :slides/slides slide-idx :slides/shapes]))
-          shape (get shapes shape-idx)
-          copy (-> shape
-                   (assoc :slides/id (next-id (or (some-> (:slides/shape shape) name) "shape") shapes))
-                   (update :slides/x (fnil + 0) 0.18)
-                   (update :slides/y (fnil + 0) 0.18))]
-      (-> db
-          (replace-slide slide-idx #(update % :slides/shapes conj copy))
-          (assoc :selected-shape (count shapes) :selected-shapes #{(count shapes)} :error nil)))
-    db))
+  (let [shape-idxs (editor/selected-set db)]
+    (if (seq shape-idxs)
+      (let [slide-idx (slide-index db)
+            shapes (vec (get-in db [:deck :slides/slides slide-idx :slides/shapes]))
+            result (editor/duplicate-selected-indexed
+                    shapes
+                    shape-idxs
+                    (fn [shape new-idx]
+                      (-> shape
+                          (assoc :slides/id (str (or (some-> (:slides/shape shape) name) "shape")
+                                                 "-" (inc new-idx)))
+                          (editor/offset-rect 0.18 0.18 {:x :slides/x :y :slides/y}))))]
+        (-> db
+            (replace-slide slide-idx #(assoc % :slides/shapes (:items result)))
+            (assoc :selected-shape (:primary result)
+                   :selected-shapes (:selected result)
+                   :error nil)))
+      db)))
 
 (defn delete-shape-handler [db _]
-  (if-let [shape-idx (:selected-shape db)]
-    (let [idx (slide-index db)]
-      (-> db
-          (replace-slide idx
-                         (fn [slide]
-                           (let [xs (:slides/shapes slide)]
-                             (assoc slide :slides/shapes
-                                    (vec (concat (subvec xs 0 shape-idx)
-                                                 (subvec xs (inc shape-idx))))))))
-          (assoc :selected-shape nil :selected-shapes #{} :error nil)))
-    db))
+  (let [shape-idxs (editor/selected-set db)]
+    (if (seq shape-idxs)
+      (let [idx (slide-index db)
+            shapes (vec (get-in db [:deck :slides/slides idx :slides/shapes]))
+            result (editor/delete-selected-indexed shapes shape-idxs)]
+        (-> db
+            (replace-slide idx
+                           (fn [slide]
+                             (assoc slide :slides/shapes (:items result))))
+            (assoc :selected-shape (:primary result)
+                   :selected-shapes (:selected result)
+                   :error nil)))
+      db)))
 
 (defn update-shape-field-handler [db [_ field value]]
   (if-let [shape-idx (:selected-shape db)]
@@ -179,11 +187,13 @@
 
 (defn set-shape-position-handler [db [_ shape-idx x y]]
   (replace-shape db (slide-index db) shape-idx
-                 #(assoc % :slides/x x :slides/y y)))
+                 #(editor/offset-rect % (- x (:slides/x % 0)) (- y (:slides/y % 0))
+                                      {:x :slides/x :y :slides/y})))
 
 (defn set-shape-frame-handler [db [_ shape-idx x y w h]]
   (replace-shape db (slide-index db) shape-idx
-                 #(assoc % :slides/x x :slides/y y :slides/w w :slides/h h)))
+                 #(editor/set-rect-frame % x y w h
+                                         {:x :slides/x :y :slides/y :w :slides/w :h :slides/h})))
 
 (defn nudge-shape-handler [db [_ dx dy]]
   (let [shape-idxs (editor/selected-set db)]
@@ -192,10 +202,7 @@
        db
        shape-idxs
        (fn [acc shape-idx f] (replace-shape acc (slide-index acc) shape-idx f))
-       (fn [shape]
-         (-> shape
-             (update :slides/x (fnil + 0) dx)
-             (update :slides/y (fnil + 0) dy))))
+       #(editor/offset-rect % dx dy {:x :slides/x :y :slides/y}))
       db)))
 
 (defn align-selected-handler [db [_ axis position]]

@@ -1,6 +1,7 @@
 (ns slides.office-test
   (:require [clojure.edn :as edn]
             [clojure.test :refer [deftest is]]
+            [kotoba.editor :as editor]
             [office.graph :as office-graph]
             [office-style.style :as office-style]
             [slides.causal :as causal]
@@ -173,6 +174,50 @@
     (is (contains? out-entries "ppt/presentation.xml"))
     (is (contains? out-entries "ppt/slides/slide1.xml"))
     (is (re-find #"EDN Bridge" (get out-entries "docProps/core.xml")))))
+
+(deftest editor-operation-deck-roundtrips-through-causal-pptx
+  (let [base-deck (-> (model/deck "editor-roundtrip"
+                                  {:slides/title "Editor Roundtrip"})
+                      (model/add-slide
+                       (-> (model/slide "s1" {:slides/title "One"})
+                           (model/add-shape
+                            (model/text-box "alpha" "Alpha"
+                                            {:slides/x 1.0 :slides/y 1.0
+                                             :slides/w 2.0 :slides/h 0.8}))
+                           (model/add-shape
+                            (model/text-box "beta" "Beta"
+                                            {:slides/x 4.0 :slides/y 1.5
+                                             :slides/w 2.5 :slides/h 0.8})))))
+        shapes (get-in base-deck [:slides/slides 0 :slides/shapes])
+        duplicated (editor/duplicate-selected-indexed
+                    shapes
+                    #{0 1}
+                    (fn [shape new-idx]
+                      (-> shape
+                          (assoc :slides/id (str (:slides/id shape) "-copy-" new-idx)
+                                 :slides/text (str (:slides/text shape) " copy"))
+                          (editor/offset-rect 0.25 0.5 {:x :slides/x :y :slides/y}))))
+        edited-shapes (editor/update-selected-indexed
+                       (:items duplicated)
+                       (:selected duplicated)
+                       #(editor/set-rect-frame %
+                                               (:slides/x %)
+                                               (:slides/y %)
+                                               3.0
+                                               1.0
+                                               {:x :slides/x :y :slides/y
+                                                :w :slides/w :h :slides/h}))
+        edited-deck (assoc-in base-deck [:slides/slides 0 :slides/shapes] edited-shapes)
+        imported (office/deck-from-office-bytes (causal/embed-deck-bytes edited-deck))
+        imported-shapes (get-in imported [:slides/slides 0 :slides/shapes])
+        imported-text-shapes (filterv :slides/text imported-shapes)]
+    (is (= "editor-roundtrip" (:slides/id imported)))
+    (is (= 4 (count imported-text-shapes)))
+    (is (= ["Alpha" "Beta" "Alpha copy" "Beta copy"]
+           (mapv :slides/text imported-text-shapes)))
+    (is (= 3.0 (:slides/w (nth imported-text-shapes 2))))
+    (is (= 1.0 (:slides/h (nth imported-text-shapes 3))))
+    (is (= :reconciled-pptx (get-in imported [:slides/import :slides/text-extraction])))))
 
 (deftest imports-drawingml-shape-geometry-and-style
   (let [bytes (zip-bytes
