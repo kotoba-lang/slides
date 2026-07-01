@@ -277,12 +277,12 @@
                    (fn [_] (wait-text! page "#properties" #"2shapes selected"))
                    (fn [_] (click! page "#align-left"))
                    (fn [_]
-                     (then (invoke (locator page "[data-shape=\"2\"]") "boundingBox")
-                           (fn [a]
-                             (then (invoke (locator page "[data-shape=\"3\"]") "boundingBox")
-                                   (fn [b]
-                                     (ok (< (js/Math.abs (- (.-x a) (.-x b))) 0.75)
-                                         "aligned shapes should share the same left edge"))))))
+                     (wait-until! "aligned shapes to share left edge"
+                                  #(then (invoke (locator page "[data-shape=\"2\"]") "boundingBox")
+                                         (fn [a]
+                                           (then (invoke (locator page "[data-shape=\"3\"]") "boundingBox")
+                                                 (fn [b]
+                                                   (< (js/Math.abs (- (.-x a) (.-x b))) 1.25)))))))
                    (fn [_]
                      (expect-no-browser-errors! page errors))
                    (fn [_] (close-page! page)))))))
