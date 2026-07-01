@@ -190,6 +190,8 @@ clojure -M:cli pptx-causal deck.edn deck-causal.pptx
 clojure -M:cli causal-deck deck-causal.pptx recovered.edn
 clojure -M:cli svgraph deck.edn deck.svgraph.edn
 clojure -M:cli update base.pptx deck.edn updated.pptx
+clojure -M:cli render-pptx deck.pptx target/visual/deck
+clojure -M:cli visual-diff before.pptx after.pptx target/visual/diff
 
 npx @kotoba-lang/slides pptx deck.edn deck.pptx
 ```
@@ -215,6 +217,22 @@ imported chart shape:
 
 `update` patches both the chart cache XML and the embedded workbook `.xlsx`
 entry while preserving the rest of the original PPTX package.
+
+`render-pptx` and `visual-diff` provide a PowerPoint/Keynote-free visual
+roundtrip harness for CI and fixture audits. They render PPTX through
+LibreOffice headless, split the intermediate PDF into per-slide PNGs with
+`pdftoppm`, and compare slide PNGs with ImageMagick `compare` or `magick
+compare`. Missing tools are reported explicitly; install them on macOS with:
+
+```bash
+brew install --cask libreoffice
+brew install poppler imagemagick
+```
+
+This visual check complements the OOXML package checks: it is good for catching
+large layout drift across all slides, while PowerPoint itself remains the
+strictest compatibility oracle for repair dialogs and Microsoft-specific
+rendering behavior.
 
 GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
 `.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,

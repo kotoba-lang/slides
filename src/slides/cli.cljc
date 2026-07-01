@@ -5,7 +5,8 @@
             [slides.causal :as causal]
             [slides.office :as office]
             [slides.pptx :as pptx]
-            [slides.svgraph :as svgraph])
+            [slides.svgraph :as svgraph]
+            #?(:clj [slides.visual :as visual]))
   #?(:clj (:gen-class)))
 
 (defn- usage []
@@ -16,7 +17,9 @@
        "  pptx-causal <deck.edn> <out.pptx>           EDN deck -> PPTX with ocz/causal.edn\n"
        "  causal-deck <deck.pptx> <out.edn>           read embedded slides deck from PPTX\n"
        "  svgraph <deck.edn> <out.edn>                EDN deck -> svgraph presentation EDN\n"
-       "  update <base.pptx> <deck.edn> <out.pptx>    update workflow using EDN deck\n"))
+       "  update <base.pptx> <deck.edn> <out.pptx>    update workflow using EDN deck\n"
+       "  render-pptx <deck.pptx> <out-dir>           render PPTX slides to PNGs via LibreOffice\n"
+       "  visual-diff <before.pptx> <after.pptx> <out-dir> compare rendered PPTX slide PNGs\n"))
 
 (defn- read-edn [path]
   #?(:clj (edn/read-string (slurp path))
@@ -92,6 +95,12 @@
          "update" (let [[_ base-path edn-path out-path] args]
                     (require-args! base-path edn-path out-path)
                     (prn (pptx/update-pptx! base-path out-path (read-deck-edn edn-path))))
+         "render-pptx" (let [[_ pptx-path out-dir] args]
+                         (require-args! pptx-path out-dir)
+                         (prn (visual/render-pptx-pngs! pptx-path out-dir)))
+         "visual-diff" (let [[_ before-path after-path out-dir] args]
+                         (require-args! before-path after-path out-dir)
+                         (prn (visual/compare-pptx! before-path after-path out-dir)))
          (println (usage)))
        (catch Exception e
          (binding [*out* *err*]

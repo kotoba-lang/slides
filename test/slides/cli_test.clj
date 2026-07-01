@@ -6,7 +6,8 @@
             [slides.office :as office]
             [slides.pptx :as pptx]
             [slides.cli :as cli]
-            [slides.svgraph :as svgraph]))
+            [slides.svgraph :as svgraph]
+            [slides.visual :as visual]))
 
 (deftest usage-description
   (let [usage-fn (ns-resolve 'slides.cli 'usage)]
@@ -19,7 +20,9 @@
       (is (re-find #"pptx-causal" usage))
       (is (re-find #"causal-deck" usage))
       (is (re-find #"svgraph" usage))
-      (is (re-find #"update" usage)))))
+      (is (re-find #"update" usage))
+      (is (re-find #"render-pptx" usage))
+      (is (re-find #"visual-diff" usage)))))
 
 (deftest package-bin-points-to-cljs-wrapper
   (let [package-json (slurp "package.json")
@@ -167,6 +170,55 @@
         (.delete base)
         (.delete out)
         (.delete (java.io.File. edn-path))))))
+
+(deftest render-pptx-command-writes-slide-pngs
+  (let [pptx (java.io.File/createTempFile "slides-cli-render" ".pptx")
+        out-dir (str (.getAbsolutePath (java.io.File/createTempFile "slides-cli-render-out" "")) "-dir")
+        expected {:slides/renderer :libreoffice
+                  :slides/pptx (.getAbsolutePath pptx)
+                  :slides/pngs [(str out-dir "/slide-1.png")]
+                  :slides/slides 1}
+        rendered (atom nil)]
+    (try
+      (.delete (java.io.File. out-dir))
+      (let [render-var (ns-resolve 'slides.visual 'render-pptx-pngs!)
+            printed (with-out-str
+                      (with-redefs-fn {render-var (fn [path dir]
+                                                    (is (= (.getAbsolutePath pptx) path))
+                                                    (is (= out-dir dir))
+                                                    (reset! rendered expected)
+                                                    expected)}
+                        #(cli/-main "render-pptx" (.getAbsolutePath pptx) out-dir)))]
+        (is (= expected @rendered))
+        (is (= expected (edn/read-string printed))))
+      (finally
+        (.delete pptx)))))
+
+(deftest visual-diff-command-compares-rendered-pptx
+  (let [before (java.io.File/createTempFile "slides-cli-before" ".pptx")
+        after (java.io.File/createTempFile "slides-cli-after" ".pptx")
+        out-dir (str (.getAbsolutePath (java.io.File/createTempFile "slides-cli-diff-out" "")) "-dir")
+        expected {:slides/comparison {:slides/metric "RMSE"}}
+        compared (atom nil)]
+    (try
+      (.delete (java.io.File. out-dir))
+      (let [compare-var (ns-resolve 'slides.visual 'compare-pptx!)
+            printed (with-out-str
+                      (with-redefs-fn {compare-var (fn [before-path after-path dir]
+                                                     (is (= (.getAbsolutePath before) before-path))
+                                                     (is (= (.getAbsolutePath after) after-path))
+                                                     (is (= out-dir dir))
+                                                     (reset! compared expected)
+                                                     expected)}
+                        #(cli/-main "visual-diff"
+                                    (.getAbsolutePath before)
+                                    (.getAbsolutePath after)
+                                    out-dir)))]
+        (is (= expected @compared))
+        (is (= expected (edn/read-string printed))))
+      (finally
+        (.delete before)
+        (.delete after)))))
 
 (deftest pptx-causal-command-writes-causal-pptx
   (let [deck {:slides/title "Causal editor"}
