@@ -3,6 +3,8 @@
             [clojure.test :refer [deftest is]]
             [office.graph :as office-graph]
             [office-style.style :as office-style]
+            [slides.causal :as causal]
+            [slides.model :as model]
             [slides.office :as office]
             [slides.pptx :as pptx])
   (:import (java.util.zip ZipInputStream)))
@@ -171,6 +173,56 @@
     (is (contains? out-entries "ppt/presentation.xml"))
     (is (contains? out-entries "ppt/slides/slide1.xml"))
     (is (re-find #"EDN Bridge" (get out-entries "docProps/core.xml")))))
+
+(deftest imports-drawingml-shape-geometry-and-style
+  (let [bytes (zip-bytes
+               {"[Content_Types].xml" "<Types/>"
+                "_rels/.rels" "<Relationships/>"
+                "docProps/core.xml" "<cp:coreProperties><dc:title>Styled deck</dc:title></cp:coreProperties>"
+                "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                "ppt/slides/slide1.xml"
+                (str "<p:sld><p:cSld><p:spTree>"
+                     "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Headline\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                     "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"457200\"/><a:ext cx=\"2743200\" cy=\"914400\"/></a:xfrm>"
+                     "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
+                     "<p:txBody><a:p><a:r><a:rPr sz=\"3200\"><a:solidFill><a:srgbClr val=\"123456\"/></a:solidFill></a:rPr><a:t>Moved title</a:t></a:r></a:p></p:txBody></p:sp>"
+                     "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Panel\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                     "<p:spPr><a:xfrm><a:off x=\"1828800\" y=\"1828800\"/><a:ext cx=\"914400\" cy=\"914400\"/></a:xfrm>"
+                     "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"ABCDEF\"/></a:solidFill>"
+                     "<a:ln><a:solidFill><a:srgbClr val=\"112233\"/></a:solidFill></a:ln></p:spPr></p:sp>"
+                     "</p:spTree></p:cSld></p:sld>")
+                "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+                "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"})
+        deck (office/deck-from-office-bytes bytes)
+        [text rect] (-> deck :slides/slides first :slides/shapes)]
+    (is (= "Styled deck" (:slides/title deck)))
+    (is (= "Moved title" (:slides/text text)))
+    (is (= 1.0 (:slides/x text)))
+    (is (= 0.5 (:slides/y text)))
+    (is (= 3.0 (:slides/w text)))
+    (is (= 32.0 (:slides/font-size text)))
+    (is (= "123456" (:slides/color text)))
+    (is (= :rect (:slides/shape rect)))
+    (is (= "ABCDEF" (:slides/fill rect)))
+    (is (= "112233" (:slides/line rect)))))
+
+(deftest reconciles-causal-sidecar-with-current-pptx-xml
+  (let [sidecar-deck (-> (model/deck "sidecar-deck" {:slides/title "Sidecar title"})
+                         (model/add-slide
+                          (-> (model/slide "s1" {:slides/title "Old"})
+                              (model/add-shape (model/text-box "title" "Old sidecar text")))))
+        entries (entries-from-bytes (causal/embed-deck-bytes sidecar-deck))
+        changed (assoc entries "ppt/slides/slide1.xml"
+                       (str "<p:sld><p:cSld><p:spTree>"
+                            "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Edited\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                            "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                            "<p:txBody><a:p><a:r><a:t>Edited in PowerPoint</a:t></a:r></a:p></p:txBody></p:sp>"
+                            "</p:spTree></p:cSld></p:sld>"))
+        deck (office/deck-from-office-bytes (zip-bytes changed))]
+    (is (= "sidecar-deck" (:slides/id deck)))
+    (is (= "Sidecar title" (:slides/title deck)))
+    (is (= "Edited in PowerPoint" (-> deck :slides/slides first :slides/shapes first :slides/text)))
+    (is (= :reconciled-pptx (get-in deck [:slides/import :slides/text-extraction])))))
 
 (deftest office-import-does-not-parse-huge-text-node-numbers
   (let [graph {:office/nodes [{:office/id "ppt/slides/slide1.xml"

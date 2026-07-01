@@ -10,6 +10,7 @@
   (:require [cljs.reader :as reader]
             [clojure.string :as str]
             [slides.pptx :as pptx]
+            [slides.pptx.import :as pptx-import]
             [slides.svgraph :as svgraph]
             [slides.web.sample :as sample]))
 
@@ -425,40 +426,7 @@
     texts)))
 
 (defn drawingml-entries->deck [entries file-name]
-  (let [presentation (entries "ppt/presentation.xml")
-        core (entries "docProps/core.xml")
-        size (slide-size-from-presentation presentation)
-        slide-paths (->> (keys entries)
-                         (filter #(re-matches #"ppt/slides/slide\d+\.xml" %))
-                         (sort-by slide-number))
-        slides (vec
-                (map-indexed
-                 (fn [idx path]
-                   (let [texts (vec (xml-texts (entries path) "a:t"))]
-                     {:slides/id (str "slide-" (inc idx))
-                      :slides/title (slide-title texts idx)
-                      :slides/shapes (text-shapes-from-slide
-                                      (if (seq texts)
-                                        texts
-                                        [(str "Slide " (inc idx))]))}))
-                 slide-paths))
-        title (or (first-xml-text core "dc:title")
-                  (some-> file-name (str/replace #"\.pptx$" ""))
-                  "Imported deck")]
-    (merge {:slides/id "imported-pptx"
-            :slides/title title
-            :slides/import {:slides/source file-name
-                            :slides/format :pptx
-                            :slides/text-extraction :drawingml-runs}
-            :slides/slides (if (seq slides)
-                             slides
-                             [{:slides/id "slide-1"
-                               :slides/title title
-                               :slides/shapes (text-shapes-from-slide [title])}])}
-           size
-               (let [d (imported-design entries)]
-                 (when (seq d)
-                   {:slides/design d})))))
+  (pptx-import/deck-from-entries entries file-name))
 
 (defn causal-deck-from-entries [entries]
   (try
@@ -470,8 +438,7 @@
       nil)))
 
 (defn pptx-entries->deck [entries file-name]
-  (or (some-> (causal-deck-from-entries entries)
-              (assoc-in [:slides/import :slides/source] file-name)
-              (assoc-in [:slides/import :slides/format] :pptx)
-              (assoc-in [:slides/import :slides/text-extraction] :causal-edn))
-      (drawingml-entries->deck entries file-name)))
+  (-> (pptx-import/reconcile-decks (causal-deck-from-entries entries)
+                                   (drawingml-entries->deck entries file-name))
+      (assoc-in [:slides/import :slides/source] file-name)
+      (assoc-in [:slides/import :slides/format] :pptx)))

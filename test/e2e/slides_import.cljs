@@ -169,7 +169,7 @@
                      (fn [_] (click! page "#mode-edn"))
                      (fn [_] (wait-value! page "#deck-edn" #"Browser Edited PPTX Title"))
                      (fn [_] (wait-value! page "#deck-edn" #":slides/format :pptx"))
-                     (fn [_] (wait-value! page "#deck-edn" #":slides/text-extraction :drawingml-runs"))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/text-extraction :drawingml-xml"))
                      (fn [_] (save-download! page "#download-pptx" out))
                      (fn [_]
                        (ok (> (.-size (.statSync fs out)) 1000) "downloaded PPTX was too small")
@@ -184,7 +184,7 @@
                        true)
                      (fn [_] (set-input-files! page "#pptx-file" out))
                      (fn [_] (click! page "#mode-edn"))
-                     (fn [_] (wait-value! page "#deck-edn" #":slides/text-extraction :causal-edn"))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/text-extraction :reconciled-pptx"))
                      (fn [_] (wait-value! page "#deck-edn" #"Browser Edited PPTX Title"))
                      (fn [_]
                        (expect-no-browser-errors! page errors))

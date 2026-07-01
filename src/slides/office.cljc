@@ -2,9 +2,12 @@
   "Office PPTX to slides deck bridge (EDN/CLJC only)."
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
+            [office.embed :as embed]
             [office.graph :as office-graph]
+            [office.opc :as opc]
             [office-style.style :as office-style]
             [slides.model :as model]
+            [slides.pptx.import :as pptx-import]
             [slides.pptx :as pptx]))
 
 (def emu-per-inch 914400)
@@ -111,30 +114,61 @@
     (when-not (str/blank? (str candidate))
       candidate)))
 
+(defn- sidecar-deck [pkg]
+  (try
+    (some-> (embed/read-payload pkg)
+            :office/graph
+            :slides-causal/deck)
+    (catch Exception _
+      nil)))
+
+(defn- package-deck [pkg file-name preferred-title style-ir]
+  (let [actual (pptx-import/deck-from-entries (:office/entries pkg) file-name
+                                              (cond-> {}
+                                                preferred-title (assoc :title preferred-title)))
+        deck-title (or (:slides/title actual) preferred-title "Imported deck")
+        fallback-theme (:slides/theme (build-deck deck-title style-ir))
+        actual (cond-> actual
+                 true (assoc :slides/id (title->id deck-title)
+                             :slides/title deck-title)
+                 (nil? (:slides/theme actual)) (assoc :slides/theme fallback-theme))
+        sidecar (sidecar-deck pkg)]
+    (pptx-import/reconcile-decks sidecar actual)))
+
+(defn- try-package-deck [bytes options preferred-title style-ir]
+  (try
+    (let [pkg (opc/open-package bytes)]
+      (when (= :pptx (:office/kind pkg))
+        (package-deck pkg (:source options) preferred-title style-ir)))
+    (catch Exception _
+      nil)))
+
 (defn deck-from-office-bytes
   "Build a slides deck from Office package bytes using EDN-only readers."
   ([bytes]
    (deck-from-office-bytes bytes {}))
   ([bytes options]
-   (let [graph (office-graph/analyze-bytes bytes)
-         style-ir (try (office-style/extract-bytes bytes)
+   (let [style-ir (try (office-style/extract-bytes bytes)
                        (catch Exception _ {}))
-         sources (ordered-slide-sources graph style-ir)
-         effective-sources (if (seq sources) sources ["imported"])
-         text-by-source (->> (:office/nodes graph)
-                             (filter #(= :text (:office/kind %)))
-                             (group-by :office/source))
-         style-title (or (preferred-title options) "Imported deck")
-         deck (build-deck style-title style-ir)]
-     (reduce
-      (fn [acc idx]
-        (let [source (nth effective-sources idx)
-              shapes (get text-by-source source [])]
-          (if (seq shapes)
-            (model/add-slide acc (build-slide source idx shapes (:office-style/colors style-ir {})))
-            (model/add-slide acc (build-slide source idx [] (:office-style/colors style-ir {}))))))
-      deck
-      (range (count effective-sources))))))
+         preferred-title (preferred-title options)
+         style-title (or preferred-title "Imported deck")]
+     (or (try-package-deck bytes options preferred-title style-ir)
+         (let [graph (office-graph/analyze-bytes bytes)
+               sources (ordered-slide-sources graph style-ir)
+               effective-sources (if (seq sources) sources ["imported"])
+               text-by-source (->> (:office/nodes graph)
+                                   (filter #(= :text (:office/kind %)))
+                                   (group-by :office/source))
+               deck (build-deck style-title style-ir)]
+           (reduce
+            (fn [acc idx]
+              (let [source (nth effective-sources idx)
+                    shapes (get text-by-source source [])]
+                (if (seq shapes)
+                  (model/add-slide acc (build-slide source idx shapes (:office-style/colors style-ir {})))
+                  (model/add-slide acc (build-slide source idx [] (:office-style/colors style-ir {}))))))
+            deck
+            (range (count effective-sources))))))))
 
 (defn deck-edn-from-office-bytes
   "Build printable deck EDN from Office package bytes."

@@ -4,6 +4,9 @@
   The public surface is data-first: pass a deck map with :slides/slides and
   receive a .pptx byte array or write it to disk on the JVM."
   (:require [clojure.string :as str]
+            [drawingml.core :as dml]
+            [ooxml.core :as ooxml]
+            [presentationml.core :as pml]
             [slides.design :as design])
   #?(:clj (:import [java.io ByteArrayOutputStream FileOutputStream]
                    [java.util.zip ZipEntry ZipOutputStream])))
@@ -11,6 +14,12 @@
 (def emu-per-inch 914400)
 (def default-width-in 10)
 (def default-height-in 5.625)
+(def rel-slide-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster")
+(def rel-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide")
+(def rel-slide-layout "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout")
+(def rel-theme "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme")
+(def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
+(def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
 
 (defn- esc [x]
   (-> (str (or x ""))
@@ -39,29 +48,25 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types [slide-count]
-  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-       "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-       "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-       "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-       "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>"
-       "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>"
-       "<Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>"
-       "<Override PartName=\"/ppt/slideMasters/slideMaster1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml\"/>"
-       "<Override PartName=\"/ppt/slideLayouts/slideLayout1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml\"/>"
-       "<Override PartName=\"/ppt/theme/theme1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.theme+xml\"/>"
-       (apply str
-              (for [idx (range 1 (inc slide-count))]
-                (str "<Override PartName=\"/ppt/slides/slide" idx ".xml\" "
-                     "ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>")))
-       "</Types>"))
+  (ooxml/content-types-xml
+   (concat
+    [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
+     (ooxml/default-content-type "xml" (:xml ooxml/content-types))
+     (ooxml/override-content-type "/docProps/app.xml" "application/vnd.openxmlformats-officedocument.extended-properties+xml")
+     (ooxml/override-content-type "/docProps/core.xml" "application/vnd.openxmlformats-package.core-properties+xml")
+     (ooxml/override-content-type "/ppt/presentation.xml" (:pptx ooxml/content-types))
+     (ooxml/override-content-type "/ppt/slideMasters/slideMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml")
+     (ooxml/override-content-type "/ppt/slideLayouts/slideLayout1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml")
+     (ooxml/override-content-type "/ppt/theme/theme1.xml" "application/vnd.openxmlformats-officedocument.theme+xml")]
+    (for [idx (range 1 (inc slide-count))]
+      (ooxml/override-content-type (str "/ppt/slides/slide" idx ".xml")
+                                   "application/vnd.openxmlformats-officedocument.presentationml.slide+xml")))))
 
 (def root-rels
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">
-  <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"ppt/presentation.xml\"/>
-  <Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>
-  <Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>
-</Relationships>")
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type ooxml/office-document-rel :target "ppt/presentation.xml"})
+    (ooxml/relationship {:id "rId2" :type rel-core-props :target "docProps/core.xml"})
+    (ooxml/relationship {:id "rId3" :type rel-app-props :target "docProps/app.xml"})]))
 
 (defn- core-props [deck]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
@@ -85,9 +90,9 @@
 
 (defn- presentation [slide-count width height]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-       "<p:presentation xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
-       "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
-       "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+       "<p:presentation xmlns:a=\"" dml/ns-a "\" "
+       "xmlns:r=\"" pml/ns-r "\" "
+       "xmlns:p=\"" pml/ns-p "\">"
        "<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst>"
        "<p:sldIdLst>"
        (apply str
@@ -99,15 +104,13 @@
        "</p:presentation>"))
 
 (defn- presentation-rels [slide-count]
-  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-       "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-       "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"slideMasters/slideMaster1.xml\"/>"
-       (apply str
-              (for [idx (range 1 (inc slide-count))]
-                (str "<Relationship Id=\"rId" (inc idx) "\" "
-                     "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" "
-                     "Target=\"slides/slide" idx ".xml\"/>")))
-       "</Relationships>"))
+  (ooxml/relationships-xml
+   (concat
+    [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "slideMasters/slideMaster1.xml"})]
+    (for [idx (range 1 (inc slide-count))]
+      (ooxml/relationship {:id (str "rId" (inc idx))
+                           :type rel-slide
+                           :target (str "slides/slide" idx ".xml")})))))
 
 (def default-theme (:slides/theme design/default-design))
 
@@ -184,11 +187,9 @@
 </p:sldMaster>"))
 
 (def slide-master-rels
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">
-  <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>
-  <Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme\" Target=\"../theme/theme1.xml\"/>
-</Relationships>")
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})
+    (ooxml/relationship {:id "rId2" :type rel-theme :target "../theme/theme1.xml"})]))
 
 (defn- slide-layout [deck]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -198,10 +199,8 @@
 </p:sldLayout>"))
 
 (def slide-layout-rels
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">
-  <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/>
-</Relationships>")
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "../slideMasters/slideMaster1.xml"})]))
 
 (defn- shape-xfrm [{:slides/keys [x y w h]}]
   (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
@@ -291,10 +290,8 @@
        "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"))
 
 (def slide-rels
-  "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">
-  <Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>
-</Relationships>")
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]))
 
 (defn deck-slides [deck]
   (let [slides (:slides/slides deck)
