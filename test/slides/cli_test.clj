@@ -2,9 +2,11 @@
   (:require [clojure.test :refer [deftest is]]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [slides.causal :as causal]
             [slides.office :as office]
             [slides.pptx :as pptx]
-            [slides.cli :as cli]))
+            [slides.cli :as cli]
+            [slides.svgraph :as svgraph]))
 
 (deftest usage-description
   (let [usage-fn (ns-resolve 'slides.cli 'usage)]
@@ -14,6 +16,9 @@
       (is (string? usage))
       (is (re-find #"from-pptx" usage))
       (is (re-find #"pptx" usage))
+      (is (re-find #"pptx-causal" usage))
+      (is (re-find #"causal-deck" usage))
+      (is (re-find #"svgraph" usage))
       (is (re-find #"update" usage)))))
 
 (deftest package-bin-points-to-cljs-wrapper
@@ -65,6 +70,15 @@
       (is (= {:slides/title "Deck"} (@read-deck-fn path)))
       (finally
         (.delete tmp)))))
+
+(deftest require-args-throws-usage-for-missing-arguments
+  (let [require-args-fn (ns-resolve 'slides.cli 'require-args!)]
+    (is (some? require-args-fn))
+    (is (fn? @require-args-fn))
+    (is (nil? (@require-args-fn "in.edn" "out.pptx")))
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                          #"slides cli"
+                          (@require-args-fn "in.edn" nil)))))
 
 (deftest unknown-command-shows-usage
   (is (re-find #"slides cli" (with-out-str (cli/-main "help")))))
@@ -153,3 +167,71 @@
         (.delete base)
         (.delete out)
         (.delete (java.io.File. edn-path))))))
+
+(deftest pptx-causal-command-writes-causal-pptx
+  (let [deck {:slides/title "Causal editor"}
+        in (java.io.File/createTempFile "slides-cli-causal-edn" ".edn")
+        out (java.io.File/createTempFile "slides-cli-causal" ".pptx")
+        in-path (.getAbsolutePath in)
+        out-path (.getAbsolutePath out)
+        expected {:slides/path out-path
+                  :slides/bytes 96
+                  :slides/slides 1
+                  :slides/causal true}
+        wrote (atom nil)]
+    (try
+      (let [read-edn-var (ns-resolve 'slides.cli 'read-deck-edn)
+            write-causal-var (ns-resolve 'slides.causal 'write-pptx!)
+            printed (with-out-str
+                      (with-redefs-fn {read-edn-var (fn [path]
+                                                      (is (= in-path path))
+                                                      deck)
+                                        write-causal-var (fn [path actual]
+                                                           (is (= out-path path))
+                                                           (is (= deck actual))
+                                                           (reset! wrote expected)
+                                                           expected)}
+                        #(cli/-main "pptx-causal" in-path out-path)))]
+        (is (= expected @wrote))
+        (is (= expected (edn/read-string printed))))
+      (finally
+        (.delete in)
+        (.delete out)))))
+
+(deftest causal-deck-command-writes-embedded-deck-edn
+  (let [deck {:slides/title "Embedded" :slides/slides [{:slides/id "s1"}]}
+        input (java.io.File/createTempFile "slides-cli-causal-deck" ".pptx")
+        output (java.io.File/createTempFile "slides-cli-causal-deck-out" ".edn")
+        in-path (.getAbsolutePath input)
+        out-path (.getAbsolutePath output)]
+    (try
+      (with-redefs [causal/read-deck-bytes (fn [_] deck)]
+        (cli/-main "causal-deck" in-path out-path)
+        (is (= deck (edn/read-string (slurp out-path)))))
+      (finally
+        (.delete input)
+        (.delete output)))))
+
+(deftest svgraph-command-writes-projection-edn
+  (let [deck {:slides/title "Graph"
+              :slides/slides [{:slides/id "s1" :slides/shapes []}]}
+        projection {:svgraph/version "svgraph-presentation/1"
+                    :svgraph/slides [{:svgraph/id "s1"}]}
+        in (java.io.File/createTempFile "slides-cli-svgraph-edn" ".edn")
+        out (java.io.File/createTempFile "slides-cli-svgraph" ".edn")
+        in-path (.getAbsolutePath in)
+        out-path (.getAbsolutePath out)]
+    (try
+      (let [read-edn-var (ns-resolve 'slides.cli 'read-deck-edn)
+            projection-var (ns-resolve 'slides.svgraph 'presentation)]
+        (with-redefs-fn {read-edn-var (fn [path]
+                                        (is (= in-path path))
+                                        deck)
+                          projection-var (fn [actual]
+                                           (is (= deck actual))
+                                           projection)}
+          #(cli/-main "svgraph" in-path out-path))
+        (is (= projection (edn/read-string (slurp out-path)))))
+      (finally
+        (.delete in)
+        (.delete out)))))

@@ -162,6 +162,16 @@
                            "edited text missing from slide XML")
                        (ok (match? #"a:theme" (unzip-text out "ppt/theme/theme1.xml"))
                            "theme XML missing")
+                       (ok (match? #":slides-causal/deck" (unzip-text out "ocz/causal.edn"))
+                           "causal payload missing deck EDN")
+                       (ok (match? #":office/generator \"kotoba-lang/office\"" (unzip-text out "ocz/causal.edn"))
+                           "causal payload missing office generator")
+                       true)
+                     (fn [_] (set-input-files! page "#pptx-file" out))
+                     (fn [_] (click! page "#mode-edn"))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/text-extraction :causal-edn"))
+                     (fn [_] (wait-value! page "#deck-edn" #"Browser Edited PPTX Title"))
+                     (fn [_]
                        (expect-no-browser-errors! page errors))
                      (fn [_] (close-page! page))))))))
 
@@ -203,6 +213,8 @@
                          (ok (match? #"EDN Component Title" slide-xml) "component title missing from slide XML")
                          (ok (match? #"sz=\"4200\"" slide-xml) "font size missing from slide XML")
                          (ok (str/includes? slide-xml "123456") "font color missing from slide XML"))
+                       (ok (match? #":slides-causal/deck" (unzip-text out "ocz/causal.edn"))
+                           "component export missing causal payload")
                        (expect-no-browser-errors! page errors))
                      (fn [_] (close-page! page))))))))
 
@@ -211,7 +223,7 @@
         (fn [page]
           (let [errors (track-browser-errors! page)]
             (chain nil
-                   (fn [_] (wait-text! page "#status" #"2 slides"))
+                   (fn [_] (wait-text! page "#status" #"2\s*slides"))
                    (fn [_] (click! page "#mode-edn"))
                    (fn [_] (fill! page "#deck-edn" "{:slides/id \"broken\""))
                    (fn [_] (click! page "#apply-edn"))
@@ -220,7 +232,7 @@
                                   #(then (locator-text page "#error")
                                          (fn [text]
                                            (not= "" text)))))
-                   (fn [_] (wait-text! page "#status" #"2 slides"))
+                   (fn [_] (wait-text! page "#status" #"2\s*slides"))
                    (fn [_] (click! page "#mode-visual"))
                    (fn [_] (wait-text! page "[data-shape=\"2\"]" #"EDN to editable PPTX"))
                    (fn [_]
@@ -236,7 +248,7 @@
               (chain nil
                      (fn [_] (set-input-files! page "#pptx-file" bad-path))
                      (fn [_] (wait-text! page "#error" #"PPTX ZIP end record was not found|central directory|local file header"))
-                     (fn [_] (wait-text! page "#status" #"2 slides"))
+                     (fn [_] (wait-text! page "#status" #"2\s*slides"))
                      (fn [_]
                        (ok (empty? @errors) (str "unexpected browser errors: " (pr-str @errors)))
                        (close-page! page))))))))

@@ -80,6 +80,7 @@
     "mode-edn"        (rf/dispatch [:slides/set-mode :edn])
     "download-edn"    (effects/download! "deck.edn" "application/edn;charset=utf-8" (pr-str (deck-sub)))
     "download-pptx"   (effects/download-pptx! (deck-sub))
+    "download-svgraph" (effects/download-svgraph! (deck-sub))
     "apply-edn"
     (try
       (let [parsed (reader/read-string (.-value (.getElementById js/document "deck-edn")))]

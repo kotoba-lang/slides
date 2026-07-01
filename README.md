@@ -11,7 +11,7 @@ Portable CLJC model for the GFTD workspace surface:
 
 The library keeps those surfaces in one EDN-native workspace graph. Hosts can
 render it as web apps, persist it in Datomic/kotoba, or expose it over XRPC; the
-core stays pure data and pure functions.
+model stays pure data and pure functions.
 
 ## Model
 
@@ -58,6 +58,11 @@ core stays pure data and pure functions.
 空タイトルは `"Imported deck"` にフォールバックします。
 `deck-edn-from-office-bytes` と `pptx-bytes-from-deck-edn` を使うと、
 PPTX bytes → deck EDN → PPTX bytes の編集/export 境界を EDN だけにできます。
+
+The package boundary for this integration is recorded as
+`kotoba-lang/slides-office` under `adapters/office/package-manifest.edn`. The
+current code still lives in `src/slides/office.cljc`; the adapter manifest makes
+the dependency boundary explicit before publication.
 
 ## Validation
 
@@ -109,6 +114,37 @@ boxes and shapes.
 (pptx/write-pptx! "deck.pptx" deck)
 ```
 
+## Causal payload
+
+`slides.causal` writes the same PPTX package with an embedded `ocz/causal.edn`
+part using the `office.embed` convention. The payload carries a slides causal
+graph plus the source deck, so a downstream Office workflow can preserve and
+recover the EDN deck instead of relying only on XML text extraction.
+
+```clojure
+(require '[slides.causal :as causal])
+
+(def bytes (causal/embed-deck-bytes deck {:slides-causal/source "pipeline"}))
+(causal/read-deck-bytes bytes)
+(causal/write-pptx! "deck-causal.pptx" deck)
+```
+
+This is intentionally separate from `slides.pptx`: callers choose whether the
+exported deck should carry Kotoba provenance data.
+
+## SVGraph
+
+`slides.svgraph/presentation` projects a deck into the
+`svgraph-presentation/1` contract. This gives `slides` a direct bridge to the
+same graph surface that `office-style` can emit from Office style metadata.
+
+```clojure
+(require '[slides.svgraph :as svgraph])
+
+(svgraph/presentation deck)
+;;=> {:svgraph/version "svgraph-presentation/1", ...}
+```
+
 ## EDN design system
 
 Reusable design lives in plain EDN under `:slides/design` or the top-level
@@ -144,12 +180,15 @@ master, layout guides, and reusable `:title`, `:subtitle`, `:body`, `:panel`,
 
 ## CLI / npm
 
-The core writer is CLJC. The npm package only provides a thin `node` bin wrapper
+The PPTX writer is CLJC. The npm package only provides a thin `node` bin wrapper
 that invokes the Clojure CLI, so `clojure` must be installed on the host.
 
 ```bash
 clojure -M:cli from-pptx deck.pptx deck.edn
 clojure -M:cli pptx deck.edn deck.pptx
+clojure -M:cli pptx-causal deck.edn deck-causal.pptx
+clojure -M:cli causal-deck deck-causal.pptx recovered.edn
+clojure -M:cli svgraph deck.edn deck.svgraph.edn
 clojure -M:cli update base.pptx deck.edn updated.pptx
 
 npx @kotoba-lang/slides pptx deck.edn deck.pptx
@@ -159,6 +198,25 @@ GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
 `.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,
 and download a fresh editable `.pptx`:
 https://kotoba-lang.github.io/slides/
+
+## Package boundary
+
+`package-manifest.edn` declares `kotoba-lang/slides` as a zero-capability
+`:library` package that provides:
+
+- `:app.kotoba.slides.deck`
+- `:app.kotoba.slides.workspace`
+- `:app.kotoba.slides.pptx`
+- `:app.kotoba.slides.causalPayload`
+- `:app.kotoba.svgraph.presentation`
+
+`kotoba.lock.edn` records the draft workspace surface lock for `slides`,
+`office`, `office-style`, `docs`, `sheets`, `drive`, and `forms`. The Office
+adapter is recorded separately as `kotoba-lang/slides-office`.
+
+These package files are currently `:draft-unpublished`: repo RID, tree CID,
+manifest CID, and signatures are placeholders until the Kotoba package publish
+flow replaces them with real signed CIDs.
 
 ## Test
 
@@ -173,13 +231,14 @@ npm run test:all
 ```
 
 The test suite covers the EDN workspace model, validation, routing, HTML render,
-Office PPTX import, CLI commands, theme handling, PPTX export/update, and
+Office PPTX import, CLI commands, theme handling, PPTX export/update, causal
+payload embedding/readback, svgraph projection, and
 fallback behavior for invalid geometry, colors, fonts, empty decks, malformed
 slide/shape collections, non-finite numeric values, malformed design overrides, and malformed
 workspace/deck/slide/shape EDN structures, including semantic shape warnings for
 malformed design/theme overrides, missing slide ids/titles, missing shape ids, and renderer fallback
-kinds/components across default and deck component definitions, plus malformed
-item rendering fallbacks.
+kinds/components across default and deck component definitions, malformed item
+rendering fallbacks, and package manifest/lock boundary conformance.
 The nbb/CLJS e2e tests start from the built Pages app, import `docs/sample.pptx`, edit a
 browser shape, check the EDN conversion surface, download the browser-generated
 PPTX, and inspect the resulting Open XML slide/theme XML. They also apply an EDN
@@ -188,7 +247,7 @@ editable text, font size, and color in the package XML.
 `npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
 85% aggregate coverage. `npm run coverage:thresholds` then checks the generated
 LCOV report against namespace-level floors, with a 90% aggregate floor, so CI
-blocks broad regressions and local coverage holes in the core model, Office/PPTX
+blocks broad regressions and local coverage holes in the EDN model, Office/PPTX
 bridge, Pages Hiccup shell, and static build pipeline.
 Use `:local:test` when developing `slides`, `office`, and `office-style` from
 sibling checkouts in this workspace.

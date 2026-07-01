@@ -2,8 +2,10 @@
   "CLI entrypoint for slides Office/PPTX conversion."
   (:require [clojure.edn :as edn]
             [clojure.string :as str]
+            [slides.causal :as causal]
             [slides.office :as office]
-            [slides.pptx :as pptx])
+            [slides.pptx :as pptx]
+            [slides.svgraph :as svgraph])
   #?(:clj (:gen-class)))
 
 (defn- usage []
@@ -11,6 +13,9 @@
        "Commands:\n"
        "  from-pptx <base.pptx> <out.edn>            Office PPTX -> deck EDN (CLJC)\n"
        "  pptx <deck.edn> <out.pptx>                  EDN deck -> PPTX\n"
+       "  pptx-causal <deck.edn> <out.pptx>           EDN deck -> PPTX with ocz/causal.edn\n"
+       "  causal-deck <deck.pptx> <out.edn>           read embedded slides deck from PPTX\n"
+       "  svgraph <deck.edn> <out.edn>                EDN deck -> svgraph presentation EDN\n"
        "  update <base.pptx> <deck.edn> <out.pptx>    update workflow using EDN deck\n"))
 
 (defn- read-edn [path]
@@ -43,13 +48,16 @@
     (or (second (re-find #"(.*)\.[^./]+$" (str name)))
         (str name))))
 
+(defn- require-args! [& xs]
+  (when-not (every? some? xs)
+    (throw (ex-info (usage) {}))))
+
 (defn -main [& args]
   #?(:clj
      (try
        (case (first args)
          "from-pptx" (let [[_ file out-path] args]
-                       (when-not (and file out-path)
-                         (throw (ex-info (usage) {})))
+                       (require-args! file out-path)
                        (let [deck (office/deck-from-office-bytes
                                    (read-bytes file)
                                    {:title (deck-title-from-path file)})
@@ -59,12 +67,30 @@
                                :slides/slides (count (:slides/slides deck))
                                :slides/title (:slides/title deck)})))
          "pptx" (let [[_ edn-path out-path] args]
-                  (when-not (and edn-path out-path)
-                    (throw (ex-info (usage) {})))
+                  (require-args! edn-path out-path)
                   (prn (pptx/write-pptx! out-path (read-deck-edn edn-path))))
+         "pptx-causal" (let [[_ edn-path out-path] args]
+                         (require-args! edn-path out-path)
+                         (prn (causal/write-pptx! out-path (read-deck-edn edn-path))))
+         "causal-deck" (let [[_ pptx-path out-path] args]
+                         (require-args! pptx-path out-path)
+                         (let [deck (causal/read-deck-bytes (read-bytes pptx-path))]
+                           (when-not (map? deck)
+                             (throw (ex-info "PPTX does not contain a slides causal deck"
+                                             {:path pptx-path})))
+                           (spit (str out-path) (pr-str deck))
+                           (prn {:slides/path (str out-path)
+                                 :slides/title (:slides/title deck)
+                                 :slides/slides (count (:slides/slides deck))})))
+         "svgraph" (let [[_ edn-path out-path] args]
+                     (require-args! edn-path out-path)
+                     (let [out (str out-path)
+                           projection (svgraph/presentation (read-deck-edn edn-path))]
+                       (spit out (pr-str projection))
+                       (prn {:slides/path out
+                             :svgraph/slides (count (:svgraph/slides projection))})))
          "update" (let [[_ base-path edn-path out-path] args]
-                    (when-not (and base-path edn-path out-path)
-                      (throw (ex-info (usage) {})))
+                    (require-args! base-path edn-path out-path)
                     (prn (pptx/update-pptx! base-path out-path (read-deck-edn edn-path))))
          (println (usage)))
        (catch Exception e

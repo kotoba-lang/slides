@@ -1,0 +1,101 @@
+{:kotoba.lock/version 1
+ :kotoba.lock/status :draft-unpublished
+ :deps
+ [{:dep/name "kotoba-lang/slides"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyreposlides111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "766039a9240f490040e076430723fa60fb8d960d"
+   :dep/tree-cid "bafytreeslides111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestslides111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftslides"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.slides.deck
+                  :app.kotoba.slides.workspace
+                  :app.kotoba.slides.pptx]
+   :dep/consumes []}
+  {:dep/name "kotoba-lang/office"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyrepooffice1111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "bdad7b854e05c15bab7ad4cb7d3321e6a9c42730"
+   :dep/tree-cid "bafytreeoffice1111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestoffice111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftoffice"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.office.graph
+                  :app.kotoba.office.opc]
+   :dep/consumes []}
+  {:dep/name "kotoba-lang/office-style"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyrepoofficestyle1111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "c02bcaa93b0906ca3c2adec1d7da2e2ef502bfac"
+   :dep/tree-cid "bafytreeofficestyle1111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestofficestyle111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftofficestyle"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.officeStyle.styleIr
+                  :app.kotoba.svgraph.presentation]
+   :dep/consumes [:app.kotoba.office.opc]}
+  {:dep/name "kotoba-lang/docs"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyrepodocs11111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "da1badb3aa840d68a53d1823b129ac66f6e49a0c"
+   :dep/tree-cid "bafytreedocs11111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestdocs1111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftdocs"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.docs.document
+                  :app.kotoba.docs.blocks]
+   :dep/consumes [:app.kotoba.slides.deck
+                  :app.kotoba.drive.objectRef
+                  :app.kotoba.sheets.workbook]}
+  {:dep/name "kotoba-lang/sheets"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyreposheets111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "c60855e537393850484ca886181454b9a9d8bea2"
+   :dep/tree-cid "bafytreesheets111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestsheets111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftsheets"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.sheets.workbook
+                  :app.kotoba.sheets.tab
+                  :app.kotoba.sheets.cell]
+   :dep/consumes []}
+  {:dep/name "kotoba-lang/drive"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyrepodrive1111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "bb86849a3b2c804dc66b8ac740c033e6df5afa3d"
+   :dep/tree-cid "bafytreedrive1111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestdrive111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftdrive"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.drive.drive
+                  :app.kotoba.drive.file
+                  :app.kotoba.drive.folder
+                  :app.kotoba.drive.objectRef]
+   :dep/consumes []}
+  {:dep/name "kotoba-lang/forms"
+   :dep/version "0.1.0"
+   :dep/kind :library
+   :dep/repo-rid "bafyrepoforms1111111111111111111111111111111111111111111111"
+   :dep/ref "HEAD"
+   :dep/commit "ec2eb3863a67cf7ff59e3d5b1c2e8334f8831f98"
+   :dep/tree-cid "bafytreeforms1111111111111111111111111111111111111111111111"
+   :dep/manifest-cid "bafymanifestforms111111111111111111111111111111111111111"
+   :dep/signers ["did:key:z6Mkdraftforms"]
+   :dep/capabilities []
+   :dep/provides [:app.kotoba.forms.form
+                  :app.kotoba.forms.field
+                  :app.kotoba.forms.submission]
+   :dep/consumes []}]}

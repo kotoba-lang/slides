@@ -53,8 +53,9 @@
 
 (defn slide-thumb [idx slide selected?]
   [:button.thumb {:class (when selected? "active") :data-slide idx :type "button"}
+   [:small (inc idx)]
    [:span (:slides/title slide (:slides/id slide))]
-   [:small (inc idx)]])
+   [:em (str (count (:slides/shapes slide)))]])
 
 (defn slide-list [db]
   (let [ss (vec (:slides/slides (:deck db)))
@@ -181,9 +182,14 @@
 
 (defn workspace [db]
   (let [mode (:mode db)
-        deck (:deck db)]
+        deck (:deck db)
+        slide (selected-slide db)]
     [:section.workspace
-     (mode-tabs mode)
+     [:div.workspace-head
+      [:div
+       [:h2 (:slides/title deck "Untitled deck")]
+       [:p (str (:slides/title slide (:slides/id slide "Slide")))]]
+      (mode-tabs mode)]
      [:div#visual-pane.canvas-shell {:hidden (not= :visual mode)}
       (canvas db)]
      [:div#edn-pane {:hidden (not= :edn mode)}
@@ -204,26 +210,41 @@
         slide (selected-slide db)
         shape-count (count (:slides/shapes slide))]
     [:aside
+     [:div.aside-title "Slides"]
      [:div.rail-actions
       [:button#add-slide {:data-act "add-slide" :type "button"} "Add"]
       [:button#duplicate-slide {:data-act "duplicate-slide" :type "button"} "Copy"]]
      (slide-list db)
-     [:div#status.status (str n " slides / " shape-count " shapes")]]))
+     [:div#status.status
+      [:strong (str n)]
+      [:span "slides"]
+      [:strong (str shape-count)]
+      [:span "shapes"]]]))
 
-(defn toolbar []
+(defn toolbar [db]
+  (let [deck (:deck db)
+        slide-count (count (:slides/slides deck))]
   [:div.toolbar
-   [:h1 "kotoba-lang/slides"]
-   [:button#new-deck {:data-act "new-deck" :type "button"} "New"]
-   [:label.file-label "Open EDN"
-    [:input#edn-file {:type "file" :accept ".edn,text/plain"}]]
-   [:label.file-label "Open PPTX"
-    [:input#pptx-file {:type "file" :accept ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"}]]
-   [:button#download-edn {:data-act "download-edn" :type "button"} "Download EDN"]
-   [:button#download-pptx.primary {:data-act "download-pptx" :type "button"} "Download PPTX"]
-   [:a {:href "https://github.com/kotoba-lang/slides"} "GitHub"]])
+   [:div.brand
+    [:h1 "kotoba-lang/slides"]
+    [:p "EDN-native deck editor"]]
+   [:div.deck-meta
+    [:span (:slides/id deck "deck")]
+    [:span (str slide-count " slides")]
+    [:span "causal PPTX"]]
+   [:div.toolbar-actions
+    [:button#new-deck {:data-act "new-deck" :type "button"} "New"]
+    [:label.file-label "Open EDN"
+     [:input#edn-file {:type "file" :accept ".edn,text/plain"}]]
+    [:label.file-label "Open PPTX"
+     [:input#pptx-file {:type "file" :accept ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"}]]
+    [:button#download-edn {:data-act "download-edn" :type "button"} "EDN"]
+    [:button#download-svgraph {:data-act "download-svgraph" :type "button"} "SVGraph"]
+    [:button#download-pptx.primary {:data-act "download-pptx" :type "button"} "PPTX + causal"]
+    [:a.github {:href "https://github.com/kotoba-lang/slides"} "GitHub"]]]))
 
 (defn root [db]
   [:div {:class (sstyle/class-name :app)}
-   [:header.top (toolbar)]
+   [:header.top (toolbar db)]
    [:main (rail db) (workspace db)]
    [:section#properties.props (properties-panel db)]])

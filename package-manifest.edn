@@ -1,0 +1,24 @@
+{:kotoba.package/name "kotoba-lang/slides"
+ :kotoba.package/version "0.1.0"
+ :kotoba.package/status :draft-unpublished
+ :kotoba.package/kind :library
+ :kotoba.package/repo-rid "bafyreposlides111111111111111111111111111111111111111111111"
+ :kotoba.package/source
+ {:git-commit "766039a9240f490040e076430723fa60fb8d960d"
+  :tree-cid "bafytreeslides111111111111111111111111111111111111111111111"
+  :manifest-cid "bafymanifestslides111111111111111111111111111111111111111"}
+ :kotoba.package/build
+ {:deterministic true
+  :profile-version 1}
+ :kotoba.package/capabilities []
+ :kotoba.package/provides [:app.kotoba.slides.deck
+                           :app.kotoba.slides.workspace
+                           :app.kotoba.slides.pptx
+                           :app.kotoba.slides.causalPayload
+                           :app.kotoba.svgraph.presentation]
+ :kotoba.package/consumes []
+ :kotoba.package/dependencies []
+ :kotoba.package/signatures
+ [{:did "did:key:z6Mkdraftslides"
+   :alg :ed25519
+   :sig "draft-signature-replace-before-publish"}]}

@@ -10,6 +10,7 @@
   (:require [cljs.reader :as reader]
             [clojure.string :as str]
             [slides.pptx :as pptx]
+            [slides.svgraph :as svgraph]
             [slides.web.sample :as sample]))
 
 (declare read-pptx-entries pptx-entries->deck)
@@ -55,6 +56,11 @@
     (set! (.-download a) "deck.pptx")
     (.click a)
     (js/setTimeout #(.revokeObjectURL js/URL url) 1000)))
+
+(defn download-svgraph! [deck]
+  (download! "deck.svgraph.edn"
+             "application/edn;charset=utf-8"
+             (pr-str (svgraph/presentation deck))))
 
 ;; ---------------------------------------------------------------------------
 ;; ZIP writer (stored + deflate-raw via DecompressionStream for read)
@@ -126,8 +132,81 @@
       (js/Blob. (clj->js (concat (array-seq chunks) (array-seq central) [end]))
                 #js {:type "application/vnd.openxmlformats-officedocument.presentationml.presentation"}))))
 
+(def payload-part "ocz/causal.edn")
+
+(defn deck-graph [deck]
+  {:slides-causal/version 1
+   :slides-causal/generator "kotoba-lang/slides"
+   :slides-causal/deck-id (:slides/id deck)
+   :slides-causal/title (:slides/title deck)
+   :slides-causal/deck deck
+   :slides-causal/slides
+   (mapv (fn [idx slide]
+           {:slides-causal/index idx
+            :slides-causal/id (:slides/id slide)
+            :slides-causal/title (:slides/title slide)
+            :slides-causal/shape-count (count (filter map? (:slides/shapes slide)))})
+         (range)
+         (pptx/deck-slides deck))})
+
+(defn causal-payload [deck]
+  {:office/version 1
+   :office/generator "kotoba-lang/office"
+   :office/graph (deck-graph deck)})
+
+(defn attr-present? [xml k v]
+  (boolean (re-find (js/RegExp. (str "\\b" k "=(['\"])" v "\\1"))
+                    (or xml ""))))
+
+(defn ensure-content-type [xml]
+  (cond
+    (str/blank? (or xml ""))
+    "<Types><Default Extension=\"edn\" ContentType=\"application/edn\"/></Types>"
+
+    (attr-present? xml "Extension" "edn") xml
+    (re-find #"<Types\b([^>]*)/>" (or xml ""))
+    (str/replace xml #"<Types\b([^>]*)/>"
+                 "<Types$1><Default Extension=\"edn\" ContentType=\"application/edn\"/></Types>")
+    (str/includes? (or xml "") "</Types>")
+    (str/replace xml #"</Types>\s*$"
+                 "<Default Extension=\"edn\" ContentType=\"application/edn\"/></Types>")
+    :else xml))
+
+(defn ensure-root-rels [xml]
+  (cond
+    (str/blank? (or xml ""))
+    (str "<Relationships><Relationship Id=\"rIdKotobaOffice\" "
+         "Type=\"https://kotoba-lang.org/office/relationship/causal-edn\" "
+         "Target=\"" payload-part "\"/></Relationships>")
+
+    (attr-present? xml "Id" "rIdKotobaOffice") xml
+    (re-find #"<Relationships\b([^>]*)/>" (or xml ""))
+    (str/replace xml #"<Relationships\b([^>]*)/>"
+                 (str "<Relationships$1><Relationship Id=\"rIdKotobaOffice\" "
+                      "Type=\"https://kotoba-lang.org/office/relationship/causal-edn\" "
+                      "Target=\"" payload-part "\"/></Relationships>"))
+    (str/includes? (or xml "") "</Relationships>")
+    (str/replace xml #"</Relationships>\s*$"
+                 (str "<Relationship Id=\"rIdKotobaOffice\" "
+                      "Type=\"https://kotoba-lang.org/office/relationship/causal-edn\" "
+                      "Target=\"" payload-part "\"/></Relationships>"))
+    :else xml))
+
+(defn update-file [files path f]
+  (mapv (fn [[name text]]
+          (if (= name path)
+            [name (f text)]
+            [name text]))
+        files))
+
+(defn causal-pptx-files [deck]
+  (-> (pptx/pptx-files deck)
+      (update-file "[Content_Types].xml" ensure-content-type)
+      (update-file "_rels/.rels" ensure-root-rels)
+      (conj [payload-part (pr-str (causal-payload deck))])))
+
 (defn pptx-blob [deck]
-  (zip-blob (pptx/pptx-files deck)))
+  (zip-blob (causal-pptx-files deck)))
 
 ;; ---------------------------------------------------------------------------
 ;; file import wrappers (read file → parsed deck | error message)
@@ -345,7 +424,7 @@
        :slides/color (if (zero? idx) "17202A" "334155")})
     texts)))
 
-(defn pptx-entries->deck [entries file-name]
+(defn drawingml-entries->deck [entries file-name]
   (let [presentation (entries "ppt/presentation.xml")
         core (entries "docProps/core.xml")
         size (slide-size-from-presentation presentation)
@@ -377,6 +456,22 @@
                                :slides/title title
                                :slides/shapes (text-shapes-from-slide [title])}])}
            size
-           (let [d (imported-design entries)]
-             (when (seq d)
-               {:slides/design d})))))
+               (let [d (imported-design entries)]
+                 (when (seq d)
+                   {:slides/design d})))))
+
+(defn causal-deck-from-entries [entries]
+  (try
+    (some-> (entries payload-part)
+            reader/read-string
+            :office/graph
+            :slides-causal/deck)
+    (catch :default _
+      nil)))
+
+(defn pptx-entries->deck [entries file-name]
+  (or (some-> (causal-deck-from-entries entries)
+              (assoc-in [:slides/import :slides/source] file-name)
+              (assoc-in [:slides/import :slides/format] :pptx)
+              (assoc-in [:slides/import :slides/text-extraction] :causal-edn))
+      (drawingml-entries->deck entries file-name)))

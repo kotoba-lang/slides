@@ -1,0 +1,31 @@
+{:kotoba.package/name "kotoba-lang/slides-office"
+ :kotoba.package/version "0.1.0"
+ :kotoba.package/status :draft-unpublished
+ :kotoba.package/kind :adapter
+ :kotoba.package/repo-rid "bafyreposlidesoffice111111111111111111111111111111111111111"
+ :kotoba.package/source
+ {:git-commit "766039a9240f490040e076430723fa60fb8d960d"
+  :tree-cid "bafytreeslidesoffice111111111111111111111111111111111111111"
+  :manifest-cid "bafymanifestslidesoffice11111111111111111111111111111111"}
+ :kotoba.package/build
+ {:deterministic true
+  :profile-version 1}
+ :kotoba.package/capabilities []
+ :kotoba.package/provides [:app.kotoba.slides.officeImport]
+ :kotoba.package/consumes [:app.kotoba.slides.deck
+                           :app.kotoba.office.graph
+                           :app.kotoba.officeStyle.styleIr]
+ :kotoba.package/dependencies
+ [{:dep/name "kotoba-lang/slides"
+   :dep/version "0.1.0"
+   :dep/kind :library}
+  {:dep/name "kotoba-lang/office"
+   :dep/version "0.1.0"
+   :dep/kind :library}
+  {:dep/name "kotoba-lang/office-style"
+   :dep/version "0.1.0"
+   :dep/kind :library}]
+ :kotoba.package/signatures
+ [{:did "did:key:z6Mkdraftslidesoffice"
+   :alg :ed25519
+   :sig "draft-signature-replace-before-publish"}]}
