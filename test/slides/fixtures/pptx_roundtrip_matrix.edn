@@ -122,9 +122,21 @@
 
   {:id :powerpoint/chart
    :source :powerpoint-like
-   :support :target
-   :features #{:chart :embedded-workbook}
-   :gap "Chart parts and embedded workbook relationships are not projected into deck EDN yet."}
+   :support :guarded
+   :features #{:chart :placeholder}
+   :input
+   {:kind :entries
+    :entries {"[Content_Types].xml" "<Types/>"
+              "_rels/.rels" "<Relationships/>"
+              "docProps/core.xml" "<cp:coreProperties><dc:title>Chart Deck</dc:title></cp:coreProperties>"
+              "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+              "ppt/slides/slide1.xml" "<p:sld><p:cSld><p:spTree><p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"12\" name=\"Revenue Chart\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x=\"914400\" y=\"1371600\"/><a:ext cx=\"5486400\" cy=\"2743200\"/></p:xfrm><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"rId2\"/></a:graphicData></a:graphic></p:graphicFrame></p:spTree></p:cSld></p:sld>"
+              "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+              "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"
+              "ppt/charts/chart1.xml" "<c:chartSpace><c:chart><c:title><c:tx><c:rich><a:p><a:r><a:t>Revenue</a:t></a:r></a:p></c:rich></c:tx></c:title></c:chart></c:chartSpace>"}}
+   :expect {:slides 1
+            :text ["Revenue Chart"]
+            :source-kinds [:drawingml/chart]}}
 
   {:id :keynote/master-placeholders
    :source :keynote-like

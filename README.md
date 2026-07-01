@@ -247,7 +247,7 @@ editable text, font size, and color in the package XML.
 `test/slides/fixtures/pptx_roundtrip_matrix.edn` records the real-world PPTX
 roundtrip matrix. `:guarded` rows run in CI through Office import -> causal PPTX
 export -> Office re-import; `:target` rows document remaining compatibility gaps
-such as grouped shapes, charts, embedded workbooks, and placeholder semantics.
+such as grouped shapes, chart data/workbooks, and placeholder semantics.
 `npm run coverage` runs Cloverage against the JVM/CLJC namespaces and fails below
 85% aggregate coverage. `npm run coverage:thresholds` then checks the generated
 LCOV report against namespace-level floors, with a 90% aggregate floor, so CI
