@@ -9,6 +9,7 @@
             [presentationml.core :as pml]
             [slides.design :as design])
   #?(:clj (:import [java.io ByteArrayInputStream ByteArrayOutputStream FileOutputStream]
+                   [java.util.regex Matcher]
                    [java.util.zip ZipEntry ZipInputStream ZipOutputStream])))
 
 (def emu-per-inch 914400)
@@ -28,6 +29,10 @@
       (str/replace ">" "&gt;")
       (str/replace "\"" "&quot;")
       (str/replace "'" "&apos;")))
+
+(defn- replacement-literal [s]
+  #?(:clj (Matcher/quoteReplacement (str s))
+     :cljs (str s)))
 
 (defn- finite-number? [x]
   (and (number? x)
@@ -476,16 +481,18 @@
         row-pattern (re-pattern (str "<row\\b(?=[^>]*\\br=\"" row "\")[\\s\\S]*?</row>"))]
     (cond
       (re-find cell-pattern sheet-xml)
-      (str/replace-first sheet-xml cell-pattern cell-xml)
+      (str/replace-first sheet-xml cell-pattern (replacement-literal cell-xml))
 
       (and row (re-find row-pattern sheet-xml))
       (str/replace-first sheet-xml row-pattern
                          (fn [row-xml]
-                           (str/replace row-xml #"</row>\s*$" (str cell-xml "</row>"))))
+                           (str/replace row-xml #"</row>\s*$"
+                                        (fn [_] (str cell-xml "</row>")))))
 
       (str/includes? sheet-xml "</sheetData>")
       (str/replace-first sheet-xml #"</sheetData>"
-                         (str "<row r=\"" row "\">" cell-xml "</row></sheetData>"))
+                         (replacement-literal
+                          (str "<row r=\"" row "\">" cell-xml "</row></sheetData>")))
 
       :else sheet-xml)))
 
@@ -559,11 +566,11 @@
         val (str "<c:val><c:numRef>" (num-cache values) "</c:numRef></c:val>")]
     (-> block
         (cond-> (re-find #"<c:tx\b[\s\S]*?</c:tx>" block)
-          (str/replace-first #"<c:tx\b[\s\S]*?</c:tx>" tx))
+          (str/replace-first #"<c:tx\b[\s\S]*?</c:tx>" (replacement-literal tx)))
         (cond-> (re-find #"<c:cat\b[\s\S]*?</c:cat>" block)
-          (str/replace-first #"<c:cat\b[\s\S]*?</c:cat>" cat))
+          (str/replace-first #"<c:cat\b[\s\S]*?</c:cat>" (replacement-literal cat)))
         (cond-> (re-find #"<c:val\b[\s\S]*?</c:val>" block)
-          (str/replace-first #"<c:val\b[\s\S]*?</c:val>" val)))))
+          (str/replace-first #"<c:val\b[\s\S]*?</c:val>" (replacement-literal val))))))
 
 (defn- patch-chart-xml [chart-xml chart-data]
   (if-let [series (seq (chart-series-from-rows chart-data))]
@@ -603,7 +610,8 @@
 (defn- patch-or-insert-xfrm [block shape]
   (let [xfrm (shape-xfrm shape)]
     (if (re-find #"<a:xfrm\b[\s\S]*?</a:xfrm>" block)
-      (str/replace-first block #"<a:xfrm\b[\s\S]*?</a:xfrm>" xfrm)
+      (str/replace-first block #"<a:xfrm\b[\s\S]*?</a:xfrm>"
+                         (replacement-literal xfrm))
       (str/replace-first block #"<p:spPr\b([^>]*)>"
                          (str "<p:spPr$1>" xfrm)))))
 
@@ -611,7 +619,8 @@
   (if (contains? shape :slides/text)
     (if (re-find #"<a:t\b[^>]*>[\s\S]*?</a:t>" block)
       (str/replace-first block #"<a:t\b[^>]*>[\s\S]*?</a:t>"
-                         (str "<a:t>" (esc (:slides/text shape)) "</a:t>"))
+                         (replacement-literal
+                          (str "<a:t>" (esc (:slides/text shape)) "</a:t>")))
       block)
     block))
 
@@ -641,9 +650,10 @@
   (if (:slides/fill shape)
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" block)
       (str/replace-first block #"<a:solidFill\b[\s\S]*?</a:solidFill>"
-                         (str "<a:solidFill><a:srgbClr val=\""
-                              (hex-color (:slides/fill shape) "EAF0F8")
-                              "\"/></a:solidFill>"))
+                         (replacement-literal
+                          (str "<a:solidFill><a:srgbClr val=\""
+                               (hex-color (:slides/fill shape) "EAF0F8")
+                               "\"/></a:solidFill>")))
       block)
     block))
 
@@ -651,9 +661,10 @@
   (if (:slides/line shape)
     (if (re-find #"<a:ln\b[\s\S]*?</a:ln>" block)
       (str/replace-first block #"<a:ln\b[\s\S]*?</a:ln>"
-                         (str "<a:ln><a:solidFill><a:srgbClr val=\""
-                              (hex-color (:slides/line shape) "496B9A")
-                              "\"/></a:solidFill></a:ln>"))
+                         (replacement-literal
+                          (str "<a:ln><a:solidFill><a:srgbClr val=\""
+                               (hex-color (:slides/line shape) "496B9A")
+                               "\"/></a:solidFill></a:ln>")))
       block)
     block))
 

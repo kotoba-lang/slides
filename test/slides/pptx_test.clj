@@ -289,6 +289,32 @@
     (is (re-find #"ABCDEF" slide))
     (is (not (contains? entries "ppt/theme/theme1.xml")))))
 
+(deftest update-pptx-patches-literal-dollar-text
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Old title</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (zip-bytes base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Title"
+                                                :slides/shape :text
+                                                :slides/text "Revenue is $1.2M & growing"
+                                                :slides/x 1
+                                                :slides/y 1
+                                                :slides/w 4
+                                                :slides/h 1
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp
+                                                               :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"Revenue is \$1\.2M &amp; growing" slide))))
+
 (deftest update-pptx-preserves-group-placeholder-chart-and-workbook-parts
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
