@@ -14,6 +14,7 @@
             [reagent.dom :as rdom]
             [re-frame.core :as rf]
             [re-frame.db :as rfdb]
+            [slides.design :as design]
             [slides.web.events :as events]
             [slides.web.views :as views]
             [slides.web.effects :as effects]))
@@ -68,6 +69,56 @@
 (defn- zoom-sub []
   @(rf/subscribe [:slides/zoom]))
 
+(defonce ^:private drag-state (atom nil))
+
+(defn- round2 [x]
+  (/ (js/Math.round (* x 100)) 100))
+
+(defn- selected-slide []
+  (let [deck (deck-sub)
+        idx (or (:selected-slide @rfdb/app-db) 0)]
+    (get (vec (:slides/slides deck)) idx)))
+
+(defn- shape-at [idx]
+  (get (vec (:slides/shapes (selected-slide))) idx))
+
+(defn- start-drag! [event shape-el]
+  (when (= 0 (.-button event))
+    (let [shape-idx (js/parseInt (.getAttribute shape-el "data-shape") 10)
+          canvas (.getElementById js/document "canvas")
+          rect (.getBoundingClientRect canvas)
+          deck (deck-sub)
+          shape (shape-at shape-idx)
+          resolved (design/resolve-shape deck shape)
+          deck-width (or (:slides/width deck) 10)
+          deck-height (or (:slides/height deck) 5.625)]
+      (.preventDefault event)
+      (rf/dispatch [:slides/select-shape shape-idx])
+      (reset! drag-state
+              {:shape-idx shape-idx
+               :start-client-x (.-clientX event)
+               :start-client-y (.-clientY event)
+               :start-x (or (:slides/x resolved) 0)
+               :start-y (or (:slides/y resolved) 0)
+               :shape-w (or (:slides/w resolved) 1)
+               :shape-h (or (:slides/h resolved) 1)
+               :deck-width deck-width
+               :deck-height deck-height
+               :canvas-width (.-width rect)
+               :canvas-height (.-height rect)}))))
+
+(defn- drag! [event]
+  (when-let [{:keys [shape-idx start-client-x start-client-y start-x start-y
+                     shape-w shape-h deck-width deck-height canvas-width canvas-height]} @drag-state]
+    (let [dx (* (- (.-clientX event) start-client-x) (/ deck-width canvas-width))
+          dy (* (- (.-clientY event) start-client-y) (/ deck-height canvas-height))
+          max-x (max 0 (- deck-width shape-w))
+          max-y (max 0 (- deck-height shape-h))
+          x (min max-x (max 0 (+ start-x dx)))
+          y (min max-y (max 0 (+ start-y dy)))]
+      (.preventDefault event)
+      (rf/dispatch [:slides/set-shape-position shape-idx (round2 x) (round2 y)]))))
+
 (defn- act-handler [act]
   (case act
     "new-deck"        (rf/dispatch [:slides/new-deck])
@@ -111,6 +162,13 @@
                                          (js/parseInt (.getAttribute shape-el "data-shape") 10)]))
                          (when (= "canvas" (.-id target))
                            (rf/dispatch [:slides/select-shape nil])))))
+  (.addEventListener js/document "pointerdown"
+                     (fn [event]
+                       (when-let [shape-el (.closest (.-target event) "[data-shape]")]
+                         (start-drag! event shape-el))))
+  (.addEventListener js/document "pointermove" drag!)
+  (.addEventListener js/document "pointerup" #(reset! drag-state nil))
+  (.addEventListener js/document "pointercancel" #(reset! drag-state nil))
   (.addEventListener js/document "change"
                      (fn [event]
                        (let [target (.-target event)]

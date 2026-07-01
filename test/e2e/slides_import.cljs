@@ -85,6 +85,18 @@
 (defn set-input-files! [page selector file]
   (invoke (locator page selector) "setInputFiles" file))
 
+(defn drag! [page selector dx dy]
+  (then (invoke (locator page selector) "boundingBox")
+        (fn [box]
+          (let [mouse (aget page "mouse")
+                x (+ (.-x box) (/ (.-width box) 2))
+                y (+ (.-y box) (/ (.-height box) 2))]
+            (chain nil
+                   (fn [_] (invoke mouse "move" x y))
+                   (fn [_] (invoke mouse "down"))
+                   (fn [_] (invoke mouse "move" (+ x dx) (+ y dy) #js {:steps 5}))
+                   (fn [_] (invoke mouse "up")))))))
+
 (defn unzip-text [pptx-path entry-path]
   (execFileSync "unzip"
                 #js ["-p" pptx-path entry-path]
@@ -205,8 +217,11 @@
                      (fn [_] (fill! page "#deck-edn" deck-edn))
                      (fn [_] (click! page "#apply-edn"))
                      (fn [_] (wait-text! page "[data-shape=\"0\"]" #"EDN Component Title"))
+                     (fn [_] (drag! page "[data-shape=\"0\"]" 80 40))
                      (fn [_] (click! page "#mode-edn"))
                      (fn [_] (wait-value! page "#deck-edn" #":slides/component :hero"))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/x "))
+                     (fn [_] (wait-value! page "#deck-edn" #":slides/y "))
                      (fn [_] (save-download! page "#download-pptx" out))
                      (fn [_]
                        (let [slide-xml (unzip-text out "ppt/slides/slide1.xml")]

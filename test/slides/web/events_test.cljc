@@ -110,6 +110,14 @@
   (let [shape @(rf/subscribe [:slides/selected-shape])]
     (is (= 2.5 (:slides/x (design/resolve-shape @(rf/subscribe [:slides/deck]) shape))))))
 
+(deftest set-shape-position-test
+  (rf/dispatch [:slides/select-slide 0])
+  (rf/dispatch [:slides/select-shape 0])
+  (rf/dispatch [:slides/set-shape-position 0 1.25 2.5])
+  (let [shape @(rf/subscribe [:slides/selected-shape])]
+    (is (= 1.25 (:slides/x shape)))
+    (is (= 2.5 (:slides/y shape)))))
+
 (deftest selected-shape-noop-transitions-test
   (let [before @(rf/subscribe [:slides/db])]
     (rf/dispatch [:slides/delete-shape])
