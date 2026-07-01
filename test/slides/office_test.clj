@@ -245,6 +245,10 @@
     (is (= 1.0 (:slides/x text)))
     (is (= 0.5 (:slides/y text)))
     (is (= 3.0 (:slides/w text)))
+    (is (= {:ooxml/part "ppt/slides/slide1.xml"
+            :ooxml/kind :p/sp
+            :ooxml/index 0}
+           (:ooxml/source text)))
     (is (= 32.0 (:slides/font-size text)))
     (is (= "123456" (:slides/color text)))
     (is (= :rect (:slides/shape rect)))

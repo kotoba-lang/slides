@@ -222,3 +222,44 @@
       (finally
         (.delete base)
         (.delete out)))))
+
+(deftest update-pptx-patches-imported-ooxml-parts
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"><a:solidFill><a:srgbClr val=\"111111\"/></a:solidFill></a:rPr><a:t>Old title</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/media/image1.png" "PNG-BYTES"}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Title"
+                                                :slides/shape :text
+                                                :slides/text "Patched title"
+                                                :slides/x 1.5
+                                                :slides/y 2.0
+                                                :slides/w 3.0
+                                                :slides/h 1.25
+                                                :slides/font-size 32
+                                                :slides/color "ABCDEF"
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp
+                                                               :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (is (= "PNG-BYTES" (entries "ppt/media/image1.png")))
+    (is (re-find #"Patched title" slide))
+    (is (re-find #"off x=\"1371600\" y=\"1828800\"" slide))
+    (is (re-find #"ext cx=\"2743200\" cy=\"1143000\"" slide))
+    (is (re-find #"sz=\"3200\"" slide))
+    (is (re-find #"ABCDEF" slide))
+    (is (not (contains? entries "ppt/theme/theme1.xml")))))

@@ -43,7 +43,8 @@
     (:drawingml/color shape) (assoc :slides/color (:drawingml/color shape))
     (:drawingml/fill shape) (assoc :slides/fill (:drawingml/fill shape))
     (:drawingml/line shape) (assoc :slides/line (:drawingml/line shape))
-    (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))))
+    (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))
+    (:ooxml/source shape) (assoc :ooxml/source (:ooxml/source shape))))
 
 (defn- slide->slides [slide]
   {:slides/id (:presentationml/id slide)

@@ -194,6 +194,10 @@ clojure -M:cli update base.pptx deck.edn updated.pptx
 npx @kotoba-lang/slides pptx deck.edn deck.pptx
 ```
 
+When imported shapes carry `:ooxml/source` locators, `update` patches matching
+source slide XML parts in the base PPTX and preserves unrelated package entries.
+Decks without locators still fall back to normalized PPTX regeneration.
+
 GitHub Pages includes a browser-only EDN/PPTX editor. It can open `.edn`, open
 `.pptx` in the browser, convert text/theme metadata into deck EDN, edit the deck,
 and download a fresh editable `.pptx`:

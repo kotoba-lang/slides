@@ -8,8 +8,8 @@
             [ooxml.core :as ooxml]
             [presentationml.core :as pml]
             [slides.design :as design])
-  #?(:clj (:import [java.io ByteArrayOutputStream FileOutputStream]
-                   [java.util.zip ZipEntry ZipOutputStream])))
+  #?(:clj (:import [java.io ByteArrayInputStream ByteArrayOutputStream FileOutputStream]
+                   [java.util.zip ZipEntry ZipInputStream ZipOutputStream])))
 
 (def emu-per-inch 914400)
 (def default-width-in 10)
@@ -332,6 +332,43 @@
      (.write zip (.getBytes (str content) "UTF-8"))
      (.closeEntry zip)))
 
+#?(:clj
+   (defn- add-entry-bytes! [^ZipOutputStream zip path bytes]
+     (.putNextEntry zip (ZipEntry. path))
+     (.write zip ^bytes bytes)
+     (.closeEntry zip)))
+
+#?(:clj
+   (defn- zip-entries-bytes [bytes]
+     (with-open [zip (ZipInputStream. (ByteArrayInputStream. bytes))]
+       (loop [entries {}]
+         (if-let [entry (.getNextEntry zip)]
+           (let [buf (byte-array 8192)
+                 out (ByteArrayOutputStream.)]
+             (loop []
+               (let [n (.read zip buf)]
+                 (when (pos? n)
+                   (.write out buf 0 n)
+                   (recur))))
+             (recur (assoc entries (.getName entry) (.toByteArray out))))
+           entries)))))
+
+#?(:clj
+   (defn- zip-bytes-from-entries [entries]
+     (let [baos (ByteArrayOutputStream.)]
+       (with-open [zip (ZipOutputStream. baos)]
+         (doseq [[path content] entries]
+           (add-entry-bytes! zip path content)))
+       (.toByteArray baos))))
+
+(defn- text-entry-bytes [s]
+  #?(:clj (.getBytes (str s) "UTF-8")
+     :cljs s))
+
+(defn- bytes->text [bytes]
+  #?(:clj (String. ^bytes bytes "UTF-8")
+     :cljs bytes))
+
 (defn pptx-bytes
   "Returns a JVM byte array containing a .pptx generated from an EDN deck map."
   [deck]
@@ -344,15 +381,140 @@
      :cljs
      (throw (ex-info "pptx byte writing requires a host zip implementation" {:feature :slides/pptx}))))
 
+(defn- xml-elements [xml tag]
+  (re-seq (re-pattern (str "<" tag "\\b[\\s\\S]*?</" tag ">")) (or xml "")))
+
+(defn- replace-at [s old new]
+  (let [idx (str/index-of s old)]
+    (if (nil? idx)
+      s
+      (str (subs s 0 idx) new (subs s (+ idx (count old)))))))
+
+(defn- replace-nth-element [xml tag idx f]
+  (let [blocks (vec (xml-elements xml tag))]
+    (if-let [block (get blocks idx)]
+      (replace-at xml block (f block))
+      xml)))
+
+(defn- patch-or-insert-xfrm [block shape]
+  (let [xfrm (shape-xfrm shape)]
+    (if (re-find #"<a:xfrm\b[\s\S]*?</a:xfrm>" block)
+      (str/replace-first block #"<a:xfrm\b[\s\S]*?</a:xfrm>" xfrm)
+      (str/replace-first block #"<p:spPr\b([^>]*)>"
+                         (str "<p:spPr$1>" xfrm)))))
+
+(defn- patch-text [block shape]
+  (if (contains? shape :slides/text)
+    (if (re-find #"<a:t\b[^>]*>[\s\S]*?</a:t>" block)
+      (str/replace-first block #"<a:t\b[^>]*>[\s\S]*?</a:t>"
+                         (str "<a:t>" (esc (:slides/text shape)) "</a:t>"))
+      block)
+    block))
+
+(defn- patch-font-size [block shape]
+  (if-let [size (:slides/font-size shape)]
+    (let [sz (* 100 (long (positive-numeric size 24)))]
+      (if (re-find #"<a:rPr\b[^>]*\bsz=\"[^\"]*\"" block)
+        (str/replace-first block #"(<a:rPr\b[^>]*\bsz=\")[^\"]*(\")"
+                           (str "$1" sz "$2"))
+        block))
+    block))
+
+(defn- patch-color-val [block color]
+  (if color
+    (if (re-find #"<a:srgbClr\b[^>]*\bval=\"[0-9A-Fa-f]{6}\"" block)
+      (str/replace-first block #"(<a:srgbClr\b[^>]*\bval=\")[0-9A-Fa-f]{6}(\")"
+                         (str "$1" (hex-color color "17202A") "$2"))
+      block)
+    block))
+
+(defn- patch-text-color [block shape]
+  (if (:slides/color shape)
+    (patch-color-val block (:slides/color shape))
+    block))
+
+(defn- patch-solid-fill [block shape]
+  (if (:slides/fill shape)
+    (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" block)
+      (str/replace-first block #"<a:solidFill\b[\s\S]*?</a:solidFill>"
+                         (str "<a:solidFill><a:srgbClr val=\""
+                              (hex-color (:slides/fill shape) "EAF0F8")
+                              "\"/></a:solidFill>"))
+      block)
+    block))
+
+(defn- patch-line-fill [block shape]
+  (if (:slides/line shape)
+    (if (re-find #"<a:ln\b[\s\S]*?</a:ln>" block)
+      (str/replace-first block #"<a:ln\b[\s\S]*?</a:ln>"
+                         (str "<a:ln><a:solidFill><a:srgbClr val=\""
+                              (hex-color (:slides/line shape) "496B9A")
+                              "\"/></a:solidFill></a:ln>"))
+      block)
+    block))
+
+(defn- patch-shape-block [block shape]
+  (-> block
+      (patch-or-insert-xfrm shape)
+      (patch-text shape)
+      (patch-font-size shape)
+      (patch-text-color shape)
+      (patch-solid-fill shape)
+      (patch-line-fill shape)))
+
+(defn- source-tag [kind]
+  (case kind
+    :p/sp "p:sp"
+    :p/pic "p:pic"
+    :p/graphicFrame "p:graphicFrame"
+    :a/tbl "a:tbl"
+    :fallback/text nil
+    nil))
+
+(defn- patch-slide-xml [xml shapes]
+  (reduce (fn [acc shape]
+            (let [source (:ooxml/source shape)
+                  tag (source-tag (:ooxml/kind source))
+                  idx (:ooxml/index source)]
+              (if (and tag (integer? idx))
+                (replace-nth-element acc tag idx #(patch-shape-block % shape))
+                acc)))
+          xml
+          shapes))
+
+(defn- patchable-shapes [deck]
+  (->> (deck-slides deck)
+       (mapcat :slides/shapes)
+       (filter #(get-in % [:ooxml/source :ooxml/part]))
+       vec))
+
+(defn- patch-base-entries [entries deck]
+  (let [by-part (group-by #(get-in % [:ooxml/source :ooxml/part])
+                          (patchable-shapes deck))]
+    (reduce (fn [acc [part shapes]]
+              (if-let [bytes (get acc part)]
+                (let [patched (patch-slide-xml (bytes->text bytes) shapes)]
+                  (assoc acc part (text-entry-bytes patched)))
+                acc))
+            entries
+            by-part)))
+
 (defn update-pptx-bytes
   "Returns .pptx bytes for deck EDN.
 
-  The current writer emits a complete normalized PPTX package from the supplied
-  deck data. The base bytes are accepted so callers can use the same command
-  shape for create/update workflows while the CLJC writer grows richer patch
-  support."
-  [_base-bytes deck]
-  (pptx-bytes deck))
+  If imported shapes carry :ooxml/source locators, this patches the matching
+  source slide XML parts in the base package and preserves unrelated OOXML
+  entries. Decks without locators still fall back to normalized regeneration."
+  [base-bytes deck]
+  #?(:clj
+     (let [patches (patchable-shapes deck)]
+       (if (seq patches)
+         (-> (zip-entries-bytes base-bytes)
+             (patch-base-entries deck)
+             zip-bytes-from-entries)
+         (pptx-bytes deck)))
+     :cljs
+     (pptx-bytes deck)))
 
 (defn write-pptx!
   "Writes a .pptx generated from an EDN deck map. JVM only."
