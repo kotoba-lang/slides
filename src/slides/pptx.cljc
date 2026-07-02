@@ -820,8 +820,26 @@
   [shape]
   (str " w=\"" (long (* 12700 (positive-numeric (:slides/line-width shape) 1))) "\""))
 
-(defn- blip-fill-xml [rel-id]
-  (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"))
+(defn- src-rect-xml
+  "A picture's own :slides/crop ({:left/:top/:right/:bottom pct}, from
+  drawingml.parse/picture-crop on import) into <a:srcRect>, schema-ordered
+  right after <a:blip> and before the fill mode (<a:stretch>) -- each side
+  converted back to thousandths-of-a-percent. nil (no element at all) when
+  the shape carries no crop, matching how the shape round-tripped before
+  this feature existed."
+  [{:keys [left top right bottom]}]
+  (when (or left top right bottom)
+    (str "<a:srcRect"
+         (when left (str " l=\"" (long (Math/round (* (double left) 1000.0))) "\""))
+         (when top (str " t=\"" (long (Math/round (* (double top) 1000.0))) "\""))
+         (when right (str " r=\"" (long (Math/round (* (double right) 1000.0))) "\""))
+         (when bottom (str " b=\"" (long (Math/round (* (double bottom) 1000.0))) "\""))
+         "/>")))
+
+(defn- blip-fill-xml
+  ([rel-id] (blip-fill-xml rel-id nil))
+  ([rel-id crop]
+   (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/>" (src-rect-xml crop) "<a:stretch><a:fillRect/></a:stretch></a:blipFill>")))
 
 (defn- gradient-fill-xml
   "A shape's own :slides/gradient ({:stops [{:position 0-100 :color
@@ -904,7 +922,7 @@
           "<p:spPr>" (shape-xfrm shape) (geometry-xml shape)
           (cond
             (:slides/gradient shape) (gradient-fill-xml (:slides/gradient shape))
-            fill-image-rel-id (blip-fill-xml fill-image-rel-id)
+            fill-image-rel-id (blip-fill-xml fill-image-rel-id (:slides/crop shape))
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
             :else "<a:noFill/>")
           (if line
@@ -926,7 +944,7 @@
           (geometry-xml shape)
           (cond
             (:slides/gradient shape) (gradient-fill-xml (:slides/gradient shape))
-            fill-image-rel-id (blip-fill-xml fill-image-rel-id)
+            fill-image-rel-id (blip-fill-xml fill-image-rel-id (:slides/crop shape))
             :else (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
           "<a:ln" (line-width-attr shape) (line-cap-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>"
           (effect-lst-xml shape)
@@ -1059,7 +1077,7 @@
   [idx {:slides/keys [id] :as shape} rel-id]
   (str "<p:pic><p:nvPicPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Picture " idx))) "\"/>"
        "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
-       "<p:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+       "<p:blipFill><a:blip r:embed=\"" rel-id "\"/>" (src-rect-xml (:slides/crop shape)) "<a:stretch><a:fillRect/></a:stretch></p:blipFill>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
        "</p:pic>"))
 
