@@ -978,24 +978,41 @@
        "</a:" tag ">"))
 
 (defn- table-cell-borders-xml
-  "A cell's :borders ({:left {...} :right {...} :top {...} :bottom
-  {...}}, only the sides actually present) into <a:tcPr>'s own
-  lnL/lnR/lnT/lnB children, in that schema order -- before the fill
-  choice group. \"\" (no border overrides) when the cell has none;
-  PowerPoint's own table-style default borders then apply, unchanged."
+  "A cell's :borders ({:left {...} :right {...} :top {...} :bottom {...}
+  :diagonal-down {...} :diagonal-up {...}}, only the sides actually
+  present) into <a:tcPr>'s own lnL/lnR/lnT/lnB/lnTlToBr/lnBlToRt
+  children, in that schema order -- before the fill choice group. \"\"
+  (no border overrides) when the cell has none; PowerPoint's own
+  table-style default borders then apply, unchanged."
   [borders]
   (str (when-let [b (:left borders)] (table-cell-border-side-xml "lnL" b))
        (when-let [b (:right borders)] (table-cell-border-side-xml "lnR" b))
        (when-let [b (:top borders)] (table-cell-border-side-xml "lnT" b))
-       (when-let [b (:bottom borders)] (table-cell-border-side-xml "lnB" b))))
+       (when-let [b (:bottom borders)] (table-cell-border-side-xml "lnB" b))
+       (when-let [b (:diagonal-down borders)] (table-cell-border-side-xml "lnTlToBr" b))
+       (when-let [b (:diagonal-up borders)] (table-cell-border-side-xml "lnBlToRt" b))))
+
+(defn- table-cell-tcpr-attrs-xml
+  "A cell's own margin/anchor attributes (from drawingml.parse/table-cell-
+  margins-and-anchor on import) into <a:tcPr>'s own OPENING tag -- these
+  live as attributes on <a:tcPr> itself, not child elements, unlike
+  borders/fill. \"\" (no attrs at all) when the cell has none; PowerPoint's
+  own default margins and top anchor then apply, unchanged."
+  [{:keys [margin-left margin-right margin-top margin-bottom anchor]}]
+  (str (when margin-left (str " marL=\"" (emu margin-left) "\""))
+       (when margin-right (str " marR=\"" (emu margin-right) "\""))
+       (when margin-top (str " marT=\"" (emu margin-top) "\""))
+       (when margin-bottom (str " marB=\"" (emu margin-bottom) "\""))
+       (when anchor (str " anchor=\"" (case anchor :top "t" :center "ctr" :bottom "b") "\""))))
 
 (defn- table-cell-xml
   "A single <a:tc>, dispatching on the cell's shape:
   - :h-merge/:v-merge/:hv-merge -- an empty merge-continuation cell,
     hMerge=\"1\"/vMerge=\"1\"/both (see drawingml.parse/table-cells).
-  - a map {:text ... :col-span N :row-span N :fill \"hex\" :borders {...}}
-    -- the ANCHOR cell of a merge and/or a cell with its own background
-    fill/border override.
+  - a map {:text ... :col-span N :row-span N :fill \"hex\" :borders {...}
+    :margin-left/:margin-right/:margin-top/:margin-bottom :anchor} -- the
+    ANCHOR cell of a merge and/or a cell with its own background fill/
+    border/margin/anchor override.
   - anything else (the common case) -- a plain text cell, unchanged from
     before."
   [cell]
@@ -1012,7 +1029,7 @@
          (when (:row-span cell) (str " rowSpan=\"" (long (:row-span cell)) "\""))
          "><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
          "<a:t>" (esc (:text cell)) "</a:t></a:r></a:p></a:txBody>"
-         "<a:tcPr>" (table-cell-borders-xml (:borders cell))
+         "<a:tcPr" (table-cell-tcpr-attrs-xml cell) ">" (table-cell-borders-xml (:borders cell))
          (when (:fill cell)
            (str "<a:solidFill><a:srgbClr val=\"" (hex-color (:fill cell) "FFFFFF") "\"/></a:solidFill>"))
          "</a:tcPr></a:tc>")
