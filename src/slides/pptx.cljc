@@ -27,6 +27,7 @@
 (def rel-notes-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide")
 (def rel-notes-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster")
 (def rel-comments "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments")
+(def rel-handout-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/handoutMaster")
 (def rel-hyperlink "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
@@ -81,14 +82,16 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] [] [] 1 1 []))
+  ([slide-count] (content-types slide-count [] [] [] 1 1 [] false))
   ([slide-count media-extensions-used chart-paths notes-slide-paths]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1 []))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1 [] false))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count []))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count [] false))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count []))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count [] false))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths]
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths false))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths has-handout-master?]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -119,7 +122,9 @@
      (when (seq comment-paths)
        [(ooxml/override-content-type "/ppt/commentAuthors.xml" "application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml")])
      (for [path comment-paths]
-       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.comments+xml"))))))
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.comments+xml"))
+     (when has-handout-master?
+       [(ooxml/override-content-type "/ppt/handoutMasters/handoutMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.handoutMaster+xml")])))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -224,10 +229,12 @@
 (def rel-comment-authors "http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentAuthors")
 
 (defn- presentation-rels
-  ([slide-count] (presentation-rels slide-count false 1 false))
-  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1 false))
-  ([slide-count has-notes? master-count] (presentation-rels slide-count has-notes? master-count false))
+  ([slide-count] (presentation-rels slide-count false 1 false false))
+  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1 false false))
+  ([slide-count has-notes? master-count] (presentation-rels slide-count has-notes? master-count false false))
   ([slide-count has-notes? master-count has-comments?]
+   (presentation-rels slide-count has-notes? master-count has-comments? false))
+  ([slide-count has-notes? master-count has-comments? has-handout-master?]
    (ooxml/relationships-xml
     (concat
      (for [idx (range 1 (inc master-count))]
@@ -244,7 +251,11 @@
      (when has-comments?
        [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0)))
                              :type rel-comment-authors
-                             :target "commentAuthors.xml"})])))))
+                             :target "commentAuthors.xml"})])
+     (when has-handout-master?
+       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0) (if has-comments? 1 0)))
+                             :type rel-handout-master
+                             :target "handoutMasters/handoutMaster1.xml"})])))))
 
 (def default-theme (:slides/theme design/default-design))
 
@@ -408,6 +419,17 @@
 </p:notesMaster>"))
 
 (def notes-master-rels
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-theme :target "../theme/theme1.xml"})]))
+
+(defn- handout-master-xml []
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<p:handoutMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
+  <p:cSld><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
+</p:handoutMaster>"))
+
+(def handout-master-rels
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-theme :target "../theme/theme1.xml"})]))
 
@@ -1365,15 +1387,16 @@
         all-notes-paths (keep (fn [{:keys [notes]}] (:notes-path notes)) slide-plans)
         all-comment-paths (keep (fn [{:keys [comments]}] (:comments-path comments)) slide-plans)
         has-notes? (boolean (seq all-notes-paths))
-        has-comments? (boolean (seq all-comment-paths))]
+        has-comments? (boolean (seq all-comment-paths))
+        has-handout-master? (boolean (:slides/handout-master? deck))]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count all-comment-paths)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count all-comment-paths has-handout-master?)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props deck (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height master-count (:slides/sections deck))]
-       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count has-comments?)]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count has-comments? has-handout-master?)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
       (mapcat (fn [master-idx]
                 (let [layout-indices (master-layout-indices layout-entries master-idx)
@@ -1391,6 +1414,9 @@
          ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
       (when has-comments?
         [["ppt/commentAuthors.xml" (comment-authors-xml author-names)]])
+      (when has-handout-master?
+        [["ppt/handoutMasters/handoutMaster1.xml" (handout-master-xml)]
+         ["ppt/handoutMasters/_rels/handoutMaster1.xml.rels" handout-master-rels]])
       (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks comments layout-idx]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)

@@ -801,6 +801,25 @@
       (is (not (contains? entries "ppt/notesMasters/notesMaster1.xml")))
       (is (not (re-find #"notesSlide" (entries "ppt/slides/_rels/slide1.xml.rels")))))))
 
+(deftest writes-and-round-trips-handout-master
+  (let [deck (-> (m/deck "deck" {:slides/title "With handout master" :slides/handout-master? true})
+                 (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Slide")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "the handoutMaster part + its wiring from presentation.xml.rels are included"
+      (is (contains? entries "ppt/handoutMasters/handoutMaster1.xml"))
+      (is (contains? entries "ppt/handoutMasters/_rels/handoutMaster1.xml.rels"))
+      (is (re-find #"Type=\"[^\"]*handoutMaster\"" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "[Content_Types].xml declares it"
+      (is (re-find #"PartName=\"/ppt/handoutMasters/handoutMaster1.xml\"" (entries "[Content_Types].xml"))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})]
+        (is (true? (:slides/handout-master? reimported))))))
+  (testing "no :slides/handout-master? -- no handoutMaster part at all, the common case"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi")))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (not (contains? entries "ppt/handoutMasters/handoutMaster1.xml")))
+      (is (not (re-find #"handoutMaster" (entries "ppt/_rels/presentation.xml.rels")))))))
+
 (deftest writes-review-comments-as-native-comments-part
   (let [comments [{:author "Jun Kawasaki" :text "Looks good" :date "2026-07-02T00:00:00.000" :x 1.0 :y 0.5}
                   {:author "Jun Kawasaki" :text "Second comment, no position"}]
