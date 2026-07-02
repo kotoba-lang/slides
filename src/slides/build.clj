@@ -1,27 +1,17 @@
 (ns slides.build
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [shadow.css.build :as css]
             [shitsuke.tokens :as tokens]
             [slides.site :as site]))
 
 (defn css-release! []
-  (let [result (-> (css/start)
-                   (css/index-path (io/file "src") {})
-                   (css/index-path (io/file "resources") {})
-                   (css/generate '{:main {:include [slides.site shitsuke.components]}})
-                   (css/minify)
-                   (css/write-outputs-to (io/file "docs")))]
-    ;; Tier A of the shitsuke style layer: prepend :root token CSS variables to
-    ;; the built main.css so the editor (and shitsuke.components) can consume
-    ;; var(--shitsuke-*). The legacy editor CSS in main.css keeps its own --ink
-    ;; /--muted/... vars until the per-class shadow-css migration (follow-up).
-    (let [out (io/file "docs" "main.css")
-          existing (if (.exists out) (slurp out) "")
-          root-vars (tokens/css-variables)
-          generated (str/replace existing (str root-vars "\n") "")]
-      (spit out (str root-vars "\n" generated)))
-    result))
+  (let [out (io/file "docs" "main.css")
+        static-css (slurp (io/resource "slides/static.css"))
+        root-vars (tokens/css-variables)
+        generated (str/replace static-css (str root-vars "\n") "")]
+    (io/make-parents out)
+    (spit out (str root-vars "\n" generated))
+    out))
 
 (defn pages [& _]
   (site/write!)

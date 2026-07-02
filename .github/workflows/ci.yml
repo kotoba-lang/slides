@@ -4,32 +4,29 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
           cli: latest
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Install npm dependencies
-        run: npm ci
       - name: Test CLJC
-        run: clojure -X:test
-      - name: Test npm package script
-        run: npm test
+        run: clojure -M:test
       - name: Coverage gate
-        run: npm run coverage && npm run coverage:thresholds
-      - name: Build GitHub Pages CLJS
-        run: npm run build:pages
+        run: clojure -M:coverage && clojure -M:coverage-thresholds
+      - name: Build GitHub Pages
+        run: clojure -M:pages
       - name: Check generated Pages artifacts
         run: git diff --exit-code -- docs/index.html docs/main.css
-      - name: Install browser for e2e
-        run: npx playwright install --with-deps chromium
-      - name: Test browser editor
-        run: npm run test:e2e
-      - name: Smoke npm bin wrapper
-        run: npx nbb bin/kotoba-slides.cljs

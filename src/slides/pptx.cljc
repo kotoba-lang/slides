@@ -3,7 +3,8 @@
 
   The public surface is data-first: pass a deck map with :slides/slides and
   receive a .pptx byte array or write it to disk on the JVM."
-  (:require [clojure.string :as str]
+  (:require [clojure.set :as set]
+            [clojure.string :as str]
             [drawingml.core :as dml]
             [ooxml.core :as ooxml]
             [presentationml.core :as pml]
@@ -607,44 +608,162 @@
       (replace-at xml block (f block))
       xml)))
 
-(defn- patch-or-insert-xfrm [block shape]
+(defn- element-span
+  "The [start end] byte range in `block` spanning from the start of the first
+  `tag` element to the end of the last one, walked left-to-right so repeated
+  identical elements (e.g. two empty paragraphs) resolve to their true,
+  distinct positions rather than all collapsing onto the first match."
+  [block tag]
+  (loop [pos 0 remaining (xml-elements block tag) first-start nil last-end nil]
+    (if (empty? remaining)
+      (when first-start [first-start last-end])
+      (let [el (first remaining)
+            idx (str/index-of block el pos)]
+        (recur (+ idx (count el)) (rest remaining)
+               (or first-start idx)
+               (+ idx (count el)))))))
+
+(defn- splice-span [block span replacement]
+  (if span
+    (let [[start end] span]
+      (str (subs block 0 start) replacement (subs block end)))
+    block))
+
+(defn- patch-or-insert-xfrm
+  "Position/size patch. p:graphicFrame (tables, charts) places its transform
+  in a <p:xfrm> child, not <a:xfrm> inside <p:spPr> the way p:sp/p:pic do."
+  [block shape kind]
   (let [xfrm (shape-xfrm shape)]
-    (if (re-find #"<a:xfrm\b[\s\S]*?</a:xfrm>" block)
-      (str/replace-first block #"<a:xfrm\b[\s\S]*?</a:xfrm>"
-                         (replacement-literal xfrm))
-      (str/replace-first block #"<p:spPr\b([^>]*)>"
-                         (str "<p:spPr$1>" xfrm)))))
+    (if (= :p/graphicFrame kind)
+      (let [frame-xfrm (str/replace xfrm "a:xfrm" "p:xfrm")]
+        (if (re-find #"<p:xfrm\b[\s\S]*?</p:xfrm>" block)
+          (str/replace-first block #"<p:xfrm\b[\s\S]*?</p:xfrm>"
+                             (replacement-literal frame-xfrm))
+          (str/replace-first block #"(</p:nvGraphicFramePr>)"
+                             (str "$1" (replacement-literal frame-xfrm)))))
+      (if (re-find #"<a:xfrm\b[\s\S]*?</a:xfrm>" block)
+        (str/replace-first block #"<a:xfrm\b[\s\S]*?</a:xfrm>"
+                           (replacement-literal xfrm))
+        (str/replace-first block #"<p:spPr\b([^>]*)>"
+                           (str "<p:spPr$1>" xfrm))))))
+
+(def ^:private rpr-pattern #"<a:rPr\b[^>]*/>|<a:rPr\b[^>]*>[\s\S]*?</a:rPr>")
+(def ^:private default-rpr "<a:rPr lang=\"en-US\"/>")
+
+(defn- normalize-rpr [rpr]
+  (if (re-matches #"<a:rPr\b[^>]*/>" rpr)
+    (str (subs rpr 0 (- (count rpr) 2)) "></a:rPr>")
+    rpr))
+
+(defn- set-open-tag-attr [xml attr value]
+  (let [close-idx (str/index-of xml ">")
+        open (subs xml 0 close-idx)
+        rest (subs xml close-idx)
+        attr-pattern (re-pattern (str "\\b" attr "=\"[^\"]*\""))]
+    (str (if (re-find attr-pattern open)
+           (str/replace-first open attr-pattern (str attr "=\"" value "\""))
+           (str open " " attr "=\"" value "\""))
+         rest)))
+
+(defn- set-rpr-color [rpr color]
+  (let [hex (hex-color color "17202A")]
+    (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
+      (str/replace-first rpr #"<a:solidFill\b[\s\S]*?</a:solidFill>"
+                         (replacement-literal (str "<a:solidFill><a:srgbClr val=\"" hex "\"/></a:solidFill>")))
+      (let [close-idx (inc (str/index-of rpr ">"))]
+        (str (subs rpr 0 close-idx)
+             "<a:solidFill><a:srgbClr val=\"" hex "\"/></a:solidFill>"
+             (subs rpr close-idx))))))
+
+(defn- apply-rpr-overrides [rpr shape]
+  (cond-> (normalize-rpr rpr)
+    (:slides/font-size shape) (set-open-tag-attr "sz" (* 100 (long (positive-numeric (:slides/font-size shape) 24))))
+    (contains? shape :slides/bold) (set-open-tag-attr "b" (if (:slides/bold shape) "1" "0"))
+    (:slides/color shape) (set-rpr-color (:slides/color shape))))
+
+(defn- patch-all-rpr
+  "Style-only edit (no text change): apply font-size/color/bold overrides to
+  every run in the block instead of only the first, so multi-run shapes stay
+  consistent."
+  [block shape]
+  (reduce (fn [acc rpr] (str/replace-first acc rpr (replacement-literal (apply-rpr-overrides rpr shape))))
+          block
+          (re-seq rpr-pattern block)))
+
+(defn- rpr-template [p-block]
+  (or (re-find rpr-pattern p-block) default-rpr))
+
+(defn- paragraph-ppr [p-block]
+  (or (re-find #"<a:pPr\b[^>]*/>" p-block)
+      (re-find #"<a:pPr\b[^>]*>[\s\S]*?</a:pPr>" p-block)
+      ""))
+
+(defn- rewrite-paragraph
+  "Replaces a paragraph's run content with a single new run carrying `line`,
+  reusing its first run's <a:rPr> (with overrides applied) as the style
+  template. The paragraph's own <a:pPr> (alignment/line-spacing/bullets/
+  indent) is copied through untouched, so editing text never disturbs
+  paragraph-level formatting."
+  [p-block line shape]
+  (str "<a:p>" (paragraph-ppr p-block) "<a:r>" (apply-rpr-overrides (rpr-template p-block) shape)
+       "<a:t>" (esc line) "</a:t></a:r></a:p>"))
+
+(defn- new-paragraph [line shape template-rpr]
+  (str "<a:p><a:r>" (apply-rpr-overrides template-rpr shape) "<a:t>" (esc line) "</a:t></a:r></a:p>"))
+
+(defn- patch-paragraphs
+  "Replaces the <a:p> paragraphs found anywhere in `block` (a txBody, or a
+  bare table-cell fragment) with one paragraph per newline-separated line of
+  `text`. Each surviving paragraph keeps its own <a:pPr> and inherits its
+  first run's formatting (overridden per `shape`); missing lines are dropped,
+  extra lines are appended as new plain paragraphs. A block with no <a:p> at
+  all (e.g. a picture) is left untouched."
+  [block text shape]
+  (let [paragraphs (xml-elements block "a:p")]
+    (if (empty? paragraphs)
+      block
+      (let [lines (str/split (str text) #"\n" -1)
+            template-rpr (rpr-template (first paragraphs))
+            kept (map #(rewrite-paragraph %1 %2 shape) paragraphs lines)
+            added (map #(new-paragraph % shape template-rpr) (drop (count paragraphs) lines))]
+        (splice-span block (element-span block "a:p") (apply str (concat kept added)))))))
 
 (defn- patch-text [block shape]
-  (if (contains? shape :slides/text)
-    (if (re-find #"<a:t\b[^>]*>[\s\S]*?</a:t>" block)
-      (str/replace-first block #"<a:t\b[^>]*>[\s\S]*?</a:t>"
-                         (replacement-literal
-                          (str "<a:t>" (esc (:slides/text shape)) "</a:t>")))
-      block)
-    block))
+  (cond
+    (contains? shape :slides/text)
+    (patch-paragraphs block (:slides/text shape) shape)
 
-(defn- patch-font-size [block shape]
-  (if-let [size (:slides/font-size shape)]
-    (let [sz (* 100 (long (positive-numeric size 24)))]
-      (if (re-find #"<a:rPr\b[^>]*\bsz=\"[^\"]*\"" block)
-        (str/replace-first block #"(<a:rPr\b[^>]*\bsz=\")[^\"]*(\")"
-                           (str "$1" sz "$2"))
-        block))
-    block))
+    (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold))
+    (patch-all-rpr block shape)
 
-(defn- patch-color-val [block color]
-  (if color
-    (if (re-find #"<a:srgbClr\b[^>]*\bval=\"[0-9A-Fa-f]{6}\"" block)
-      (str/replace-first block #"(<a:srgbClr\b[^>]*\bval=\")[0-9A-Fa-f]{6}(\")"
-                         (str "$1" (hex-color color "17202A") "$2"))
-      block)
-    block))
+    :else block))
 
-(defn- patch-text-color [block shape]
-  (if (:slides/color shape)
-    (patch-color-val block (:slides/color shape))
-    block))
+(defn- remove-nth-element* [xml tag idx]
+  (let [blocks (vec (xml-elements xml tag))]
+    (if-let [block (get blocks idx)]
+      (replace-at xml block "")
+      xml)))
+
+(defn- patch-table-rows
+  "Walks <a:tr> then <a:tc> by document position and patches each cell's own
+  paragraphs independently, instead of collapsing the whole table into one
+  run of joined text. Cells/rows beyond the source table's own grid are
+  ignored -- growing/shrinking a table's dimensions isn't supported yet."
+  [block rows shape]
+  (reduce
+   (fn [acc [row-idx cells]]
+     (if-let [row-block (get (vec (xml-elements acc "a:tr")) row-idx)]
+       (let [patched-row (reduce
+                          (fn [row-acc [col-idx cell-text]]
+                            (if-let [cell-block (get (vec (xml-elements row-acc "a:tc")) col-idx)]
+                              (replace-at row-acc cell-block (patch-paragraphs cell-block (str cell-text) shape))
+                              row-acc))
+                          row-block
+                          (map-indexed vector cells))]
+         (replace-at acc row-block patched-row))
+       acc))
+   block
+   (map-indexed vector rows)))
 
 (defn- patch-solid-fill [block shape]
   (if (:slides/fill shape)
@@ -668,14 +787,27 @@
       block)
     block))
 
-(defn- patch-shape-block [block shape]
-  (-> block
-      (patch-or-insert-xfrm shape)
-      (patch-text shape)
-      (patch-font-size shape)
-      (patch-text-color shape)
-      (patch-solid-fill shape)
-      (patch-line-fill shape)))
+(defn- patch-shape-block [block shape kind]
+  (let [block (-> block
+                  (patch-or-insert-xfrm shape kind)
+                  (patch-solid-fill shape)
+                  (patch-line-fill shape))
+        table-like? (#{:p/graphicFrame :a/tbl} kind)]
+    (cond
+      ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;
+      ;; patch-text's whole-block splice would delete those boundaries. Only
+      ;; patch cell-by-cell when we actually have a cell grid to align
+      ;; against -- a table shape with no :slides/rows is left untouched
+      ;; rather than risk corrupting its structure. Chart graphicFrames have
+      ;; no <a:p> at all, so patch-text is already a safe no-op for those.
+      (and table-like? (:slides/rows shape))
+      (patch-table-rows block (:slides/rows shape) shape)
+
+      table-like?
+      block
+
+      :else
+      (patch-text block shape))))
 
 (defn- source-tag [kind]
   (case kind
@@ -689,10 +821,11 @@
 (defn- patch-slide-xml [xml shapes]
   (reduce (fn [acc shape]
             (let [source (:ooxml/source shape)
-                  tag (source-tag (:ooxml/kind source))
+                  kind (:ooxml/kind source)
+                  tag (source-tag kind)
                   idx (:ooxml/index source)]
               (if (and tag (integer? idx))
-                (replace-nth-element acc tag idx #(patch-shape-block % shape))
+                (replace-nth-element acc tag idx #(patch-shape-block % shape kind))
                 acc)))
           xml
           shapes))
@@ -703,16 +836,67 @@
        (filter #(get-in % [:ooxml/source :ooxml/part]))
        vec))
 
+(defn- new-shapes-for-slide [slide]
+  (->> (:slides/shapes slide)
+       (filterv map?)
+       (remove #(get-in % [:ooxml/source :ooxml/part]))))
+
+(defn- append-shapes-xml [xml deck new-shapes]
+  (if (seq new-shapes)
+    ;; idx offset avoids colliding cNvPr ids with the slide's original shapes.
+    (let [fragment (apply str (map-indexed (fn [i shape] (render-shape deck (+ 1000 i) shape)) new-shapes))]
+      (str/replace-first xml #"</p:spTree>" (replacement-literal (str fragment "</p:spTree>"))))
+    xml))
+
+(defn- deleted-locators [slide]
+  (let [inventory (or (:slides/shape-inventory slide) #{})
+        present (into #{}
+                      (keep (fn [shape]
+                              (when-let [source (:ooxml/source shape)]
+                                [(:ooxml/kind source) (:ooxml/index source)])))
+                      (:slides/shapes slide))]
+    (set/difference inventory present)))
+
+(defn- remove-shapes-xml [xml slide]
+  (let [by-tag (group-by (fn [[kind _]] (source-tag kind)) (deleted-locators slide))]
+    (reduce (fn [acc [tag locators]]
+              (if tag
+                ;; highest index first: deleting low-to-high would shift the
+                ;; positions later (still-pending) indices refer to.
+                (reduce (fn [acc' [_ idx]] (remove-nth-element* acc' tag idx))
+                        acc
+                        (sort-by second > locators))
+                acc))
+            xml
+            by-tag)))
+
+(defn- patch-slide-structure
+  "Applies additions and deletions for one slide's part, after its surviving
+  shapes have already been patched in place (patch-slide-xml doesn't change
+  element count/order, so this can safely run afterwards against still-valid
+  positions)."
+  [xml deck slide]
+  (-> xml
+      (remove-shapes-xml slide)
+      (append-shapes-xml deck (new-shapes-for-slide slide))))
+
 (defn- patch-base-entries [entries deck]
   (let [by-part (group-by #(get-in % [:ooxml/source :ooxml/part])
-                          (patchable-shapes deck))]
-    (reduce (fn [acc [part shapes]]
-              (if-let [bytes (get acc part)]
-                (let [patched (patch-slide-xml (bytes->text bytes) shapes)]
-                  (assoc acc part (text-entry-bytes patched)))
-                acc))
+                          (patchable-shapes deck))
+        entries (reduce (fn [acc [part shapes]]
+                          (if-let [bytes (get acc part)]
+                            (let [patched (patch-slide-xml (bytes->text bytes) shapes)]
+                              (assoc acc part (text-entry-bytes patched)))
+                            acc))
+                        entries
+                        by-part)]
+    (reduce (fn [acc slide]
+              (let [part (:slides/source slide)]
+                (if-let [bytes (and part (get acc part))]
+                  (assoc acc part (text-entry-bytes (patch-slide-structure (bytes->text bytes) deck slide)))
+                  acc)))
             entries
-            by-part)))
+            (deck-slides deck))))
 
 (defn- chart-data-shapes [deck]
   (->> (deck-slides deck)

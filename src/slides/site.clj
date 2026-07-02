@@ -1,13 +1,12 @@
 (ns slides.site
-  {:shadow.css/include ["slides/static.css"]}
   (:require [clojure.java.io :as io]
-            [shadow.css :refer [css]]
-            [shitsuke.hiccup :as hiccup]))
+            [shitsuke.hiccup :as hiccup]
+            [slides.web.ssr :as ssr]))
 
-;; Shell-level shadow-css class. The editor body is rendered by reagent into
-;; #app; its classes come from the legacy editor CSS in docs/main.css plus the
-;; shitsuke :root token vars that slides.build prepends to main.css.
-(def $page (css {:min-height "100vh"}))
+;; Shell-level class. The page body is rendered from the same CLJC view tree
+;; consumed by browser hosts, keeping the checked-in Pages artifact free of
+;; generated JavaScript authority.
+(def page-class "slides-page")
 
 (defn index-page []
   [:html {:lang "en"}
@@ -16,9 +15,9 @@
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
     [:title "kotoba-lang/slides"]
     [:link {:rel "stylesheet" :href "./main.css"}]]
-   [:body {:class $page}
-    [:div#app]
-    [:script {:src "./main.js"}]]])
+   [:body {:class page-class}
+    [:div#app {:data-kotoba-render "ssr"}
+     [:hiccup/raw (ssr/root-html)]]]])
 
 (defn index-html []
   (str "<!doctype html>\n" (hiccup/->html (index-page)) "\n"))
