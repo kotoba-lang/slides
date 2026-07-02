@@ -1621,18 +1621,59 @@
   (str "<c:doughnutChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series))
        "<c:holeSize val=\"50\"/></c:doughnutChart>"))
 
+(defn- scatter-series-xml
+  "One <c:ser> for a scatter chart -- unlike bar/line/area's cat+val (a
+  category axis + a value axis), a scatter series is X-Y value PAIRS
+  (<c:xVal>/<c:yVal>, BOTH value axes; there's no category axis at all).
+  Reuses chart-series-from-rows' {:name :categories :values} shape,
+  treating :categories as the X values -- via num-cache, not str-cache,
+  since scatter's X axis holds numbers, not category labels."
+  [series-idx {:keys [name categories values]}]
+  (let [col (index->col (+ 2 series-idx))
+        last-row (+ 1 (max 1 (count categories) (count values)))]
+    (str "<c:ser>"
+         "<c:idx val=\"" series-idx "\"/><c:order val=\"" series-idx "\"/>"
+         "<c:tx><c:strRef><c:f>Sheet1!$" col "$1</c:f><c:strCache><c:ptCount val=\"1\"/>"
+         (cache-pt 0 name false) "</c:strCache></c:strRef></c:tx>"
+         "<c:xVal><c:numRef><c:f>Sheet1!$A$2:$A$" last-row "</c:f>" (num-cache categories) "</c:numRef></c:xVal>"
+         "<c:yVal><c:numRef><c:f>Sheet1!$" col "$2:$" col "$" last-row "</c:f>" (num-cache values) "</c:numRef></c:yVal>"
+         "</c:ser>")))
+
+(defn- scatter-chart-body-xml [series]
+  (str "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:varyColors val=\"0\"/>"
+       (apply str (map-indexed scatter-series-xml series))
+       "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:scatterChart>"))
+
 (def ^:private axisless-chart-types
   "Chart types with no value/category axes at all -- a pie/doughnut plots
   proportions of a whole, not points against two scaled axes."
   #{:pie :doughnut})
 
+(defn- category-value-axes-xml []
+  (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+       "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
+       "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+       "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+
+(defn- value-value-axes-xml
+  "A scatter chart's own two axes, BOTH value axes (<c:valAx>) -- unlike
+  bar/line/area's one category + one value axis, scatter has no category
+  axis at all; X is itself a plotted value, not a discrete label."
+  []
+  (str "<c:valAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+       "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:valAx>"
+       "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+       "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+
 (defn- chart-space-xml [{:keys [chart-type series]}]
   (let [axisless? (axisless-chart-types chart-type)
+        scatter? (= :scatter chart-type)
         body (case chart-type
                :line (line-chart-body-xml series)
                :area (area-chart-body-xml series)
                :pie (pie-chart-body-xml series)
                :doughnut (doughnut-chart-body-xml series)
+               :scatter (scatter-chart-body-xml series)
                (bar-chart-body-xml series))]
     (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
          "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
@@ -1640,11 +1681,10 @@
          "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
          "<c:chart><c:plotArea><c:layout/>"
          body
-         (when-not axisless?
-           (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-                "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
-                "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-                "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+         (cond
+           axisless? nil
+           scatter? (value-value-axes-xml)
+           :else (category-value-axes-xml))
          "</c:plotArea><c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>"
          "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>")))
 
