@@ -73,6 +73,22 @@
            :slides/line "496B9A"}
           attrs)))
 
+(defn image
+  "A picture shape. `image-data` is a base64-encoded string (portable across
+  JVM/JS and EDN/transit-safe, unlike a raw byte array) -- `slides.pptx`
+  decodes it into an embedded media part on export."
+  ([id image-data] (image id image-data {}))
+  ([id image-data attrs]
+   (merge {:slides/id id
+           :slides/shape :image
+           :slides/x 0.8
+           :slides/y 0.8
+           :slides/w 4.0
+           :slides/h 3.0
+           :slides/image-data image-data
+           :slides/media-type "image/png"}
+          attrs)))
+
 (defn add-slide [deck slide]
   (update deck :slides/slides conj slide))
 

@@ -62,6 +62,105 @@
     (is (re-find #"Plan" (entries "ppt/slides/slide2.xml")))
     (is (re-find #"presentationml.presentation.main\+xml" (entries "[Content_Types].xml")))))
 
+(deftest writes-table-shape-as-native-graphic-frame
+  (let [deck (-> (m/deck "deck" {:slides/title "With table"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Data"})
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/x 0.5 :slides/y 0.5 :slides/w 6.0 :slides/h 2.0
+                                    :slides/rows [["Quarter" "Revenue"] ["Q1" "120"] ["Q2" "180"]]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a native <p:graphicFrame><a:tbl> is emitted, not a plain text box"
+      (is (re-find #"<p:graphicFrame>" slide-xml))
+      (is (re-find #"<a:tbl>" slide-xml))
+      (is (re-find #"drawingml/2006/table" slide-xml)))
+    (testing "every cell's text survives, each in its own cell (not joined into one text run)"
+      (is (= 3 (count (re-seq #"<a:tr\b" slide-xml))))
+      (is (= 6 (count (re-seq #"<a:tc>" slide-xml))))
+      (is (re-find #"<a:t>Quarter</a:t>" slide-xml))
+      (is (re-find #"<a:t>Revenue</a:t>" slide-xml))
+      (is (re-find #"<a:t>Q1</a:t>" slide-xml))
+      (is (re-find #"<a:t>120</a:t>" slide-xml)))
+    (testing "table geometry uses <p:xfrm>, not <a:xfrm> inside <p:spPr> (graphicFrame convention)"
+      (is (re-find #"<p:xfrm>" slide-xml)))))
+
+(deftest table-shape-with-ragged-or-empty-rows-still-produces-a-valid-grid
+  (let [deck (-> (m/deck "deck" {:slides/title "Ragged"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Ragged"})
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/w 4.0 :slides/h 1.0
+                                    :slides/rows [["A" "B" "C"] ["only-one"]]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (= 2 (count (re-seq #"<a:tr\b" slide-xml))))
+    ;; every row padded to the widest row's column count (3), so both rows
+    ;; emit 3 <a:tc> cells each = 6 total, never a jagged/invalid grid.
+    (is (= 6 (count (re-seq #"<a:tc>" slide-xml)))))
+  (let [deck (-> (m/deck "deck" {:slides/title "Empty"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Empty"})
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/w 4.0 :slides/h 1.0}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:tbl>" slide-xml) "a table with no :slides/rows still emits a valid (single blank cell) table")))
+
+;; A minimal valid 1x1 transparent PNG, base64-encoded -- real bytes, not a
+;; placeholder string, so the zip round-trip and content-type wiring are
+;; exercised against actual binary data.
+(def one-pixel-png-base64
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+
+(deftest writes-image-shape-as-native-pic-with-embedded-media
+  (let [deck (-> (m/deck "deck" {:slides/title "With image"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Photo"})
+                      (m/add-shape (m/image "logo" one-pixel-png-base64
+                                            {:slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 2.0})))))
+        bytes (pptx/pptx-bytes deck)
+        entries (zip-entries bytes)
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "a native <p:pic> is emitted, not a plain text box"
+      (is (re-find #"<p:pic>" slide-xml))
+      (is (re-find #"<a:blip r:embed=\"rId2\"" slide-xml)))
+    (testing "the image is embedded as a real media part with the correct bytes"
+      (is (contains? entries "ppt/media/image1.png"))
+      (let [embedded-bytes (with-open [zip (ZipInputStream. (ByteArrayInputStream. bytes))]
+                             (loop []
+                               (when-let [entry (.getNextEntry zip)]
+                                 (if (= "ppt/media/image1.png" (.getName entry))
+                                   (let [out (java.io.ByteArrayOutputStream.)
+                                         buf (byte-array 4096)]
+                                     (loop []
+                                       (let [n (.read zip buf)]
+                                         (when (pos? n) (.write out buf 0 n) (recur))))
+                                     (.toByteArray out))
+                                   (recur)))))
+            expected-bytes (.decode (java.util.Base64/getDecoder) one-pixel-png-base64)]
+        (is (= (seq expected-bytes) (seq embedded-bytes)))))
+    (testing "the slide's own .rels wires rId2 to the media part, alongside the layout rel"
+      (is (re-find #"Id=\"rId1\"[^>]*slideLayout" rels-xml))
+      (is (re-find #"Id=\"rId2\"[^>]*media/image1.png" rels-xml)))
+    (testing "[Content_Types].xml declares the png extension"
+      (is (re-find #"Extension=\"png\"" (entries "[Content_Types].xml"))))))
+
+(deftest image-shape-with-invalid-image-data-falls-back-to-text-safely
+  (let [deck (-> (m/deck "deck" {:slides/title "Bad image"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Bad"})
+                      (m/add-shape {:slides/id "broken" :slides/shape :image
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 2.0
+                                    :slides/image-data "not valid base64!!"}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (not (re-find #"<p:pic>" slide-xml))
+        "malformed image data never becomes a dangling r:embed reference")
+    (is (re-find #"<p:sp>" slide-xml)
+        "falls back to a plain text box instead of corrupting the package")))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"

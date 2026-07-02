@@ -20,8 +20,26 @@
 (def rel-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide")
 (def rel-slide-layout "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout")
 (def rel-theme "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme")
+(def rel-image "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
+
+(def media-extensions
+  {"image/png" "png" "image/jpeg" "jpg" "image/jpg" "jpg" "image/gif" "gif"
+   "image/bmp" "bmp" "image/svg+xml" "svg" "image/tiff" "tiff" "image/webp" "webp"})
+
+(defn- media-extension [media-type]
+  (get media-extensions media-type "png"))
+
+#?(:clj
+   (defn- decode-base64
+     "nil (not an exception) on malformed input -- callers treat a shape whose
+     image data doesn't decode as if it had none, falling back to a plain
+     text box instead of embedding corrupt bytes or crashing the export."
+     [s]
+     (try
+       (.decode (java.util.Base64/getDecoder) (str s))
+       (catch Exception _ nil))))
 
 (defn- esc [x]
   (-> (str (or x ""))
@@ -53,20 +71,24 @@
   (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper-case)]
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
-(defn- content-types [slide-count]
-  (ooxml/content-types-xml
-   (concat
-    [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
-     (ooxml/default-content-type "xml" (:xml ooxml/content-types))
-     (ooxml/override-content-type "/docProps/app.xml" "application/vnd.openxmlformats-officedocument.extended-properties+xml")
-     (ooxml/override-content-type "/docProps/core.xml" "application/vnd.openxmlformats-package.core-properties+xml")
-     (ooxml/override-content-type "/ppt/presentation.xml" (:pptx ooxml/content-types))
-     (ooxml/override-content-type "/ppt/slideMasters/slideMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml")
-     (ooxml/override-content-type "/ppt/slideLayouts/slideLayout1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml")
-     (ooxml/override-content-type "/ppt/theme/theme1.xml" "application/vnd.openxmlformats-officedocument.theme+xml")]
-    (for [idx (range 1 (inc slide-count))]
-      (ooxml/override-content-type (str "/ppt/slides/slide" idx ".xml")
-                                   "application/vnd.openxmlformats-officedocument.presentationml.slide+xml")))))
+(defn- content-types
+  ([slide-count] (content-types slide-count []))
+  ([slide-count media-extensions-used]
+   (ooxml/content-types-xml
+    (concat
+     [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
+      (ooxml/default-content-type "xml" (:xml ooxml/content-types))
+      (ooxml/override-content-type "/docProps/app.xml" "application/vnd.openxmlformats-officedocument.extended-properties+xml")
+      (ooxml/override-content-type "/docProps/core.xml" "application/vnd.openxmlformats-package.core-properties+xml")
+      (ooxml/override-content-type "/ppt/presentation.xml" (:pptx ooxml/content-types))
+      (ooxml/override-content-type "/ppt/slideMasters/slideMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml")
+      (ooxml/override-content-type "/ppt/slideLayouts/slideLayout1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml")
+      (ooxml/override-content-type "/ppt/theme/theme1.xml" "application/vnd.openxmlformats-officedocument.theme+xml")]
+     (for [idx (range 1 (inc slide-count))]
+       (ooxml/override-content-type (str "/ppt/slides/slide" idx ".xml")
+                                    "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"))
+     (for [[extension media-type] (into {} (map (fn [mt] [(media-extension mt) mt])) media-extensions-used)]
+       (ooxml/default-content-type extension media-type))))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -238,12 +260,81 @@
        "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>"
        "</p:spPr></p:sp>"))
 
-(defn- render-shape [deck idx shape]
-  (let [shape (design/resolve-shape deck shape)]
-    (case (:slides/shape shape)
-    :rect (rect-shape idx shape)
-    :text (text-shape deck idx shape)
-    (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) ""))))))
+;; PowerPoint's built-in "Medium Style 2 - Accent 1" table style GUID: a real
+;; style id every PowerPoint/LibreOffice recognizes, giving header-row +
+;; banded-row styling for free instead of an unstyled grid.
+(def ^:private default-table-style-id "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}")
+
+(defn- table-cell-xml [text]
+  (str "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
+       "<a:t>" (esc text) "</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>"))
+
+(defn- table-row-xml [row-height-emu cells]
+  (str "<a:tr h=\"" row-height-emu "\">" (apply str (map table-cell-xml cells)) "</a:tr>"))
+
+(defn- table-grid-xml [col-widths-emu]
+  (str "<a:tblGrid>"
+       (apply str (map #(str "<a:gridCol w=\"" % "\"/>") col-widths-emu))
+       "</a:tblGrid>"))
+
+(defn- normalize-rows
+  "Pads every row to `col-count` cells (missing cells become blank) and
+  ensures at least one row/column exists, so a malformed/empty :slides/rows
+  still produces a structurally valid table instead of a corrupt one."
+  [rows col-count]
+  (let [rows (if (seq rows) rows [[""]])]
+    (mapv (fn [row] (vec (take col-count (concat (map str row) (repeat ""))))) rows)))
+
+(defn- table-shape
+  "Writes a :table shape as a native <p:graphicFrame><a:tbl> instead of
+  degrading to plain text -- table cells (:slides/rows, from either a
+  hand-authored deck or a PPTX import) round-trip through full PPTX
+  regeneration, not just the source-aware `update` patch path."
+  [idx {:slides/keys [id rows w h] :as shape}]
+  (let [col-count (max 1 (apply max 1 (map count rows)))
+        norm-rows (normalize-rows rows col-count)
+        row-count (count norm-rows)
+        total-w (emu (positive-numeric w 8.4))
+        total-h (emu (positive-numeric h 2.0))
+        col-w (quot total-w col-count)
+        row-h (quot total-h row-count)]
+    (str "<p:graphicFrame>"
+         "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Table " idx))) "\"/>"
+         "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+         "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
+         "<a:ext cx=\"" total-w "\" cy=\"" total-h "\"/></p:xfrm>"
+         "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
+         "<a:tbl><a:tblPr firstRow=\"1\" bandRow=\"1\"><a:tableStyleId>" default-table-style-id "</a:tableStyleId></a:tblPr>"
+         (table-grid-xml (repeat col-count col-w))
+         (apply str (map #(table-row-xml row-h %) norm-rows))
+         "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>")))
+
+(defn- pic-shape
+  "Writes an :image shape as a native <p:pic> referencing an already-embedded
+  media part via `rel-id` (see `slide-image-rels`/`pptx-files`). Callers must
+  only reach this when a rel-id actually exists for the shape -- with no
+  rel-id, `render-shape` falls back to a plain text box instead of emitting a
+  dangling r:embed that would corrupt the package."
+  [idx {:slides/keys [id] :as shape} rel-id]
+  (str "<p:pic><p:nvPicPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Picture " idx))) "\"/>"
+       "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
+       "<p:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+       "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
+       "</p:pic>"))
+
+(defn- render-shape
+  ([deck idx shape] (render-shape deck idx shape {}))
+  ([deck idx shape opts]
+   (let [shape (design/resolve-shape deck shape)
+         image-rel-id (get-in opts [:image-rels (:slides/id shape)])]
+     (case (:slides/shape shape)
+       :rect (rect-shape idx shape)
+       :text (text-shape deck idx shape)
+       :table (table-shape idx shape)
+       :image (if image-rel-id
+                (pic-shape idx shape image-rel-id)
+                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Image"))))
+       (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) "")))))))
 
 (defn- guide-shapes [deck]
   (when (:slides/show-guides deck)
@@ -281,23 +372,58 @@
                 own-shapes
                 (when-let [footer (master-footer-shape deck)] [footer])))))
 
-(defn- slide-xml [deck slide]
-  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-       "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
-       "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
-       "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
-       "<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg>"
-       "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
-       "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
-       (let [shapes (slide-shapes deck slide)]
-         (if (seq shapes)
-           (apply str (map-indexed (partial render-shape deck) shapes))
-           (render-shape deck 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32})))
-       "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"))
+(defn- slide-xml
+  ([deck slide] (slide-xml deck slide {}))
+  ([deck slide opts]
+   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+        "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+        "<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg>"
+        "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
+        "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
+        (let [shapes (slide-shapes deck slide)]
+          (if (seq shapes)
+            (apply str (map-indexed (fn [idx shape] (render-shape deck idx shape opts)) shapes))
+            (render-shape deck 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32} opts)))
+        "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>")))
 
 (def slide-rels
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]))
+
+(defn- slide-image-entries
+  "Decodes every :image shape's :slides/image-data on `slide` into a media
+  part, assigning each a rel-id local to that slide's own .rels (rId1 is
+  reserved for the layout relationship) and a media part path built from the
+  running `next-index` (shared across the whole deck so two slides' images
+  never collide on the same ppt/media/imageN path)."
+  [deck slide next-index]
+  (let [images (->> (slide-shapes deck slide)
+                    (filterv #(and (= :image (:slides/shape %)) (:slides/id %) (:slides/image-data %))))]
+    (vec
+     (keep-indexed
+      (fn [i shape]
+        (when-let [bytes (decode-base64 (:slides/image-data shape))]
+          (let [media-type (or (:slides/media-type shape) "image/png")]
+            {:shape-id (:slides/id shape)
+             :rel-id (str "rId" (+ 2 i))
+             :media-type media-type
+             :filename (str "image" (+ next-index i) "." (media-extension media-type))
+             :bytes bytes})))
+      images))))
+
+(defn- slide-rels-xml [image-entries]
+  (if (seq image-entries)
+    (ooxml/relationships-xml
+     (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]
+           (map (fn [{:keys [rel-id filename]}]
+                  (ooxml/relationship {:id rel-id :type rel-image :target (str "../media/" filename)})))
+           image-entries))
+    slide-rels))
+
+(defn- image-rels-map [image-entries]
+  (into {} (map (juxt :shape-id :rel-id)) image-entries))
 
 (defn deck-slides [deck]
   (let [slides (:slides/slides deck)
@@ -312,10 +438,18 @@
 (defn pptx-files [deck]
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
-        height (positive-numeric (:slides/height deck) default-height-in)]
+        height (positive-numeric (:slides/height deck) default-height-in)
+        per-slide (reduce (fn [{:keys [acc next-index]} slide]
+                            (let [images (slide-image-entries deck slide next-index)]
+                              {:acc (conj acc {:slide slide :images images})
+                               :next-index (+ next-index (count images))}))
+                          {:acc [] :next-index 1}
+                          slides)
+        slide-plans (:acc per-slide)
+        all-media-types (mapcat (fn [{:keys [images]}] (map :media-type images)) slide-plans)]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides))]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props (count slides))]
@@ -326,11 +460,14 @@
        ["ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels]
        ["ppt/slideLayouts/slideLayout1.xml" (slide-layout deck)]
        ["ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels]]
-      (mapcat (fn [[idx slide]]
-                (let [n (inc idx)]
-                  [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide)]
-                   [(str "ppt/slides/_rels/slide" n ".xml.rels") slide-rels]]))
-              (map-indexed vector slides))))))
+      (mapcat (fn [[idx {:keys [slide images]}]]
+                (let [n (inc idx)
+                      opts {:image-rels (image-rels-map images)}]
+                  (concat
+                   [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images)]]
+                   (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images))))
+              (map-indexed vector slide-plans))))))
 
 #?(:clj
    (defn- add-entry! [^ZipOutputStream zip path content]
@@ -588,7 +725,9 @@
      (let [baos (ByteArrayOutputStream.)]
        (with-open [zip (ZipOutputStream. baos)]
          (doseq [[path content] (pptx-files deck)]
-           (add-entry! zip path content)))
+           (if (bytes? content)
+             (add-entry-bytes! zip path content)
+             (add-entry! zip path content))))
        (.toByteArray baos))
      :cljs
      (throw (ex-info "pptx byte writing requires a host zip implementation" {:feature :slides/pptx}))))
