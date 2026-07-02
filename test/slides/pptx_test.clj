@@ -431,6 +431,27 @@
       (let [plain-p (second (re-find #"(<a:p>(?:(?!</a:p>).)*Plain line(?:(?!</a:p>).)*</a:p>)" slide-xml))]
         (is (not (re-find #"<a:pPr" plain-p)))))))
 
+(deftest writes-and-round-trips-numbered-bullet-start-at
+  (let [deck (-> (m/deck "deck" {:slides/title "Restarted list"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "List"})
+                      (m/add-shape {:slides/id "body" :slides/shape :text
+                                    :slides/x 0.8 :slides/y 1.0 :slides/w 8.0 :slides/h 2.0
+                                    :slides/font-size 18
+                                    :slides/paragraphs
+                                    [{:text "Fifth item" :bullet {:type :auto-num :scheme "arabicPeriod" :start-at 5}}
+                                     {:text "Plain numbered item" :bullet {:type :auto-num :scheme "arabicPeriod"}}]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "startAt is written only for the paragraph that carries it"
+      (is (re-find #"<a:buAutoNum type=\"arabicPeriod\" startAt=\"5\"/>" slide-xml))
+      (is (re-find #"<a:buAutoNum type=\"arabicPeriod\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            body (some #(when (= "body" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= {:type :auto-num :scheme "arabicPeriod" :start-at 5} (:bullet (first (:slides/paragraphs body)))))
+        (is (= {:type :auto-num :scheme "arabicPeriod"} (:bullet (second (:slides/paragraphs body)))))))))
+
 (deftest text-shape-with-fill-writes-a-styled-non-rect-autoshape
   (let [deck (-> (m/deck "deck" {:slides/title "Callout"})
                  (m/add-slide
