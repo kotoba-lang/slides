@@ -952,9 +952,28 @@
           (effect-lst-xml shape)
           "</p:spPr></p:sp>"))))
 
+(defn- connector-connection-xml
+  "One <a:stCxn>/<a:endCxn> from a connector's own :slides/connections
+  entry ({:shape-id N :idx N}, from drawingml.parse/connector-connections
+  on import) -- id is the OTHER shape's own shape id, idx is which of
+  that shape's connection sites this end is attached to."
+  [tag {:keys [shape-id idx]}]
+  (when shape-id
+    (str "<a:" tag " id=\"" (long shape-id) "\"" (when idx (str " idx=\"" (long idx) "\"")) "/>")))
+
+(defn- connector-cnv-cxn-sp-pr-xml
+  "A connector's own <p:cNvCxnSpPr>, carrying its :slides/connections
+  ({:start {...} :end {...}}) as child <a:stCxn>/<a:endCxn> elements when
+  present -- bare <p:cNvCxnSpPr/> (a free-floating connector, unchanged
+  from before this feature existed) otherwise."
+  [{:keys [start end]}]
+  (if (or start end)
+    (str "<p:cNvCxnSpPr>" (connector-connection-xml "stCxn" start) (connector-connection-xml "endCxn" end) "</p:cNvCxnSpPr>")
+    "<p:cNvCxnSpPr/>"))
+
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]
   (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"/>"
-       "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
+       (connector-cnv-cxn-sp-pr-xml (:slides/connections shape)) "<p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\">" (avlst-xml shape) "</a:prstGeom>"
        "<a:ln" (when (:slides/line-width shape) (line-width-attr shape)) (line-cap-attr shape)
