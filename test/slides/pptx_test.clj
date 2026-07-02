@@ -199,6 +199,28 @@
     (testing "[Content_Types].xml declares the png extension"
       (is (re-find #"Extension=\"png\"" (entries "[Content_Types].xml"))))))
 
+(deftest writes-and-round-trips-picture-crop
+  (let [deck (-> (m/deck "deck" {:slides/title "Cropped"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Photo"})
+                      (m/add-shape (m/image "logo" one-pixel-png-base64
+                                            {:slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 2.0
+                                             :slides/crop {:left 10.0 :top 5.0 :right 10.0}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "<a:srcRect> is written right after <a:blip>, only the non-zero sides"
+      (is (re-find #"<a:blip r:embed=\"rId2\"/><a:srcRect l=\"10000\" t=\"5000\" r=\"10000\"/><a:stretch>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "logo" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= {:left 10.0 :top 5.0 :right 10.0} (:slides/crop shape))))))
+  (testing "no :slides/crop -- no <a:srcRect> at all, unchanged from before this feature existed"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/image "logo" one-pixel-png-base64)))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"srcRect" slide-xml))))))
+
 (deftest image-shape-with-invalid-image-data-falls-back-to-text-safely
   (let [deck (-> (m/deck "deck" {:slides/title "Bad image"})
                  (m/add-slide
