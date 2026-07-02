@@ -79,8 +79,10 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] [] []))
+  ([slide-count] (content-types slide-count [] [] [] 1))
   ([slide-count media-extensions-used chart-paths notes-slide-paths]
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths master-count]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -88,9 +90,13 @@
       (ooxml/override-content-type "/docProps/app.xml" "application/vnd.openxmlformats-officedocument.extended-properties+xml")
       (ooxml/override-content-type "/docProps/core.xml" "application/vnd.openxmlformats-package.core-properties+xml")
       (ooxml/override-content-type "/ppt/presentation.xml" (:pptx ooxml/content-types))
-      (ooxml/override-content-type "/ppt/slideMasters/slideMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml")
-      (ooxml/override-content-type "/ppt/slideLayouts/slideLayout1.xml" "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml")
       (ooxml/override-content-type "/ppt/theme/theme1.xml" "application/vnd.openxmlformats-officedocument.theme+xml")]
+     (for [idx (range 1 (inc master-count))]
+       (ooxml/override-content-type (str "/ppt/slideMasters/slideMaster" idx ".xml")
+                                    "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"))
+     (for [idx (range 1 (inc master-count))]
+       (ooxml/override-content-type (str "/ppt/slideLayouts/slideLayout" idx ".xml")
+                                    "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"))
      (for [idx (range 1 (inc slide-count))]
        (ooxml/override-content-type (str "/ppt/slides/slide" idx ".xml")
                                     "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"))
@@ -131,33 +137,42 @@
        "<Slides>" slide-count "</Slides>"
        "</Properties>"))
 
-(defn- presentation [slide-count width height]
-  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-       "<p:presentation xmlns:a=\"" dml/ns-a "\" "
-       "xmlns:r=\"" pml/ns-r "\" "
-       "xmlns:p=\"" pml/ns-p "\">"
-       "<p:sldMasterIdLst><p:sldMasterId id=\"2147483648\" r:id=\"rId1\"/></p:sldMasterIdLst>"
-       "<p:sldIdLst>"
-       (apply str
-              (for [idx (range 1 (inc slide-count))]
-                (str "<p:sldId id=\"" (+ 255 idx) "\" r:id=\"rId" (inc idx) "\"/>")))
-       "</p:sldIdLst>"
-       "<p:sldSz cx=\"" (emu width) "\" cy=\"" (emu height) "\" type=\"wide\"/>"
-       "<p:notesSz cx=\"6858000\" cy=\"9144000\"/>"
-       "</p:presentation>"))
+(defn- presentation
+  ([slide-count width height] (presentation slide-count width height 1))
+  ([slide-count width height master-count]
+   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<p:presentation xmlns:a=\"" dml/ns-a "\" "
+        "xmlns:r=\"" pml/ns-r "\" "
+        "xmlns:p=\"" pml/ns-p "\">"
+        "<p:sldMasterIdLst>"
+        (apply str
+               (for [idx (range 1 (inc master-count))]
+                 (str "<p:sldMasterId id=\"" (+ 2147483648 idx -1) "\" r:id=\"rId" idx "\"/>")))
+        "</p:sldMasterIdLst>"
+        "<p:sldIdLst>"
+        (apply str
+               (for [idx (range 1 (inc slide-count))]
+                 (str "<p:sldId id=\"" (+ 255 idx) "\" r:id=\"rId" (+ master-count idx) "\"/>")))
+        "</p:sldIdLst>"
+        "<p:sldSz cx=\"" (emu width) "\" cy=\"" (emu height) "\" type=\"wide\"/>"
+        "<p:notesSz cx=\"6858000\" cy=\"9144000\"/>"
+        "</p:presentation>")))
 
 (defn- presentation-rels
-  ([slide-count] (presentation-rels slide-count false))
-  ([slide-count has-notes?]
+  ([slide-count] (presentation-rels slide-count false 1))
+  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1))
+  ([slide-count has-notes? master-count]
    (ooxml/relationships-xml
     (concat
-     [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "slideMasters/slideMaster1.xml"})]
+     (for [idx (range 1 (inc master-count))]
+       (ooxml/relationship {:id (str "rId" idx) :type rel-slide-master
+                            :target (str "slideMasters/slideMaster" idx ".xml")}))
      (for [idx (range 1 (inc slide-count))]
-       (ooxml/relationship {:id (str "rId" (inc idx))
+       (ooxml/relationship {:id (str "rId" (+ master-count idx))
                             :type rel-slide
                             :target (str "slides/slide" idx ".xml")}))
      (when has-notes?
-       [(ooxml/relationship {:id (str "rId" (+ 2 slide-count))
+       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1))
                              :type rel-notes-master
                              :target "notesMasters/notesMaster1.xml"})])))))
 
@@ -226,17 +241,20 @@
          "</a:themeElements>\n"
          "</a:theme>")))
 
-(defn- master-background [deck]
-  (:slides/background (design/master deck) "FFFFFF"))
+(defn- master-background [master-map]
+  (:slides/background master-map "FFFFFF"))
 
 (defn- background-fill-xml
   "The <p:bg>'s fill content. :slides/background is either the historical
   flat hex string (solid fill) or a map {:stops [[pct hex] ...] :angle deg}
   for a linear gradient background (a stripe/wash effect is a common real-
   deck master background that previously had no way to round-trip at all --
-  only a flat solid color was ever written)."
-  [deck]
-  (let [bg (master-background deck)]
+  only a flat solid color was ever written). Takes the MASTER map directly
+  (design/master deck, or design/master-for-slide deck slide for a deck
+  using multiple named masters) rather than the deck, so a slide's own
+  master's background is used, not always the deck's single default one."
+  [master-map]
+  (let [bg (master-background master-map)]
     (if (map? bg)
       (let [stops (or (seq (:stops bg)) [[0 "FFFFFF"] [100 "F0F0F0"]])
             angle (numeric (:angle bg) 90)]
@@ -248,21 +266,26 @@
              "</a:gsLst><a:lin ang=\"" (long (* angle 60000)) "\" scaled=\"1\"/></a:gradFill>"))
       (str "<a:solidFill><a:srgbClr val=\"" (hex-color bg "FFFFFF") "\"/></a:solidFill>"))))
 
-(defn- slide-master [deck]
+(defn- slide-master
+  "A single <p:sldMaster> part for `master-map`, referencing its own
+  <p:sldLayoutId> at `layout-idx` (1:1 master<->layout pairing -- this
+  package's layouts carry no distinct placeholder content of their own
+  beyond the master's, so one layout per master is sufficient)."
+  [master-map layout-idx]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
-  <p:cSld name=\"kotoba\"><p:bg><p:bgPr>" (background-fill-xml deck) "</p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:cSld name=\"kotoba\"><p:bg><p:bgPr>" (background-fill-xml master-map) "</p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
-  <p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst>
+  <p:sldLayoutIdLst><p:sldLayoutId id=\"" (+ 2147483649 layout-idx -1) "\" r:id=\"rId1\"/></p:sldLayoutIdLst>
   <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
 </p:sldMaster>"))
 
-(def slide-master-rels
+(defn- slide-master-rels [layout-idx]
   (ooxml/relationships-xml
-   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})
+   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})
     (ooxml/relationship {:id "rId2" :type rel-theme :target "../theme/theme1.xml"})]))
 
-(defn- slide-layout [deck]
+(defn- slide-layout []
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"blank\" preserve=\"1\">
   <p:cSld name=\"Blank\"><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
@@ -303,9 +326,9 @@
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-notes-master :target "../notesMasters/notesMaster1.xml"})]))
 
-(def slide-layout-rels
+(defn- slide-layout-rels [master-idx]
   (ooxml/relationships-xml
-   [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "../slideMasters/slideMaster1.xml"})]))
+   [(ooxml/relationship {:id "rId1" :type rel-slide-master :target (str "../slideMasters/slideMaster" master-idx ".xml")})]))
 
 (defn- xfrm-attrs
   "rot/flipH/flipV attributes for an <a:xfrm> opening tag. rot is stored on
@@ -567,8 +590,8 @@
         :slides/x left :slides/y top :slides/w (- right left) :slides/h (- bottom top)
         :slides/fill "FFFFFF" :slides/line "D8DEE8"}])))
 
-(defn- master-footer-shape [deck]
-  (let [footer (:slides/footer (design/master deck))]
+(defn- master-footer-shape [deck slide]
+  (let [footer (:slides/footer (design/master-for-slide deck slide))]
     (when (:slides/enabled footer)
       (assoc footer
              :slides/id "master-footer"
@@ -587,7 +610,7 @@
                        :slides/font-size 32}])]
     (vec (concat (guide-shapes deck)
                 own-shapes
-                (when-let [footer (master-footer-shape deck)] [footer])))))
+                (when-let [footer (master-footer-shape deck slide)] [footer])))))
 
 (defn- slide-xml
   ([deck slide] (slide-xml deck slide {}))
@@ -596,7 +619,7 @@
         "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
         "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
         "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
-        "<p:cSld><p:bg><p:bgPr>" (background-fill-xml deck) "</p:bgPr></p:bg>"
+        "<p:cSld><p:bg><p:bgPr>" (background-fill-xml (design/master-for-slide deck slide)) "</p:bgPr></p:bg>"
         "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
         "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
         (let [shapes (slide-shapes deck slide)]
@@ -605,9 +628,9 @@
             (render-shape deck 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32} opts)))
         "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>")))
 
-(def slide-rels
+(defn- slide-rels [layout-idx]
   (ooxml/relationships-xml
-   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]))
+   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})]))
 
 (defn- slide-image-entries
   "Decodes every :image shape's :slides/image-data on `slide` into a media
@@ -665,10 +688,10 @@
 (defn- hyperlink-rels-map [hyperlink-entries]
   (into {} (map (juxt :shape-id :rel-id)) hyperlink-entries))
 
-(defn- slide-rels-xml [image-entries chart-entries notes-entry hyperlink-entries]
+(defn- slide-rels-xml [layout-idx image-entries chart-entries notes-entry hyperlink-entries]
   (if (or (seq image-entries) (seq chart-entries) notes-entry (seq hyperlink-entries))
     (ooxml/relationships-xml
-     (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]
+     (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})]
            (concat
             (map (fn [{:keys [rel-id filename]}]
                    (ooxml/relationship {:id rel-id :type rel-image :target (str "../media/" filename)}))
@@ -682,7 +705,7 @@
             (map (fn [{:keys [rel-id url]}]
                    (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
                  hyperlink-entries))))
-    slide-rels))
+    (slide-rels layout-idx)))
 
 (defn- image-rels-map [image-entries]
   (into {} (map (juxt :shape-id :rel-id)) image-entries))
@@ -700,16 +723,33 @@
         :slides/title (:slides/title deck (:slides/id deck "Slides"))
         :slides/shapes []}])))
 
+(defn- deck-master-refs
+  "The distinct :slides/master-ref values used across the deck's slides, in
+  order of first appearance, always with a leading nil (the deck's single
+  default master) -- so a deck where NO slide sets an explicit ref still
+  gets exactly one master (:master-idx 1 for every slide, identical output
+  to before multiple masters existed), while one that DOES use named
+  masters gets one master part per distinct ref used, in addition to the
+  default."
+  [slides]
+  (into [nil] (distinct) (keep :slides/master-ref slides)))
+
+(defn- slide-master-idx [master-refs slide]
+  (inc (or (first (keep-indexed (fn [i r] (when (= r (:slides/master-ref slide)) i)) master-refs)) 0)))
+
 (defn pptx-files [deck]
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
         height (positive-numeric (:slides/height deck) default-height-in)
+        master-refs (deck-master-refs slides)
+        master-count (count master-refs)
         per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index]} slide]
                             (let [images (slide-image-entries deck slide media-index 2)
                                   charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))
                                   notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))
                                   hyperlinks (slide-hyperlink-entries deck slide (+ 2 (count images) (count charts) (if notes 1 0)))]
-                              {:acc (conj acc {:slide slide :images images :charts charts :notes notes :hyperlinks hyperlinks})
+                              {:acc (conj acc {:slide slide :images images :charts charts :notes notes :hyperlinks hyperlinks
+                                               :master-idx (slide-master-idx master-refs slide)})
                                :media-index (+ media-index (count images))
                                :chart-index (+ chart-index (count charts))
                                :notes-index (+ notes-index (if notes 1 0))}))
@@ -722,27 +762,30 @@
         has-notes? (boolean (seq all-notes-paths))]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props (count slides))]
-       ["ppt/presentation.xml" (presentation (count slides) width height)]
-       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes?)]
-       ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]
-       ["ppt/slideMasters/slideMaster1.xml" (slide-master deck)]
-       ["ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels]
-       ["ppt/slideLayouts/slideLayout1.xml" (slide-layout deck)]
-       ["ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels]]
+       ["ppt/presentation.xml" (presentation (count slides) width height master-count)]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count)]
+       ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
+      (mapcat (fn [[idx ref]]
+                (let [n (inc idx)]
+                  [[(str "ppt/slideMasters/slideMaster" n ".xml") (slide-master (design/master-by-ref deck ref) n)]
+                   [(str "ppt/slideMasters/_rels/slideMaster" n ".xml.rels") (slide-master-rels n)]
+                   [(str "ppt/slideLayouts/slideLayout" n ".xml") (slide-layout)]
+                   [(str "ppt/slideLayouts/_rels/slideLayout" n ".xml.rels") (slide-layout-rels n)]]))
+              (map-indexed vector master-refs))
       (when has-notes?
         [["ppt/notesMasters/notesMaster1.xml" (notes-master-xml)]
          ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
-      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks]}]]
+      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks master-idx]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)
                             :hyperlink-rels (hyperlink-rels-map hyperlinks)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts notes hyperlinks)]]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml master-idx images charts notes hyperlinks)]]
                    (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
                    (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
                              [[chart-path chart-xml]
