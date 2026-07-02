@@ -330,6 +330,64 @@
       (is (re-find #"PartName=\"/ppt/charts/chart1.xml\"" (entries "[Content_Types].xml")))
       (is (re-find #"Extension=\"xlsx\"" (entries "[Content_Types].xml"))))))
 
+(deftest writes-chart-legend-position-and-axis-titles
+  (testing "an explicit legend position overrides the writer's own default bottom placement"
+    (let [deck (-> (m/deck "deck" {:slides/title "Legend right"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-legend-position :right
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (re-find #"<c:legendPos val=\"r\"/>" chart-xml))))
+  (testing ":none omits <c:legend> entirely"
+    (let [deck (-> (m/deck "deck" {:slides/title "No legend"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-legend-position :none
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (not (re-find #"<c:legend>" chart-xml)))))
+  (testing "no :slides/chart-legend-position -- the historical bottom default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Default legend"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (re-find #"<c:legendPos val=\"b\"/>" chart-xml))))
+  (testing "axis titles are written on the category and value axes, schema-ordered before <c:crossAx>"
+    (let [deck (-> (m/deck "deck" {:slides/title "Titled axes"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-axis-titles {:category "Quarter" :value "Revenue ($)"}
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (re-find #"<c:axPos val=\"b\"/><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Quarter</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title><c:crossAx"
+                    chart-xml))
+      (is (re-find #"<c:axPos val=\"l\"/><c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Revenue \(\$\)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title><c:crossAx"
+                    chart-xml))))
+  (testing "no :slides/chart-axis-titles -- no <c:title> at all, unchanged from before this feature existed"
+    (let [deck (-> (m/deck "deck" {:slides/title "No titles"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (not (re-find #"<c:title>" chart-xml))))))
+
 (deftest chart-shape-with-multiple-series-and-line-type-renders-all-series
   (let [deck (-> (m/deck "deck" {:slides/title "Multi-series"})
                  (m/add-slide

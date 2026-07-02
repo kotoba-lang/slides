@@ -1926,23 +1926,59 @@
   proportions of a whole, not points against two scaled axes."
   #{:pie :doughnut})
 
-(defn- category-value-axes-xml []
-  (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-       "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
-       "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-       "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+(defn- chart-axis-title-xml
+  "One axis' own <c:title>, schema-ordered after <c:axPos> and before
+  <c:crossAx> -- nil (no element at all) when the axis has no title, the
+  overwhelming common case (this package's own charts previously never
+  had ANY axis title option at all)."
+  [title]
+  (when title
+    (str "<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>" (esc title) "</a:t></a:r></a:p></c:rich></c:tx>"
+         "<c:overlay val=\"0\"/></c:title>")))
+
+(defn- category-value-axes-xml
+  ([] (category-value-axes-xml nil))
+  ([{:keys [category value]}]
+   (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+        "<c:delete val=\"0\"/><c:axPos val=\"b\"/>" (chart-axis-title-xml category) "<c:crossAx val=\"222222222\"/></c:catAx>"
+        "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+        "<c:delete val=\"0\"/><c:axPos val=\"l\"/>" (chart-axis-title-xml value) "<c:crossAx val=\"111111111\"/></c:valAx>")))
 
 (defn- value-value-axes-xml
   "A scatter chart's own two axes, BOTH value axes (<c:valAx>) -- unlike
   bar/line/area's one category + one value axis, scatter has no category
-  axis at all; X is itself a plotted value, not a discrete label."
-  []
-  (str "<c:valAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-       "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:valAx>"
-       "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-       "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+  axis at all; X is itself a plotted value, not a discrete label. Reuses
+  the same {:category :value} axis-titles shape as category-value-axes-
+  xml -- :category names the X (first) value axis' own title, matching
+  how scatter-series-xml already treats :categories as X data."
+  ([] (value-value-axes-xml nil))
+  ([{:keys [category value]}]
+   (str "<c:valAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+        "<c:delete val=\"0\"/><c:axPos val=\"b\"/>" (chart-axis-title-xml category) "<c:crossAx val=\"222222222\"/></c:valAx>"
+        "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+        "<c:delete val=\"0\"/><c:axPos val=\"l\"/>" (chart-axis-title-xml value) "<c:crossAx val=\"111111111\"/></c:valAx>")))
 
-(defn- chart-space-xml [{:keys [chart-type series]}]
+(defn- chart-legend-xml
+  "A chart's own :legend-position (:top/:bottom/:left/:right/:top-right/
+  :none, from :slides/chart-legend-position on the shape) into <c:legend>
+  -- :none omits the element entirely (no legend at all). Defaults to
+  :bottom (this writer's own historical hardcoded position) when absent,
+  unchanged output for every chart built before this feature existed."
+  [position]
+  (when-not (= position :none)
+    (str "<c:legend><c:legendPos val=\""
+         (case position :top "t" :left "l" :right "r" :top-right "tr" "b")
+         "\"/><c:overlay val=\"0\"/></c:legend>")))
+
+(defn- chart-space-xml
+  "`legend-position` and `axis-titles` are write-only configuration (from
+  :slides/chart-legend-position/:slides/chart-axis-titles on the shape) --
+  like this chart subsystem's own :chart-type/:series, there is no chart-
+  XML reader anywhere in this package (chart import is reference-metadata
+  only: rel-id + resolved chart-part/workbook-part path, never the
+  chart's own visual configuration), so these are settable only when
+  hand-authoring or programmatically building a deck, not round-tripped."
+  [{:keys [chart-type series legend-position axis-titles]}]
   (let [axisless? (axisless-chart-types chart-type)
         scatter? (= :scatter chart-type)
         body (case chart-type
@@ -1960,9 +1996,10 @@
          body
          (cond
            axisless? nil
-           scatter? (value-value-axes-xml)
-           :else (category-value-axes-xml))
-         "</c:plotArea><c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>"
+           scatter? (value-value-axes-xml axis-titles)
+           :else (category-value-axes-xml axis-titles))
+         "</c:plotArea>"
+         (chart-legend-xml (or legend-position :bottom))
          "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>")))
 
 ;; -- a minimal, valid .xlsx (itself an OPC package) embedded as the chart's
@@ -2041,7 +2078,9 @@
                  :rel-id (str "rId" (+ rid-start i))
                  :chart-path (str "ppt/charts/" chart-filename)
                  :chart-filename chart-filename
-                 :chart-xml (chart-space-xml {:chart-type (:slides/chart-type shape) :series series})
+                 :chart-xml (chart-space-xml {:chart-type (:slides/chart-type shape) :series series
+                                              :legend-position (:slides/chart-legend-position shape)
+                                              :axis-titles (:slides/chart-axis-titles shape)})
                  :chart-rels-path (str "ppt/charts/_rels/chart" n ".xml.rels")
                  :chart-rels-xml (ooxml/relationships-xml
                                   [(ooxml/relationship {:id "rId1" :type rel-package
