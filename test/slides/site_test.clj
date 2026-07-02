@@ -8,7 +8,10 @@
 
 (deftest index-html-renders-github-pages-shell
   (let [html (site/index-html)]
-    (is (.startsWith html "<!doctype html>"))
+    ;; kotoba.html/html5 emits uppercase DOCTYPE (HTML doctype is case-
+    ;; insensitive; this is the same substrate shitsuke.hiccup itself is
+    ;; built on, see slides.site ns docstring / 90-docs/adr/2607022800)
+    (is (.startsWith html "<!DOCTYPE html>"))
     (is (re-find #"<title>kotoba-lang/slides</title>" html))
     (is (re-find #"<link rel=\"stylesheet\" href=\"\./main\.css\">" html))
     (is (re-find #"<body class=\"slides-page\">" html))

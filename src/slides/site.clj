@@ -1,6 +1,10 @@
 (ns slides.site
+  "Per 90-docs/adr/2607022800-kotoba-lang-default-uiux-appkit-uikit-interface-fundamentals:
+  the docs/ Pages shell is rendered via kotoba-lang/html (kotoba.html/html5),
+  the standalone extracted substrate shitsuke.hiccup/->html is itself built on
+  (byte-identical render-node/escape rules) — not a second, divergent renderer."
   (:require [clojure.java.io :as io]
-            [shitsuke.hiccup :as hiccup]
+            [kotoba.html :as html]
             [slides.web.ssr :as ssr]))
 
 ;; Shell-level class. The page body is rendered from the same CLJC view tree
@@ -20,7 +24,7 @@
      [:hiccup/raw (ssr/root-html)]]]])
 
 (defn index-html []
-  (str "<!doctype html>\n" (hiccup/->html (index-page)) "\n"))
+  (str (html/html5 (index-page)) "\n"))
 
 (defn write! []
   (let [out (io/file "docs" "index.html")]
