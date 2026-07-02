@@ -1532,3 +1532,37 @@
     (is (re-find #"<dc:creator>kotoba-lang/slides</dc:creator>" core-xml))
     (is (not (re-find #"<dc:subject>" core-xml)))
     (is (not (re-find #"<cp:keywords>" core-xml)))))
+
+(deftest writes-date-and-slide-number-field-placeholders
+  (let [deck (-> (m/deck "deck" {:slides/title "Field placeholders"
+                                 :slides/master {:slides/date {:slides/enabled true
+                                                               :slides/x 0.7 :slides/y 5.0 :slides/w 1.5 :slides/h 0.18}
+                                                 :slides/slide-number {:slides/enabled true
+                                                                       :slides/x 7.5 :slides/y 5.0 :slides/w 1.0 :slides/h 0.18}}})
+                 (m/add-slide (m/slide "s1"))
+                 (m/add-slide (m/slide "s2")))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide1 (entries "ppt/slides/slide1.xml")
+        slide2 (entries "ppt/slides/slide2.xml")]
+    (testing "the date placeholder is a real <p:ph type=\"dt\"> whose run is a field, not plain text"
+      (is (re-find #"<p:cNvPr id=\"12\" name=\"master-date\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"dt\"/></p:nvPr>" slide1))
+      (is (re-find #"<a:fld id=\"\{[^}]+\}\" type=\"datetime1\">" slide1)))
+    (testing "the slide-number placeholder is a real <p:ph type=\"sldNum\">, and its text is the slide's OWN 1-based position"
+      (is (re-find #"<p:cNvPr id=\"13\" name=\"master-slide-number\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"sldNum\"/></p:nvPr>" slide1))
+      (is (re-find #"<a:fld id=\"[^\"]*\" type=\"slidenum\"><a:rPr[\s\S]*?</a:rPr><a:t>1</a:t></a:fld>" slide1))
+      (is (re-find #"<a:fld id=\"[^\"]*\" type=\"slidenum\"><a:rPr[\s\S]*?</a:rPr><a:t>2</a:t></a:fld>" slide2)
+          "slide 2's own field shows \"2\", not stale/copy-pasted \"1\""))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shapes-of (fn [idx] (-> reimported :slides/slides (nth idx) :slides/shapes))
+            by-ph-type (fn [shapes t] (some #(when (= t (get-in % [:slides/placeholder :type])) %) shapes))]
+        (is (= "1" (:slides/text (by-ph-type (shapes-of 0) "sldNum"))))
+        (is (= "2" (:slides/text (by-ph-type (shapes-of 1) "sldNum"))))
+        (is (some? (by-ph-type (shapes-of 0) "dt"))))))
+  (testing "no :slides/date/:slides/slide-number in the design -- no field placeholders at all, matching the pre-feature default"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (m/slide "s1")))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<a:fld" slide-xml)))
+      (is (not (re-find #"type=\"dt\"" slide-xml)))
+      (is (not (re-find #"type=\"sldNum\"" slide-xml))))))
