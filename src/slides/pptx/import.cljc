@@ -43,6 +43,7 @@
     (:drawingml/text shape) (assoc :slides/text (:drawingml/text shape))
     (:drawingml/paragraphs shape) (assoc :slides/paragraphs (:drawingml/paragraphs shape))
     (:drawingml/rows shape) (assoc :slides/rows (:drawingml/rows shape))
+    (:drawingml/cells shape) (assoc :slides/cells (:drawingml/cells shape))
     (:drawingml/geometry shape) (assoc :slides/geometry (:drawingml/geometry shape))
     (:drawingml/rotation shape) (assoc :slides/rotation (:drawingml/rotation shape))
     (:drawingml/flip-h shape) (assoc :slides/flip-h (:drawingml/flip-h shape))

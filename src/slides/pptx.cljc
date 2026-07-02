@@ -539,9 +539,37 @@
 ;; banded-row styling for free instead of an unstyled grid.
 (def ^:private default-table-style-id "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}")
 
-(defn- table-cell-xml [text]
-  (str "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
-       "<a:t>" (esc text) "</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>"))
+(def ^:private merge-markers #{:h-merge :v-merge :hv-merge})
+
+(defn- table-cell-xml
+  "A single <a:tc>, dispatching on the cell's shape:
+  - :h-merge/:v-merge/:hv-merge -- an empty merge-continuation cell,
+    hMerge=\"1\"/vMerge=\"1\"/both (see drawingml.parse/table-cells).
+  - a map {:text ... :col-span N :row-span N :fill \"hex\"} -- the ANCHOR
+    cell of a merge and/or a cell with its own background fill.
+  - anything else (the common case) -- a plain text cell, unchanged from
+    before."
+  [cell]
+  (cond
+    (merge-markers cell)
+    (str "<a:tc"
+         (when (#{:h-merge :hv-merge} cell) " hMerge=\"1\"")
+         (when (#{:v-merge :hv-merge} cell) " vMerge=\"1\"")
+         "><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"en-US\"/></a:p></a:txBody><a:tcPr/></a:tc>")
+
+    (map? cell)
+    (str "<a:tc"
+         (when (:col-span cell) (str " gridSpan=\"" (long (:col-span cell)) "\""))
+         (when (:row-span cell) (str " rowSpan=\"" (long (:row-span cell)) "\""))
+         "><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
+         "<a:t>" (esc (:text cell)) "</a:t></a:r></a:p></a:txBody>"
+         "<a:tcPr>" (when (:fill cell)
+                      (str "<a:solidFill><a:srgbClr val=\"" (hex-color (:fill cell) "FFFFFF") "\"/></a:solidFill>"))
+         "</a:tcPr></a:tc>")
+
+    :else
+    (str "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
+         "<a:t>" (esc cell) "</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>")))
 
 (defn- table-row-xml [row-height-emu cells]
   (str "<a:tr h=\"" row-height-emu "\">" (apply str (map table-cell-xml cells)) "</a:tr>"))
@@ -551,21 +579,30 @@
        (apply str (map #(str "<a:gridCol w=\"" % "\"/>") col-widths-emu))
        "</a:tblGrid>"))
 
+(defn- normalize-cell
+  "Passes a structured cell (map/merge-marker) through unchanged; coerces
+  any plain scalar (the common case, including non-string values like a
+  hand-authored deck's numbers) to a string."
+  [cell]
+  (if (or (map? cell) (merge-markers cell)) cell (str cell)))
+
 (defn- normalize-rows
   "Pads every row to `col-count` cells (missing cells become blank) and
-  ensures at least one row/column exists, so a malformed/empty :slides/rows
+  ensures at least one row/column exists, so a malformed/empty source grid
   still produces a structurally valid table instead of a corrupt one."
   [rows col-count]
   (let [rows (if (seq rows) rows [[""]])]
-    (mapv (fn [row] (vec (take col-count (concat (map str row) (repeat ""))))) rows)))
+    (mapv (fn [row] (vec (take col-count (concat (map normalize-cell row) (repeat ""))))) rows)))
 
 (defn- table-shape
   "Writes a :table shape as a native <p:graphicFrame><a:tbl> instead of
-  degrading to plain text -- table cells (:slides/rows, from either a
-  hand-authored deck or a PPTX import) round-trip through full PPTX
-  regeneration, not just the source-aware `update` patch path."
-  [idx {:slides/keys [id rows w h] :as shape}]
-  (let [col-count (max 1 (apply max 1 (map count rows)))
+  degrading to plain text -- table cells (:slides/cells when the table has
+  a merge/span/per-cell-fill, else the plain :slides/rows text grid, from
+  either a hand-authored deck or a PPTX import) round-trip through full
+  PPTX regeneration, not just the source-aware `update` patch path."
+  [idx {:slides/keys [id rows cells w h] :as shape}]
+  (let [rows (or cells rows)
+        col-count (max 1 (apply max 1 (map count rows)))
         norm-rows (normalize-rows rows col-count)
         row-count (count norm-rows)
         total-w (emu (positive-numeric w 8.4))
