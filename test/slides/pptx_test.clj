@@ -424,6 +424,28 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-and-round-trips-shape-adjustment-values
+  (let [deck (-> (m/deck "deck" {:slides/title "Adjusted"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/geometry :roundRect
+                                                :slides/adjustments [{:name "adj" :fmla "val 8333"}]})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the custom adjustment is written, not the historical empty <a:avLst/>"
+      (is (re-find #"<a:avLst><a:gd name=\"adj\" fmla=\"val 8333\"/></a:avLst>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= [{:name "adj" :fmla "val 8333"}] (:slides/adjustments rect))))))
+  (testing "no :slides/adjustments -- historical empty <a:avLst/>, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Default"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r" {:slides/geometry :roundRect})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:avLst/>" slide-xml))
+      (is (not (re-find #"<a:gd" slide-xml))))))
+
 (deftest writes-placeholder-type-on-full-regen
   (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
                  (m/add-slide
