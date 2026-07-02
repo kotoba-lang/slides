@@ -746,6 +746,73 @@
         (is (contains? plain-entries "ppt/slideMasters/slideMaster1.xml"))
         (is (not (contains? plain-entries "ppt/slideMasters/slideMaster2.xml")))))))
 
+(deftest writes-multiple-layouts-within-a-single-master
+  (let [deck (m/deck "deck" {:slides/title "Layout diversity"
+                             :slides/layouts [{:slides/id "title-slide" :slides/layout-type "title"
+                                               :slides/placeholders [{:type "ctrTitle" :x 0.5 :y 2.0 :w 9.0 :h 1.5}]}
+                                              {:slides/id "two-content" :slides/layout-type "twoObj"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/layout-ref "title-slide"}) (m/add-shape (m/text-box "t" "Title"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/layout-ref "two-content"}) (m/add-shape (m/text-box "t" "Content"))))
+                (m/add-slide (-> (m/slide "s3") (m/add-shape (m/text-box "t" "Default")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "one layout PART PER DISTINCT layout used, all belonging to the SAME single master"
+      (is (contains? entries "ppt/slideLayouts/slideLayout1.xml"))
+      (is (contains? entries "ppt/slideLayouts/slideLayout2.xml"))
+      (is (contains? entries "ppt/slideLayouts/slideLayout3.xml"))
+      (is (not (contains? entries "ppt/slideMasters/slideMaster2.xml"))
+          "still exactly one master -- these are layout VARIANTS, not different masters"))
+    (testing "each layout carries its own real type= attribute, not always \"blank\""
+      (is (re-find #"<p:sldLayout[^>]*\btype=\"title\"" (entries "ppt/slideLayouts/slideLayout2.xml")))
+      (is (re-find #"<p:sldLayout[^>]*\btype=\"twoObj\"" (entries "ppt/slideLayouts/slideLayout3.xml")))
+      (is (re-find #"<p:sldLayout[^>]*\btype=\"blank\"" (entries "ppt/slideLayouts/slideLayout1.xml"))))
+    (testing "a layout's own placeholder template is written as a real positioned <p:ph>"
+      (is (re-find #"<p:ph type=\"ctrTitle\"/>" (entries "ppt/slideLayouts/slideLayout2.xml"))))
+    (testing "the master's own <p:sldLayoutIdLst> lists ALL THREE layouts, not just one"
+      (is (= 3 (count (re-seq #"<p:sldLayoutId " (entries "ppt/slideMasters/slideMaster1.xml"))))))
+    (testing "each slide's .rels references the correct layout, not always layout1"
+      (is (re-find #"slideLayout2\.xml" (entries "ppt/slides/_rels/slide1.xml.rels")))
+      (is (re-find #"slideLayout3\.xml" (entries "ppt/slides/_rels/slide2.xml.rels")))
+      (is (re-find #"slideLayout1\.xml" (entries "ppt/slides/_rels/slide3.xml.rels")))))
+  (testing "no :slides/layout-ref anywhere -- exactly one (blank) layout, unchanged behavior"
+    (let [plain-deck (m/deck "deck" {:slides/title "Plain"})
+          plain-deck (m/add-slide plain-deck (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi"))))
+          plain-entries (zip-entries (pptx/pptx-bytes plain-deck))]
+      (is (contains? plain-entries "ppt/slideLayouts/slideLayout1.xml"))
+      (is (not (contains? plain-entries "ppt/slideLayouts/slideLayout2.xml"))))))
+
+(deftest writes-multiple-masters-EACH-with-multiple-layouts
+  (let [deck (m/deck "deck" {:slides/title "Full combo"
+                             :slides/masters [{:slides/id "dark" :slides/background "111111"}]
+                             :slides/layouts [{:slides/id "dark-title" :slides/layout-type "title"}
+                                              {:slides/id "light-title" :slides/layout-type "title"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/master-ref "dark" :slides/layout-ref "dark-title"})
+                                 (m/add-shape (m/text-box "t" "Dark title"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/layout-ref "light-title"})
+                                 (m/add-shape (m/text-box "t" "Light title"))))
+                (m/add-slide (-> (m/slide "s3" {:slides/master-ref "dark"})
+                                 (m/add-shape (m/text-box "t" "Dark blank")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "two masters (default + dark), each owning its own layout(s) -- 3 layouts total: default's blank+light-title, dark's dark-title+blank"
+      (is (contains? entries "ppt/slideMasters/slideMaster1.xml"))
+      (is (contains? entries "ppt/slideMasters/slideMaster2.xml"))
+      (is (contains? entries "ppt/slideLayouts/slideLayout4.xml"))
+      (is (not (contains? entries "ppt/slideLayouts/slideLayout5.xml"))))
+    (testing "master 1 (default)'s own sldLayoutIdLst lists its 2 layouts (blank default + light-title); master 2 (dark)'s lists its 2 (dark-title + blank default)"
+      (is (= 2 (count (re-seq #"<p:sldLayoutId " (entries "ppt/slideMasters/slideMaster1.xml")))))
+      (is (= 2 (count (re-seq #"<p:sldLayoutId " (entries "ppt/slideMasters/slideMaster2.xml"))))))
+    (testing "each slide's .rels points at the layout belonging to the RIGHT master, not just the right layout-ref in isolation"
+      ;; layout-entries are computed master-major: master 1 (default) contributes
+      ;; its blank (global idx 1) + light-title (idx 2) first, THEN master 2
+      ;; (dark) contributes its own blank (idx 3) + dark-title (idx 4).
+      (is (re-find #"slideLayout4\.xml" (entries "ppt/slides/_rels/slide1.xml.rels"))
+          "slide1: dark master's dark-title layout")
+      (is (re-find #"slideLayout2\.xml" (entries "ppt/slides/_rels/slide2.xml.rels"))
+          "slide2: default master's light-title layout")
+      (is (re-find #"slideLayout3\.xml" (entries "ppt/slides/_rels/slide3.xml.rels"))
+          "slide3: dark master's own implicit blank layout (a SEPARATE part from the default master's blank)"))))
+
 (deftest multi-master-deck-round-trips-through-import
   (let [deck (m/deck "deck" {:slides/title "Sectioned"
                              :slides/masters [{:slides/id "dark" :slides/background "111111"}
