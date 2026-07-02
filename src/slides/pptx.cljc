@@ -226,12 +226,31 @@
          "</a:theme>")))
 
 (defn- master-background [deck]
-  (hex-color (:slides/background (design/master deck)) "FFFFFF"))
+  (:slides/background (design/master deck) "FFFFFF"))
+
+(defn- background-fill-xml
+  "The <p:bg>'s fill content. :slides/background is either the historical
+  flat hex string (solid fill) or a map {:stops [[pct hex] ...] :angle deg}
+  for a linear gradient background (a stripe/wash effect is a common real-
+  deck master background that previously had no way to round-trip at all --
+  only a flat solid color was ever written)."
+  [deck]
+  (let [bg (master-background deck)]
+    (if (map? bg)
+      (let [stops (or (seq (:stops bg)) [[0 "FFFFFF"] [100 "F0F0F0"]])
+            angle (numeric (:angle bg) 90)]
+        (str "<a:gradFill rotWithShape=\"1\"><a:gsLst>"
+             (apply str (map (fn [[pos hex]]
+                               (str "<a:gs pos=\"" (long (* (numeric pos 0) 1000)) "\">"
+                                    "<a:srgbClr val=\"" (hex-color hex "FFFFFF") "\"/></a:gs>"))
+                             stops))
+             "</a:gsLst><a:lin ang=\"" (long (* angle 60000)) "\" scaled=\"1\"/></a:gradFill>"))
+      (str "<a:solidFill><a:srgbClr val=\"" (hex-color bg "FFFFFF") "\"/></a:solidFill>"))))
 
 (defn- slide-master [deck]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
-  <p:cSld name=\"kotoba\"><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:cSld name=\"kotoba\"><p:bg><p:bgPr>" (background-fill-xml deck) "</p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
   <p:sldLayoutIdLst><p:sldLayoutId id=\"2147483649\" r:id=\"rId1\"/></p:sldLayoutIdLst>
   <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
@@ -564,7 +583,7 @@
         "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
         "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
         "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
-        "<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"" (master-background deck) "\"/></a:solidFill></p:bgPr></p:bg>"
+        "<p:cSld><p:bg><p:bgPr>" (background-fill-xml deck) "</p:bgPr></p:bg>"
         "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
         "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
         (let [shapes (slide-shapes deck slide)]

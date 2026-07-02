@@ -397,6 +397,24 @@
     (is (= "Speaker note text\nSecond line"
            (-> reimported :slides/slides first :slides/notes)))))
 
+(deftest writes-gradient-background-when-configured
+  (let [deck (m/deck "deck" {:slides/title "Gradient bg"
+                             :slides/master {:slides/background
+                                             {:stops [[0 "112233"] [100 "AABBCC"]] :angle 45}}})
+        deck (m/add-slide deck (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi"))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "the slide and master both get a real <a:gradFill>, not a flattened solid color"
+      (is (re-find #"<a:gradFill rotWithShape=\"1\"><a:gsLst>" (entries "ppt/slides/slide1.xml")))
+      (is (re-find #"<a:gs pos=\"0\"><a:srgbClr val=\"112233\"/></a:gs>" (entries "ppt/slides/slide1.xml")))
+      (is (re-find #"<a:gs pos=\"100000\"><a:srgbClr val=\"AABBCC\"/></a:gs>" (entries "ppt/slides/slide1.xml")))
+      (is (re-find #"<a:lin ang=\"2700000\" scaled=\"1\"/>" (entries "ppt/slides/slide1.xml")))
+      (is (re-find #"<a:gradFill" (entries "ppt/slideMasters/slideMaster1.xml")))))
+  (testing "a plain hex :slides/background still writes the historical solidFill"
+    (let [deck (m/deck "deck" {:slides/title "Solid bg" :slides/master {:slides/background "336699"}})
+          deck (m/add-slide deck (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi"))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"336699\"/></a:solidFill>" (entries "ppt/slides/slide1.xml"))))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"
