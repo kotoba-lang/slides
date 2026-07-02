@@ -27,8 +27,9 @@
 (defn- shape-kind [kind]
   (case kind
     :rect :rect
-    :pic :text
-    :table :text
+    :pic :image
+    :table :table
+    :chart :chart
     :text))
 
 (defn- shape->slides [shape]
@@ -39,6 +40,7 @@
            :slides/w (:drawingml/w shape)
            :slides/h (:drawingml/h shape)}
     (:drawingml/text shape) (assoc :slides/text (:drawingml/text shape))
+    (:drawingml/rows shape) (assoc :slides/rows (:drawingml/rows shape))
     (:drawingml/font-size shape) (assoc :slides/font-size (:drawingml/font-size shape))
     (:drawingml/color shape) (assoc :slides/color (:drawingml/color shape))
     (:drawingml/fill shape) (assoc :slides/fill (:drawingml/fill shape))
@@ -51,11 +53,26 @@
     (:drawingml/workbook-part shape) (assoc :slides/workbook-part (:drawingml/workbook-part shape))
     (:ooxml/source shape) (assoc :ooxml/source (:ooxml/source shape))))
 
+(defn- shape-inventory
+  "The [kind index] locator of every shape the slide's source XML actually
+  held at import time, regardless of whether it survives later EDN edits.
+  update-pptx-bytes diffs this against the deck's current shapes to detect
+  deletions (a shape absent from the deck but present here) safely, without
+  requiring editors to leave tombstones behind."
+  [shapes]
+  (into #{}
+        (keep (fn [shape]
+                (when-let [source (:ooxml/source shape)]
+                  [(:ooxml/kind source) (:ooxml/index source)])))
+        shapes))
+
 (defn- slide->slides [slide]
-  {:slides/id (:presentationml/id slide)
-   :slides/title (:presentationml/title slide)
-   :slides/source (:presentationml/source slide)
-   :slides/shapes (mapv shape->slides (:presentationml/shapes slide))})
+  (let [shapes (mapv shape->slides (:presentationml/shapes slide))]
+    {:slides/id (:presentationml/id slide)
+     :slides/title (:presentationml/title slide)
+     :slides/source (:presentationml/source slide)
+     :slides/shapes shapes
+     :slides/shape-inventory (shape-inventory shapes)}))
 
 (defn deck-from-entries
   ([entries file-name] (deck-from-entries entries file-name {}))

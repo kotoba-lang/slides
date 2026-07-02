@@ -1,5 +1,5 @@
 (ns slides.pptx-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [slides.model :as m]
             [slides.office :as office]
             [slides.pptx :as pptx])
@@ -384,3 +384,207 @@
     (is (re-find #"<c:v>180</c:v>" chart))
     (is (re-find #"<c r=\"B2\"><v>120</v></c>" sheet))
     (is (re-find #"<c r=\"B3\"><v>180</v></c>" sheet))))
+
+(deftest update-pptx-patches-graphic-frame-position
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"12\" name=\"Revenue Chart\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+                                                    "<p:xfrm><a:off x=\"914400\" y=\"1371600\"/><a:ext cx=\"5486400\" cy=\"2743200\"/></p:xfrm>"
+                                                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"rId2\"/></a:graphicData></a:graphic></p:graphicFrame>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (zip-bytes base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/shapes [{:slides/id "Revenue Chart"
+                                                :slides/shape :chart
+                                                :slides/x 2.0
+                                                :slides/y 3.0
+                                                :slides/w 4.0
+                                                :slides/h 2.5
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/graphicFrame
+                                                               :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "graphicFrame uses <p:xfrm>, not <a:xfrm>/<p:spPr> -- position edits must land there"
+      (is (re-find #"<p:xfrm><a:off x=\"1828800\" y=\"2743200\"/><a:ext cx=\"3657600\" cy=\"2286000\"/></p:xfrm>" slide))
+      (is (not (re-find #"x=\"914400\" y=\"1371600\"" slide))))))
+
+(def multi-run-base-entries
+  {"[Content_Types].xml" "<Types/>"
+   "_rels/.rels" "<Relationships/>"
+   "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+   "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                 "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                 "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                 "<p:txBody><a:bodyPr/><a:lstStyle/>"
+                                 "<a:p><a:pPr algn=\"ctr\"/><a:r><a:rPr sz=\"1800\" b=\"1\"/><a:t>Hello </a:t></a:r><a:r><a:rPr sz=\"1800\"/><a:t>world</a:t></a:r></a:p>"
+                                 "</p:txBody></p:sp>"
+                                 "</p:spTree></p:cSld></p:sld>")})
+
+(defn- shape-for [text]
+  {:slides/id "Title"
+   :slides/shape :text
+   :slides/text text
+   :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
+   :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                  :ooxml/kind :p/sp
+                  :ooxml/index 0}})
+
+(deftest update-pptx-collapses-multi-run-paragraph-without-leaving-stale-runs
+  (let [base-bytes (zip-bytes multi-run-base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1" :slides/shapes [(shape-for "Bonjour")]}]}
+        slide (get (zip-entries (pptx/update-pptx-bytes base-bytes deck)) "ppt/slides/slide1.xml")]
+    (testing "old first-<a:t>-only patch left the second run (\"world\") stale; now the whole paragraph is rebuilt"
+      (is (re-find #"Bonjour" slide))
+      (is (not (re-find #"world" slide)))
+      (is (= 1 (count (re-seq #"<a:r>" slide)))))
+    (testing "the paragraph's own <a:pPr> (alignment) survives untouched"
+      (is (re-find #"<a:pPr algn=\"ctr\"/>" slide)))
+    (testing "the first run's formatting (bold) is reused as the style template"
+      (is (re-find #"b=\"1\"" slide)))))
+
+(def multi-paragraph-base-entries
+  {"[Content_Types].xml" "<Types/>"
+   "_rels/.rels" "<Relationships/>"
+   "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+   "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                 "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                 "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                 "<p:txBody><a:bodyPr/><a:lstStyle/>"
+                                 "<a:p><a:pPr algn=\"ctr\"/><a:r><a:rPr sz=\"1800\"/><a:t>Old</a:t></a:r></a:p>"
+                                 "</p:txBody></p:sp>"
+                                 "</p:spTree></p:cSld></p:sld>")})
+
+(deftest update-pptx-grows-and-shrinks-paragraph-count-to-match-lines
+  (let [base-bytes (zip-bytes multi-paragraph-base-entries)]
+    (testing "more newlines than existing paragraphs appends plain paragraphs"
+      (let [deck {:slides/id "imported"
+                  :slides/slides [{:slides/id "slide-1" :slides/shapes [(shape-for "Line1\nLine2\nLine3")]}]}
+            slide (get (zip-entries (pptx/update-pptx-bytes base-bytes deck)) "ppt/slides/slide1.xml")]
+        (is (= 3 (count (re-seq #"<a:p>" slide))))
+        (is (= 1 (count (re-seq #"<a:pPr" slide))))
+        (is (re-find #"Line1" slide))
+        (is (re-find #"Line2" slide))
+        (is (re-find #"Line3" slide))))
+    (testing "fewer newlines than existing paragraphs drops the extras"
+      (let [three-paragraph-bytes (zip-bytes (assoc multi-paragraph-base-entries
+                                                     "ppt/slides/slide1.xml"
+                                                     (str "<p:sld><p:cSld><p:spTree>"
+                                                          "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                          "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                          "<p:txBody><a:bodyPr/><a:lstStyle/>"
+                                                          "<a:p><a:r><a:t>A</a:t></a:r></a:p><a:p><a:r><a:t>B</a:t></a:r></a:p><a:p><a:r><a:t>C</a:t></a:r></a:p>"
+                                                          "</p:txBody></p:sp>"
+                                                          "</p:spTree></p:cSld></p:sld>")))
+            deck {:slides/id "imported"
+                  :slides/slides [{:slides/id "slide-1" :slides/shapes [(shape-for "OnlyLine")]}]}
+            slide (get (zip-entries (pptx/update-pptx-bytes three-paragraph-bytes deck)) "ppt/slides/slide1.xml")]
+        (is (= 1 (count (re-seq #"<a:p>" slide))))
+        (is (re-find #"OnlyLine" slide))))))
+
+(def table-base-entries
+  {"[Content_Types].xml" "<Types/>"
+   "_rels/.rels" "<Relationships/>"
+   "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+   "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                 "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"9\" name=\"Table 1\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>"
+                                 "<p:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"4572000\" cy=\"1828800\"/></p:xfrm>"
+                                 "<a:graphic><a:graphicData><a:tbl>"
+                                 "<a:tr><a:tc><a:txBody><a:p><a:r><a:t>Q1</a:t></a:r></a:p></a:txBody></a:tc>"
+                                 "<a:tc><a:txBody><a:p><a:r><a:t>10</a:t></a:r></a:p></a:txBody></a:tc></a:tr>"
+                                 "<a:tr><a:tc><a:txBody><a:p><a:r><a:t>Q2</a:t></a:r></a:p></a:txBody></a:tc>"
+                                 "<a:tc><a:txBody><a:p><a:r><a:t>20</a:t></a:r></a:p></a:txBody></a:tc></a:tr>"
+                                 "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+                                 "</p:spTree></p:cSld></p:sld>")})
+
+(deftest update-pptx-patches-one-table-cell-without-disturbing-siblings
+  (let [base-bytes (zip-bytes table-base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Table 1"
+                                                :slides/shape :table
+                                                :slides/rows [["Q1" "10"] ["Q2" "999"]]
+                                                :slides/x 1 :slides/y 1 :slides/w 5 :slides/h 2
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/graphicFrame
+                                                               :ooxml/index 0}}]}]}
+        slide (get (zip-entries (pptx/update-pptx-bytes base-bytes deck)) "ppt/slides/slide1.xml")]
+    (testing "the edited cell changes, siblings are untouched -- not smashed into one run"
+      (is (re-find #"999" slide))
+      (is (not (re-find #"20<" slide)))
+      (is (re-find #"Q1" slide))
+      (is (re-find #"10" slide))
+      (is (re-find #"Q2" slide))
+      (is (= 4 (count (re-seq #"<a:tc>" slide)))))))
+
+(deftest update-pptx-leaves-table-untouched-without-a-cell-grid
+  (let [base-bytes (zip-bytes table-base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Table 1"
+                                                :slides/shape :table
+                                                :slides/text "Q1\n10\nQ2\n20"
+                                                :slides/x 1 :slides/y 1 :slides/w 5 :slides/h 2
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/graphicFrame
+                                                               :ooxml/index 0}}]}]}
+        slide (get (zip-entries (pptx/update-pptx-bytes base-bytes deck)) "ppt/slides/slide1.xml")]
+    (testing "no :slides/rows means we can't safely align text to cells, so the table XML is left as-is"
+      (is (= (table-base-entries "ppt/slides/slide1.xml") slide)))))
+
+(deftest update-pptx-appends-new-shapes-without-ooxml-source
+  (let [base-bytes (zip-bytes {"[Content_Types].xml" "<Types/>"
+                               "_rels/.rels" "<Relationships/>"
+                               "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                               "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                             "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                             "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                             "<p:txBody><a:p><a:r><a:t>Existing</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                             "</p:spTree></p:cSld></p:sld>")})
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/shapes [{:slides/id "Title"
+                                                :slides/shape :text
+                                                :slides/text "Existing"
+                                                :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp
+                                                               :ooxml/index 0}}
+                                               {:slides/id "brand-new"
+                                                :slides/shape :text
+                                                :slides/text "Brand new note"
+                                                :slides/x 1 :slides/y 3 :slides/w 4 :slides/h 1
+                                                :slides/font-size 18}]}]}
+        slide (get (zip-entries (pptx/update-pptx-bytes base-bytes deck)) "ppt/slides/slide1.xml")]
+    (is (re-find #"Existing" slide))
+    (is (re-find #"Brand new note" slide))
+    (is (= 2 (count (re-seq #"<p:sp>" slide))))))
+
+(deftest update-pptx-removes-shapes-deleted-from-the-deck
+  (let [base-bytes (zip-bytes {"[Content_Types].xml" "<Types/>"
+                               "_rels/.rels" "<Relationships/>"
+                               "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                               "ppt/theme/theme1.xml" "<a:theme><a:clrScheme/></a:theme>"
+                               "ppt/slideLayouts/slideLayout1.xml" "<p:sldLayout/>"
+                               "ppt/slideMasters/slideMaster1.xml" "<p:sldMaster/>"
+                               "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                             "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Keep\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                             "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                             "<p:txBody><a:p><a:r><a:t>Keep me</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                             "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Drop\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                             "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                             "<p:txBody><a:p><a:r><a:t>Delete me</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                             "</p:spTree></p:cSld></p:sld>")})
+        imported (office/deck-from-office-bytes base-bytes {:source "delete.pptx"})
+        edited (update-in imported [:slides/slides 0 :slides/shapes]
+                          (fn [shapes] (vec (remove #(= "Delete me" (:slides/text %)) shapes))))
+        slide (get (zip-entries (pptx/update-pptx-bytes base-bytes edited)) "ppt/slides/slide1.xml")]
+    (is (re-find #"Keep me" slide))
+    (is (not (re-find #"Delete me" slide)))
+    (is (= 1 (count (re-seq #"<p:sp>" slide))))))
