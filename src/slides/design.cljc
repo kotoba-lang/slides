@@ -92,6 +92,28 @@
 (defn master [deck]
   (:slides/master (deck-design deck)))
 
+(defn masters
+  "The deck's :slides/masters list -- additional named masters beyond the
+  single default one (deck-design's :slides/master), for decks whose
+  sections use visually distinct masters (different background/footer)."
+  [deck]
+  (:slides/masters deck))
+
+(defn master-by-ref
+  "The named master matching `ref` (a :slides/id in (masters deck)), falling
+  back to the deck's single default master when `ref` is nil or doesn't
+  match any entry."
+  [deck ref]
+  (or (and ref (some #(when (= ref (:slides/id %)) %) (masters deck)))
+      (master deck)))
+
+(defn master-for-slide
+  "The effective master for `slide`: its own :slides/master-ref if set,
+  else the deck's single default master -- unchanged behavior for every
+  deck that doesn't use multiple masters."
+  [deck slide]
+  (master-by-ref deck (:slides/master-ref slide)))
+
 (defn guides [deck]
   (:slides/guides (deck-design deck)))
 

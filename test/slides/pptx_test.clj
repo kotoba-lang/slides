@@ -480,6 +480,55 @@
     (is (= "https://example.com/" (:slides/hyperlink text-shape)))
     (is (= :dash (:slides/line-dash rect-shape)))))
 
+(deftest writes-multiple-slide-masters-and-layouts-for-decks-with-master-refs
+  (let [deck (m/deck "deck" {:slides/title "Sectioned"
+                             :slides/masters [{:slides/id "dark" :slides/background "111111"}
+                                              {:slides/id "light" :slides/background "EEEEEE"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/master-ref "dark"}) (m/add-shape (m/text-box "t" "Dark section"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/master-ref "light"}) (m/add-shape (m/text-box "t" "Light section"))))
+                (m/add-slide (-> (m/slide "s3") (m/add-shape (m/text-box "t" "Default master")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "one slideMaster/slideLayout PART PER DISTINCT master used, plus the implicit default"
+      (is (contains? entries "ppt/slideMasters/slideMaster1.xml"))
+      (is (contains? entries "ppt/slideMasters/slideMaster2.xml"))
+      (is (contains? entries "ppt/slideMasters/slideMaster3.xml"))
+      (is (contains? entries "ppt/slideLayouts/slideLayout3.xml")))
+    (testing "each master's own background is written, not always the deck's single default"
+      (is (re-find #"111111" (entries "ppt/slideMasters/slideMaster2.xml")))
+      (is (re-find #"EEEEEE" (entries "ppt/slideMasters/slideMaster3.xml"))))
+    (testing "each slide's .rels references the layout matching its OWN master, not always layout1"
+      (is (re-find #"slideLayout2\.xml" (entries "ppt/slides/_rels/slide1.xml.rels")))
+      (is (re-find #"slideLayout3\.xml" (entries "ppt/slides/_rels/slide2.xml.rels")))
+      (is (re-find #"slideLayout1\.xml" (entries "ppt/slides/_rels/slide3.xml.rels"))))
+    (testing "presentation.xml lists all three masters"
+      (is (= 3 (count (re-seq #"<p:sldMasterId " (entries "ppt/presentation.xml")))))
+      (is (re-find #"<p:sldMasterId[^>]*r:id=\"rId3\"" (entries "ppt/presentation.xml"))))
+    (testing "presentation.xml.rels wires all three masters before the slides, so slide rIds continue past them"
+      (is (re-find #"Id=\"rId4\"[^>]*slides/slide1\.xml" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "a deck with NO :slides/master-ref anywhere still gets exactly one master (unchanged behavior)"
+      (let [plain-deck (m/deck "deck" {:slides/title "Plain"})
+            plain-deck (m/add-slide plain-deck (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi"))))
+            plain-entries (zip-entries (pptx/pptx-bytes plain-deck))]
+        (is (contains? plain-entries "ppt/slideMasters/slideMaster1.xml"))
+        (is (not (contains? plain-entries "ppt/slideMasters/slideMaster2.xml")))))))
+
+(deftest multi-master-deck-round-trips-through-import
+  (let [deck (m/deck "deck" {:slides/title "Sectioned"
+                             :slides/masters [{:slides/id "dark" :slides/background "111111"}
+                                              {:slides/id "light" :slides/background "EEEEEE"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/master-ref "dark"}) (m/add-shape (m/text-box "t" "Dark section"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/master-ref "light"}) (m/add-shape (m/text-box "t" "Light section")))))
+        bytes (pptx/pptx-bytes deck)
+        reimported (office/deck-from-office-bytes bytes {})]
+    (testing "two distinct masters survive the round trip"
+      (is (= 2 (count (:slides/masters reimported)))))
+    (testing "each slide keeps a master-ref, and the two slides refer to DIFFERENT masters"
+      (let [refs (map :slides/master-ref (:slides/slides reimported))]
+        (is (every? some? refs))
+        (is (= 2 (count (distinct refs))))))))
+
 (deftest writes-gradient-background-when-configured
   (let [deck (m/deck "deck" {:slides/title "Gradient bg"
                              :slides/master {:slides/background

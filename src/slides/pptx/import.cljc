@@ -86,14 +86,20 @@
              :slides/source (:presentationml/source slide)
              :slides/shapes shapes
              :slides/shape-inventory (shape-inventory shapes)}
-      (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide)))))
+      (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide))
+      (:presentationml/master-ref slide) (assoc :slides/master-ref (:presentationml/master-ref slide)))))
+
+(defn- master->slides [master]
+  (cond-> {:slides/id (:presentationml/id master)}
+    (:presentationml/background master) (assoc :slides/background (:presentationml/background master))))
 
 (defn deck-from-entries
   ([entries file-name] (deck-from-entries entries file-name {}))
   ([entries file-name opts]
    (let [parsed (pml-parse/deck entries opts)
          title (:presentationml/title parsed (or (file-title file-name) "Imported deck"))
-         theme (theme->slides (:presentationml/theme parsed))]
+         theme (theme->slides (:presentationml/theme parsed))
+         masters (mapv master->slides (:presentationml/masters parsed))]
      (merge {:slides/id (:presentationml/id parsed "imported-pptx")
              :slides/title title
              :slides/width (:presentationml/width parsed)
@@ -102,7 +108,8 @@
                              :slides/format :pptx
                              :slides/text-extraction :drawingml-xml}
              :slides/slides (mapv slide->slides (:presentationml/slides parsed))}
-            (when (seq theme) {:slides/theme theme})))))
+            (when (seq theme) {:slides/theme theme})
+            (when (seq masters) {:slides/masters masters})))))
 
 (defn useful-deck? [deck]
   (boolean (seq (:slides/slides deck))))
