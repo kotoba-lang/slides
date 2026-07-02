@@ -751,12 +751,34 @@
 
 (def ^:private merge-markers #{:h-merge :v-merge :hv-merge})
 
+(defn- table-cell-border-side-xml
+  "One <a:tcPr> border-side child from a cell's own :borders side map
+  ({:width pt :color hex}, from drawingml.parse/table-cell-borders on
+  import) -- an <a:ln>-shaped element, `tag` one of lnL/lnR/lnT/lnB."
+  [tag {:keys [width color]}]
+  (str "<a:" tag (when width (str " w=\"" (long (Math/round (* (double width) 12700.0))) "\"")) ">"
+       "<a:solidFill><a:srgbClr val=\"" (hex-color color "000000") "\"/></a:solidFill>"
+       "</a:" tag ">"))
+
+(defn- table-cell-borders-xml
+  "A cell's :borders ({:left {...} :right {...} :top {...} :bottom
+  {...}}, only the sides actually present) into <a:tcPr>'s own
+  lnL/lnR/lnT/lnB children, in that schema order -- before the fill
+  choice group. \"\" (no border overrides) when the cell has none;
+  PowerPoint's own table-style default borders then apply, unchanged."
+  [borders]
+  (str (when-let [b (:left borders)] (table-cell-border-side-xml "lnL" b))
+       (when-let [b (:right borders)] (table-cell-border-side-xml "lnR" b))
+       (when-let [b (:top borders)] (table-cell-border-side-xml "lnT" b))
+       (when-let [b (:bottom borders)] (table-cell-border-side-xml "lnB" b))))
+
 (defn- table-cell-xml
   "A single <a:tc>, dispatching on the cell's shape:
   - :h-merge/:v-merge/:hv-merge -- an empty merge-continuation cell,
     hMerge=\"1\"/vMerge=\"1\"/both (see drawingml.parse/table-cells).
-  - a map {:text ... :col-span N :row-span N :fill \"hex\"} -- the ANCHOR
-    cell of a merge and/or a cell with its own background fill.
+  - a map {:text ... :col-span N :row-span N :fill \"hex\" :borders {...}}
+    -- the ANCHOR cell of a merge and/or a cell with its own background
+    fill/border override.
   - anything else (the common case) -- a plain text cell, unchanged from
     before."
   [cell]
@@ -773,8 +795,9 @@
          (when (:row-span cell) (str " rowSpan=\"" (long (:row-span cell)) "\""))
          "><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang=\"en-US\"/>"
          "<a:t>" (esc (:text cell)) "</a:t></a:r></a:p></a:txBody>"
-         "<a:tcPr>" (when (:fill cell)
-                      (str "<a:solidFill><a:srgbClr val=\"" (hex-color (:fill cell) "FFFFFF") "\"/></a:solidFill>"))
+         "<a:tcPr>" (table-cell-borders-xml (:borders cell))
+         (when (:fill cell)
+           (str "<a:solidFill><a:srgbClr val=\"" (hex-color (:fill cell) "FFFFFF") "\"/></a:solidFill>"))
          "</a:tcPr></a:tc>")
 
     :else
