@@ -458,6 +458,24 @@
          "</a:avLst>")
     "<a:avLst/>"))
 
+(defn- shadow-xml
+  "A shape's own <a:effectLst><a:outerShdw .../></a:effectLst> from
+  :slides/shadow ({:blur pt :distance pt :angle deg :color hex :alpha
+  pct}, the same shape drawingml's shape-shadow already produces on
+  import), or nil (no effectLst element at all) when absent -- previously
+  no shape ever emitted ANY effect regardless of the source deck."
+  [shape]
+  (when-let [shadow (:slides/shadow shape)]
+    (str "<a:effectLst><a:outerShdw"
+         " blurRad=\"" (long (* 12700 (positive-numeric (:blur shadow) 4))) "\""
+         " dist=\"" (long (* 12700 (positive-numeric (:distance shadow) 2))) "\""
+         " dir=\"" (long (* 60000 (numeric (:angle shadow) 45))) "\""
+         " rotWithShape=\"0\">"
+         "<a:srgbClr val=\"" (hex-color (:color shadow) "000000") "\">"
+         (when (:alpha shadow) (str "<a:alpha val=\"" (long (* 1000 (numeric (:alpha shadow) 40))) "\"/>"))
+         "</a:srgbClr>"
+         "</a:outerShdw></a:effectLst>")))
+
 (defn- line-width-attr
   "The <a:ln>'s own w=\"...\" EMU attribute from :slides/line-width (plain
   points), defaulting to 1pt (12700 EMU) -- the writer's own historical
@@ -506,6 +524,7 @@
           (if line
             (str "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
             "<a:ln><a:noFill/></a:ln>")
+          (shadow-xml shape)
           "</p:spPr>"
           "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
           (apply str (map #(paragraph-xml deck shape major? ea-font hlink-rel-id %) (shape-paragraphs shape)))
@@ -523,6 +542,7 @@
             (blip-fill-xml fill-image-rel-id)
             (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
           "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+          (shadow-xml shape)
           "</p:spPr></p:sp>"))))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]

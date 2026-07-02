@@ -455,6 +455,28 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-and-round-trips-outer-shadow
+  (let [deck (-> (m/deck "deck" {:slides/title "Shadowed"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/shadow {:blur 4.0 :distance 2.0 :angle 45.0
+                                                                :color "112233" :alpha 40.0}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a real <a:effectLst><a:outerShdw> is written with the correct converted units"
+      (is (re-find #"<a:outerShdw blurRad=\"50800\" dist=\"25400\" dir=\"2700000\" rotWithShape=\"0\">" slide-xml))
+      (is (re-find #"<a:srgbClr val=\"112233\"><a:alpha val=\"40000\"/></a:srgbClr>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= {:blur 4.0 :distance 2.0 :angle 45.0 :color "112233" :alpha 40.0} (:slides/shadow rect))))))
+  (testing "no :slides/shadow -- no <a:effectLst> at all, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<a:effectLst" slide-xml))))))
+
 (deftest writes-and-round-trips-shape-adjustment-values
   (let [deck (-> (m/deck "deck" {:slides/title "Adjusted"})
                  (m/add-slide
