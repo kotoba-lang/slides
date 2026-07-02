@@ -154,6 +154,7 @@
             (when (seq (:presentationml/sections parsed)) {:slides/sections (:presentationml/sections parsed)})
             (when (:presentationml/handout-master? parsed) {:slides/handout-master? true})
             (when (seq (:presentationml/custom-xml-parts parsed)) {:slides/custom-xml-parts (:presentationml/custom-xml-parts parsed)})
+            (when (seq (:presentationml/embedded-fonts parsed)) {:slides/embedded-fonts (:presentationml/embedded-fonts parsed)})
             (doc-properties->slides parsed)))))
 
 (defn useful-deck? [deck]

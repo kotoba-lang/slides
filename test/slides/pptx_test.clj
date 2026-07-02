@@ -847,6 +847,27 @@
       (is (not (some #(str/starts-with? % "customXml/") (keys entries))))
       (is (not (re-find #"customXml" (entries "ppt/_rels/presentation.xml.rels")))))))
 
+(deftest embedded-fonts-round-trip-through-import
+  (let [presentation-xml
+        (str "<p:presentation><p:embeddedFontLst>"
+             "<p:embeddedFont><p:font typeface=\"Calibri\"/>"
+             "<p:regular r:id=\"rId5\"/></p:embeddedFont>"
+             "</p:embeddedFontLst></p:presentation>")
+        entries {"ppt/presentation.xml" presentation-xml
+                 "ppt/_rels/presentation.xml.rels"
+                 (str "<Relationships>"
+                      "<Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/font\" Target=\"fonts/font1.fntdata\"/>"
+                      "</Relationships>")
+                 "ppt/slides/slide1.xml" "<p:sld><p:cSld><p:spTree></p:spTree></p:cSld></p:sld>"}
+        reimported (office/deck-from-office-bytes (zip-bytes entries) {})]
+    (testing "typeface + resolved rel-id/target-path survive import, reference-metadata only (no font BYTES to re-embed on export)"
+      (is (= [{:typeface "Calibri" :regular {:rel-id "rId5" :target-path "ppt/fonts/font1.fntdata"}}]
+             (:slides/embedded-fonts reimported)))))
+  (testing "no <p:embeddedFontLst> at all -- no :slides/embedded-fonts key, the overwhelming common case"
+    (let [entries {"ppt/slides/slide1.xml" "<p:sld><p:cSld><p:spTree></p:spTree></p:cSld></p:sld>"}
+          reimported (office/deck-from-office-bytes (zip-bytes entries) {})]
+      (is (not (contains? reimported :slides/embedded-fonts))))))
+
 (deftest writes-review-comments-as-native-comments-part
   (let [comments [{:author "Jun Kawasaki" :text "Looks good" :date "2026-07-02T00:00:00.000" :x 1.0 :y 0.5}
                   {:author "Jun Kawasaki" :text "Second comment, no position"}]
