@@ -87,6 +87,37 @@
     (testing "table geometry uses <p:xfrm>, not <a:xfrm> inside <p:spPr> (graphicFrame convention)"
       (is (re-find #"<p:xfrm>" slide-xml)))))
 
+(deftest writes-and-round-trips-table-cell-merge-and-fill
+  (let [deck (-> (m/deck "deck" {:slides/title "Merged header"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Data"})
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/x 0.5 :slides/y 0.5 :slides/w 6.0 :slides/h 2.0
+                                    :slides/rows [["Header" "Header"] ["Q1" "10"]]
+                                    :slides/cells [[{:text "Header" :col-span 2 :fill "DDEEFF"} :h-merge]
+                                                  ["Q1" "10"]]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing ":slides/cells (the richer grid) is preferred over :slides/rows when both are present"
+      (is (re-find #"<a:tc gridSpan=\"2\">" slide-xml))
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"DDEEFF\"/></a:solidFill>" slide-xml))
+      (is (re-find #"<a:tc hMerge=\"1\">" slide-xml))
+      (is (= 1 (count (re-seq #"<a:t>Header</a:t>" slide-xml))) "the merge-continuation cell has NO text of its own"))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= [{:text "Header" :col-span 2 :fill "DDEEFF"} :h-merge] (first (:slides/cells table))))
+        (is (= ["Q1" "10"] (second (:slides/cells table)))))))
+  (testing "a plain :slides/rows table (no :slides/cells) still writes exactly as before"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape {:slides/id "t1" :slides/shape :table
+                                                                  :slides/w 4.0 :slides/h 1.0
+                                                                  :slides/rows [["A" "B"] ["1" "2"]]}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"gridSpan" slide-xml)))
+      (is (not (re-find #"hMerge" slide-xml))))))
+
 (deftest table-shape-with-ragged-or-empty-rows-still-produces-a-valid-grid
   (let [deck (-> (m/deck "deck" {:slides/title "Ragged"})
                  (m/add-slide
