@@ -795,12 +795,21 @@
         :slides/x left :slides/y top :slides/w (- right left) :slides/h (- bottom top)
         :slides/fill "FFFFFF" :slides/line "D8DEE8"}])))
 
-(defn- master-footer-shape [deck slide]
+(defn- master-footer-shape
+  "Previously a plain synthetic textbox (positioned/styled like a footer
+  but carrying no :slides/placeholder) -- invisible to PowerPoint's own
+  footer semantics (Insert > Header & Footer, Outline view, Reset Layout
+  all key off a real <p:ph type=\"ftr\"> placeholder, not a shape that
+  merely LOOKS like one). Now a genuine footer placeholder, same as
+  text-shape already does for title/body shapes carrying :slides/placeholder
+  (see placeholder-xml)."
+  [deck slide]
   (let [footer (:slides/footer (design/master-for-slide deck slide))]
     (when (:slides/enabled footer)
       (assoc footer
              :slides/id "master-footer"
              :slides/shape :text
+             :slides/placeholder {:type "ftr"}
              :slides/text (or (:slides/text footer) (:slides/title deck ""))))))
 
 (defn- slide-shapes [deck slide]
