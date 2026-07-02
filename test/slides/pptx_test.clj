@@ -284,6 +284,25 @@
     (is (re-find #"<c:catAx>" chart-xml) "area, like bar/line, plots against category + value axes")
     (is (re-find #"<c:valAx>" chart-xml))))
 
+(deftest scatter-chart-type-plots-x-y-value-pairs-with-two-value-axes
+  (let [deck (-> (m/deck "deck" {:slides/title "Scatter"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Correlation"})
+                      (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type :scatter
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                    :slides/chart-data {:rows [["X" "Y"]
+                                                               [1 10] [2 15] [3 22]]}}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        chart-xml (entries "ppt/charts/chart1.xml")]
+    (testing "a real <c:scatterChart> with X-Y value pairs, not cat+val"
+      (is (re-find #"<c:scatterChart>" chart-xml))
+      (is (re-find #"<c:xVal><c:numRef>" chart-xml))
+      (is (re-find #"<c:yVal><c:numRef>" chart-xml))
+      (is (not (re-find #"<c:cat>" chart-xml))))
+    (testing "BOTH axes are value axes -- no category axis at all, unlike bar/line/area"
+      (is (= 2 (count (re-seq #"<c:valAx>" chart-xml))))
+      (is (not (re-find #"<c:catAx>" chart-xml))))))
+
 (deftest pie-and-doughnut-chart-types-plot-one-series-with-no-axes
   (doseq [[chart-type expected-tag] [[:pie "c:pieChart"] [:doughnut "c:doughnutChart"]]]
     (let [deck (-> (m/deck "deck" {:slides/title "Share"})
