@@ -1804,3 +1804,24 @@
           entries (zip-entries (pptx/pptx-bytes deck))
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:gradFill" slide-xml))))))
+
+(deftest writes-and-round-trips-slide-sections
+  (let [sections [{:name "Intro" :slide-indices [0 1]} {:name "Summary" :slide-indices [2]}]
+        deck (-> (m/deck "deck" {:slides/title "Sectioned" :slides/sections sections})
+                 (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "One"))))
+                 (m/add-slide (-> (m/slide "s2") (m/add-shape (m/text-box "t" "Two"))))
+                 (m/add-slide (-> (m/slide "s3") (m/add-shape (m/text-box "t" "Three")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        presentation-xml (entries "ppt/presentation.xml")]
+    (testing "a real <p14:sectionLst> is written, each section's own sldIds matching <p:sldIdLst>'s 256+idx formula"
+      (is (re-find #"<p14:sectionLst xmlns:p14=\"http://schemas.microsoft.com/office/powerpoint/2010/main\">" presentation-xml))
+      (is (re-find #"<p14:section name=\"Intro\"[^>]*><p14:sldIdLst><p14:sldId id=\"256\"/><p14:sldId id=\"257\"/></p14:sldIdLst></p14:section>" presentation-xml))
+      (is (re-find #"<p14:section name=\"Summary\"[^>]*><p14:sldIdLst><p14:sldId id=\"258\"/></p14:sldIdLst></p14:section>" presentation-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})]
+        (is (= sections (:slides/sections reimported))))))
+  (testing "no :slides/sections -- no <p:extLst>/<p14:sectionLst> at all, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          presentation-xml (entries "ppt/presentation.xml")]
+      (is (not (re-find #"sectionLst" presentation-xml))))))
