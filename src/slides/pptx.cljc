@@ -598,15 +598,25 @@
     (custgeom-xml custom)
     (str "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>")))
 
-(defn- shadow-xml
-  "A shape's own <a:effectLst><a:outerShdw .../></a:effectLst> from
-  :slides/shadow ({:blur pt :distance pt :angle deg :color hex :alpha
-  pct}, the same shape drawingml's shape-shadow already produces on
-  import), or nil (no effectLst element at all) when absent -- previously
-  no shape ever emitted ANY effect regardless of the source deck."
-  [shape]
-  (when-let [shadow (:slides/shadow shape)]
-    (str "<a:effectLst><a:outerShdw"
+(defn- glow-effect-xml
+  "A shape's own <a:glow .../> from :slides/glow ({:radius pt :color hex
+  :alpha pct}, the same shape drawingml's shape-glow already produces on
+  import), or nil when absent."
+  [glow]
+  (when glow
+    (str "<a:glow rad=\"" (long (* 12700 (positive-numeric (:radius glow) 5))) "\">"
+         "<a:srgbClr val=\"" (hex-color (:color glow) "00B0F0") "\">"
+         (when (:alpha glow) (str "<a:alpha val=\"" (long (* 1000 (numeric (:alpha glow) 100))) "\"/>"))
+         "</a:srgbClr></a:glow>")))
+
+(defn- shadow-effect-xml
+  "A shape's own <a:outerShdw .../> from :slides/shadow ({:blur pt
+  :distance pt :angle deg :color hex :alpha pct}, the same shape
+  drawingml's shape-shadow already produces on import), or nil when
+  absent."
+  [shadow]
+  (when shadow
+    (str "<a:outerShdw"
          " blurRad=\"" (long (* 12700 (positive-numeric (:blur shadow) 4))) "\""
          " dist=\"" (long (* 12700 (positive-numeric (:distance shadow) 2))) "\""
          " dir=\"" (long (* 60000 (numeric (:angle shadow) 45))) "\""
@@ -614,7 +624,38 @@
          "<a:srgbClr val=\"" (hex-color (:color shadow) "000000") "\">"
          (when (:alpha shadow) (str "<a:alpha val=\"" (long (* 1000 (numeric (:alpha shadow) 40))) "\"/>"))
          "</a:srgbClr>"
-         "</a:outerShdw></a:effectLst>")))
+         "</a:outerShdw>")))
+
+(defn- reflection-effect-xml
+  "A shape's own <a:reflection .../> from :slides/reflection ({:blur pt
+  :distance pt :angle deg :start-alpha pct :end-alpha pct}, the same
+  shape drawingml's shape-reflection already produces on import), self-
+  closing and carrying no color of its own (a reflection mirrors the
+  shape's own fill) -- or nil when absent."
+  [reflection]
+  (when reflection
+    (str "<a:reflection"
+         (when (:blur reflection) (str " blurRad=\"" (long (* 12700 (numeric (:blur reflection) 0))) "\""))
+         (when (:distance reflection) (str " dist=\"" (long (* 12700 (numeric (:distance reflection) 0))) "\""))
+         (when (:angle reflection) (str " dir=\"" (long (* 60000 (numeric (:angle reflection) 0))) "\""))
+         (when (:start-alpha reflection) (str " stA=\"" (long (* 1000 (numeric (:start-alpha reflection) 0))) "\""))
+         (when (:end-alpha reflection) (str " endA=\"" (long (* 1000 (numeric (:end-alpha reflection) 0))) "\""))
+         "/>")))
+
+(defn- effect-lst-xml
+  "A shape's own <a:effectLst>, combining whichever of :slides/glow/
+  :slides/shadow/:slides/reflection it carries into ONE effect list (in
+  their CT_EffectList schema order: glow, outerShdw, reflection) -- OOXML
+  allows only a single <a:effectLst> per shape, containing however many
+  effect children are actually present. nil (no element at all) when the
+  shape has none of the three -- previously no shape ever emitted ANY
+  effect regardless of the source deck."
+  [shape]
+  (let [children (str (glow-effect-xml (:slides/glow shape))
+                       (shadow-effect-xml (:slides/shadow shape))
+                       (reflection-effect-xml (:slides/reflection shape)))]
+    (when (seq children)
+      (str "<a:effectLst>" children "</a:effectLst>"))))
 
 (defn- line-width-attr
   "The <a:ln>'s own w=\"...\" EMU attribute from :slides/line-width (plain
@@ -713,7 +754,7 @@
           (if line
             (str "<a:ln" (line-width-attr shape) (line-cap-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>")
             "<a:ln><a:noFill/></a:ln>")
-          (shadow-xml shape)
+          (effect-lst-xml shape)
           "</p:spPr>"
           "<p:txBody>" (body-pr-xml (:slides/body-props shape)) "<a:lstStyle/>"
           (apply str (map #(paragraph-xml deck shape major? ea-font hlink-rel-id %) (shape-paragraphs shape)))
@@ -732,7 +773,7 @@
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
             :else (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
           "<a:ln" (line-width-attr shape) (line-cap-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>"
-          (shadow-xml shape)
+          (effect-lst-xml shape)
           "</p:spPr></p:sp>"))))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]

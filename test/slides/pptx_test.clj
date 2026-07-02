@@ -569,6 +569,35 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:effectLst" slide-xml))))))
 
+(deftest writes-and-round-trips-glow-and-reflection
+  (let [glow {:radius 5.0 :color "00B0F0" :alpha 60.0}
+        reflection {:blur 1.0 :distance 0.5 :angle 90.0 :start-alpha 50.0 :end-alpha 0.0}
+        deck (-> (m/deck "deck" {:slides/title "Glowing and reflected"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/glow glow :slides/reflection reflection})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "both effects land in the SAME <a:effectLst>, in schema order (glow before reflection)"
+      (is (re-find #"<a:effectLst><a:glow rad=\"63500\"><a:srgbClr val=\"00B0F0\"><a:alpha val=\"60000\"/></a:srgbClr></a:glow><a:reflection blurRad=\"12700\" dist=\"6350\" dir=\"5400000\" stA=\"50000\" endA=\"0\"/></a:effectLst>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= glow (:slides/glow rect)))
+        (is (= reflection (:slides/reflection rect))))))
+  (testing "shadow + glow together combine into ONE <a:effectLst>, not two"
+    (let [deck (-> (m/deck "deck" {:slides/title "Shadow and glow"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape (m/rect "r" {:slides/shadow {:blur 4.0 :distance 2.0 :angle 45.0 :color "112233" :alpha 40.0}
+                                                  :slides/glow {:radius 5.0 :color "00B0F0" :alpha 60.0}})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (= 1 (count (re-seq #"<a:effectLst>" slide-xml))))
+      (is (re-find #"<a:effectLst><a:glow[\s\S]*?</a:glow><a:outerShdw[\s\S]*?</a:outerShdw></a:effectLst>" slide-xml)
+          "glow precedes outerShdw, per CT_EffectList's own schema order"))))
+
 (deftest writes-and-round-trips-shape-adjustment-values
   (let [deck (-> (m/deck "deck" {:slides/title "Adjusted"})
                  (m/add-slide
