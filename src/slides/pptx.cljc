@@ -442,6 +442,22 @@
   (when-let [dash (:slides/line-dash shape)]
     (str "<a:prstDash val=\"" (esc (name dash)) "\"/>")))
 
+(defn- avlst-xml
+  "A shape's <a:avLst> with its actual adjustment handle values
+  (:slides/adjustments, the same {:name ... :fmla ...} shape drawingml's
+  shape-adjustments already produces on import), or the historical empty
+  <a:avLst/> when absent -- a re-exported shape with a customized
+  adjustment (a roundRect's non-default corner radius, a custom arrowhead
+  ratio) previously always collapsed to the geometry's default."
+  [shape]
+  (if-let [adjustments (seq (:slides/adjustments shape))]
+    (str "<a:avLst>"
+         (apply str (map (fn [{:keys [name fmla]}]
+                           (str "<a:gd name=\"" (esc name) "\" fmla=\"" (esc fmla) "\"/>"))
+                         adjustments))
+         "</a:avLst>")
+    "<a:avLst/>"))
+
 (defn- line-width-attr
   "The <a:ln>'s own w=\"...\" EMU attribute from :slides/line-width (plain
   points), defaulting to 1pt (12700 EMU) -- the writer's own historical
@@ -482,7 +498,7 @@
             (str "<p:cNvSpPr/><p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>")
             "<p:cNvSpPr txBox=\"1\"/><p:nvPr/>")
           "</p:nvSpPr>"
-          "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
+          "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>"
           (cond
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
@@ -502,7 +518,7 @@
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
           "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape)
-          "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
+          "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>"
           (if fill-image-rel-id
             (blip-fill-xml fill-image-rel-id)
             (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
@@ -513,7 +529,7 @@
   (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"/>"
        "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
-       "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\"><a:avLst/></a:prstGeom>"
+       "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\">" (avlst-xml shape) "</a:prstGeom>"
        "<a:ln" (when (:slides/line-width shape) (line-width-attr shape))
        "><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
        "</p:spPr></p:cxnSp>"))
