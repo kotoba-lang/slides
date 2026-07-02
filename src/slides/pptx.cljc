@@ -26,6 +26,7 @@
 (def rel-package "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package")
 (def rel-notes-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide")
 (def rel-notes-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster")
+(def rel-comments "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments")
 (def rel-hyperlink "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
@@ -80,12 +81,14 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] [] [] 1 1))
+  ([slide-count] (content-types slide-count [] [] [] 1 1 []))
   ([slide-count media-extensions-used chart-paths notes-slide-paths]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1 []))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count []))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count]
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count []))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -112,7 +115,11 @@
      (when (seq notes-slide-paths)
        [(ooxml/override-content-type "/ppt/notesMasters/notesMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml")])
      (for [path notes-slide-paths]
-       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"))))))
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"))
+     (when (seq comment-paths)
+       [(ooxml/override-content-type "/ppt/commentAuthors.xml" "application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml")])
+     (for [path comment-paths]
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.comments+xml"))))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -214,10 +221,13 @@
         (sections-ext-xml sections)
         "</p:presentation>")))
 
+(def rel-comment-authors "http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentAuthors")
+
 (defn- presentation-rels
-  ([slide-count] (presentation-rels slide-count false 1))
-  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1))
-  ([slide-count has-notes? master-count]
+  ([slide-count] (presentation-rels slide-count false 1 false))
+  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1 false))
+  ([slide-count has-notes? master-count] (presentation-rels slide-count has-notes? master-count false))
+  ([slide-count has-notes? master-count has-comments?]
    (ooxml/relationships-xml
     (concat
      (for [idx (range 1 (inc master-count))]
@@ -230,7 +240,11 @@
      (when has-notes?
        [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1))
                              :type rel-notes-master
-                             :target "notesMasters/notesMaster1.xml"})])))))
+                             :target "notesMasters/notesMaster1.xml"})])
+     (when has-comments?
+       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0)))
+                             :type rel-comment-authors
+                             :target "commentAuthors.xml"})])))))
 
 (def default-theme (:slides/theme design/default-design))
 
@@ -418,6 +432,56 @@
 (defn- notes-slide-rels-xml []
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-notes-master :target "../notesMasters/notesMaster1.xml"})]))
+
+(defn- author-initials [author-name]
+  (->> (str/split (str author-name) #"\s+")
+       (remove str/blank?)
+       (map #(str/upper-case (subs % 0 1)))
+       (apply str)))
+
+(defn- comment-authors-xml
+  "ppt/commentAuthors.xml -- the deck-wide, shared author table every
+  <p:cm>'s own authorId references (legacy <p:cmLst> comment format never
+  carries an author's name inline). `author-names` is the deck's own
+  distinct comment authors, in first-appearance order -- assigned ids
+  0, 1, 2..., matching author-id-by-name's own assignment (see
+  deck-comment-authors)."
+  [author-names]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<p:cmAuthorLst xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+       (apply str (map-indexed
+                   (fn [idx author-name]
+                     (str "<p:cmAuthor id=\"" idx "\" name=\"" (esc author-name) "\" initials=\""
+                          (esc (author-initials author-name)) "\" lastIdx=\"1\" clrIdx=\"" idx "\"/>"))
+                   author-names))
+       "</p:cmAuthorLst>"))
+
+(defn- comment-xml
+  "One <p:cm> from a :slides/comments entry ({:author ... :text ...
+  :date ... :x ... :y ...}, the same shape presentationml.parse/slide-
+  comments already produces on import) -- authorId resolved through the
+  deck-wide author-id-by-name map, <p:pos> only when the comment carries
+  its own x/y (a comment need not be pinned to a specific point)."
+  [idx {:keys [author text date x y]} author-id-by-name]
+  (str "<p:cm authorId=\"" (get author-id-by-name author 0) "\""
+       (when date (str " dt=\"" (esc date) "\""))
+       " idx=\"" (inc idx) "\">"
+       (when (and x y) (str "<p:pos x=\"" (emu x) "\" y=\"" (emu y) "\"/>"))
+       "<p:text>" (esc text) "</p:text>"
+       "</p:cm>"))
+
+(defn- comments-part-xml
+  "One slide's own ppt/comments/commentN.xml, holding all of ITS comments
+  (each slide with comments gets its own part -- comments don't span
+  slides). Needs no .rels of its own: a comment references its author by
+  a plain integer id resolved against the shared commentAuthors.xml, not
+  through an OPC relationship."
+  [comments author-id-by-name]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<p:cmLst xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+       "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+       (apply str (map-indexed #(comment-xml %1 %2 author-id-by-name) comments))
+       "</p:cmLst>"))
 
 (defn- slide-layout-rels [master-idx]
   (ooxml/relationships-xml
@@ -1146,6 +1210,27 @@
        :notes-rels-path (str "ppt/notesSlides/_rels/" filename ".rels")
        :notes-rels-xml (notes-slide-rels-xml)})))
 
+(defn- deck-comment-authors
+  "Every slide's :slides/comments' own :author, deduplicated, in first-
+  appearance order across the whole deck -- comment authors are assigned
+  a stable integer id shared by the whole package (commentAuthors.xml),
+  so this has to be computed once up front, before any single slide's
+  comments part can be written."
+  [slides]
+  (into [] (comp (mapcat :slides/comments) (keep :author) (distinct)) slides))
+
+(defn- slide-comments-entry
+  "The comments part for one slide's :slides/comments, or nil. `rid` is
+  this slide's own rels id for the comments relationship, continuing on
+  from wherever image/chart/notes rIds left off."
+  [slide next-index rid author-id-by-name]
+  (when-let [comments (seq (:slides/comments slide))]
+    (let [filename (str "comment" next-index ".xml")]
+      {:rel-id (str "rId" rid)
+       :comments-filename filename
+       :comments-path (str "ppt/comments/" filename)
+       :comments-xml (comments-part-xml comments author-id-by-name)})))
+
 (defn- slide-hyperlink-entries
   "Every :slides/hyperlink-bearing shape on `slide`, assigned a rel-id local
   to the slide's own .rels, continuing on from wherever image/chart/notes
@@ -1164,8 +1249,8 @@
 (defn- hyperlink-rels-map [hyperlink-entries]
   (into {} (map (juxt :shape-id :rel-id)) hyperlink-entries))
 
-(defn- slide-rels-xml [layout-idx image-entries chart-entries notes-entry hyperlink-entries]
-  (if (or (seq image-entries) (seq chart-entries) notes-entry (seq hyperlink-entries))
+(defn- slide-rels-xml [layout-idx image-entries chart-entries notes-entry hyperlink-entries comments-entry]
+  (if (or (seq image-entries) (seq chart-entries) notes-entry (seq hyperlink-entries) comments-entry)
     (ooxml/relationships-xml
      (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})]
            (concat
@@ -1180,7 +1265,10 @@
                                     :target (str "../notesSlides/" (:notes-filename notes-entry))})])
             (map (fn [{:keys [rel-id url]}]
                    (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
-                 hyperlink-entries))))
+                 hyperlink-entries)
+            (when comments-entry
+              [(ooxml/relationship {:id (:rel-id comments-entry) :type rel-comments
+                                    :target (str "../comments/" (:comments-filename comments-entry))})]))))
     (slide-rels layout-idx)))
 
 (defn- image-rels-map [image-entries]
@@ -1251,33 +1339,41 @@
         master-count (count master-refs)
         layout-entries (deck-layout-entries slides master-refs)
         layout-count (count layout-entries)
-        per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index]} slide]
+        author-names (deck-comment-authors slides)
+        author-id-by-name (into {} (map-indexed (fn [idx name] [name idx])) author-names)
+        per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index comments-index]} slide]
                             (let [master-idx (slide-master-idx master-refs slide)
                                   layout-idx (slide-layout-idx layout-entries master-idx (:slides/layout-ref slide))
                                   images (slide-image-entries deck slide media-index 2)
                                   charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))
                                   notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))
-                                  hyperlinks (slide-hyperlink-entries deck slide (+ 2 (count images) (count charts) (if notes 1 0)))]
+                                  hyperlinks (slide-hyperlink-entries deck slide (+ 2 (count images) (count charts) (if notes 1 0)))
+                                  comments (slide-comments-entry slide comments-index
+                                                                 (+ 2 (count images) (count charts) (if notes 1 0) (count hyperlinks))
+                                                                 author-id-by-name)]
                               {:acc (conj acc {:slide slide :images images :charts charts :notes notes :hyperlinks hyperlinks
-                                               :master-idx master-idx :layout-idx layout-idx})
+                                               :comments comments :master-idx master-idx :layout-idx layout-idx})
                                :media-index (+ media-index (count images))
                                :chart-index (+ chart-index (count charts))
-                               :notes-index (+ notes-index (if notes 1 0))}))
-                          {:acc [] :media-index 1 :chart-index 1 :notes-index 1}
+                               :notes-index (+ notes-index (if notes 1 0))
+                               :comments-index (+ comments-index (if comments 1 0))}))
+                          {:acc [] :media-index 1 :chart-index 1 :notes-index 1 :comments-index 1}
                           slides)
         slide-plans (:acc per-slide)
         all-media-types (mapcat (fn [{:keys [images]}] (map :media-type images)) slide-plans)
         all-chart-paths (mapcat (fn [{:keys [charts]}] (map :chart-path charts)) slide-plans)
         all-notes-paths (keep (fn [{:keys [notes]}] (:notes-path notes)) slide-plans)
-        has-notes? (boolean (seq all-notes-paths))]
+        all-comment-paths (keep (fn [{:keys [comments]}] (:comments-path comments)) slide-plans)
+        has-notes? (boolean (seq all-notes-paths))
+        has-comments? (boolean (seq all-comment-paths))]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count all-comment-paths)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props deck (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height master-count (:slides/sections deck))]
-       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count)]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count has-comments?)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
       (mapcat (fn [master-idx]
                 (let [layout-indices (master-layout-indices layout-entries master-idx)
@@ -1293,13 +1389,15 @@
       (when has-notes?
         [["ppt/notesMasters/notesMaster1.xml" (notes-master-xml)]
          ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
-      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks layout-idx]}]]
+      (when has-comments?
+        [["ppt/commentAuthors.xml" (comment-authors-xml author-names)]])
+      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks comments layout-idx]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)
                             :hyperlink-rels (hyperlink-rels-map hyperlinks)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml layout-idx images charts notes hyperlinks)]]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml layout-idx images charts notes hyperlinks comments)]]
                    (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
                    (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
                              [[chart-path chart-xml]
@@ -1308,7 +1406,9 @@
                            charts)
                    (when notes
                      [[(:notes-path notes) (:notes-xml notes)]
-                      [(:notes-rels-path notes) (:notes-rels-xml notes)]]))))
+                      [(:notes-rels-path notes) (:notes-rels-xml notes)]])
+                   (when comments
+                     [[(:comments-path comments) (:comments-xml comments)]]))))
               (map-indexed vector slide-plans))))))
 
 #?(:clj

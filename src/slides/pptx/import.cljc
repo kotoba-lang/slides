@@ -108,7 +108,8 @@
       (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide))
       (:presentationml/master-ref slide) (assoc :slides/master-ref (:presentationml/master-ref slide))
       (:presentationml/layout-ref slide) (assoc :slides/layout-ref (:presentationml/layout-ref slide))
-      (:presentationml/transition slide) (assoc :slides/transition (:presentationml/transition slide)))))
+      (:presentationml/transition slide) (assoc :slides/transition (:presentationml/transition slide))
+      (:presentationml/comments slide) (assoc :slides/comments (:presentationml/comments slide)))))
 
 (defn- master->slides [master]
   (cond-> {:slides/id (:presentationml/id master)}
