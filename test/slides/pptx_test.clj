@@ -801,6 +801,63 @@
       (is (not (contains? entries "ppt/notesMasters/notesMaster1.xml")))
       (is (not (re-find #"notesSlide" (entries "ppt/slides/_rels/slide1.xml.rels")))))))
 
+(deftest writes-review-comments-as-native-comments-part
+  (let [comments [{:author "Jun Kawasaki" :text "Looks good" :date "2026-07-02T00:00:00.000" :x 1.0 :y 0.5}
+                  {:author "Jun Kawasaki" :text "Second comment, no position"}]
+        deck (-> (m/deck "deck" {:slides/title "Reviewed"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Intro" :slides/comments comments})
+                      (m/add-shape (m/text-box "title" "Intro")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "a comments part is written, wired from the slide's own .rels"
+      (is (contains? entries "ppt/comments/comment1.xml"))
+      (is (re-find #"<p:cm authorId=\"0\" dt=\"2026-07-02T00:00:00.000\" idx=\"1\"><p:pos x=\"914400\" y=\"457200\"/><p:text>Looks good</p:text></p:cm>"
+                    (entries "ppt/comments/comment1.xml")))
+      (is (re-find #"<p:cm authorId=\"0\" idx=\"2\"><p:text>Second comment, no position</p:text></p:cm>"
+                    (entries "ppt/comments/comment1.xml")))
+      (is (re-find #"Type=\"[^\"]*comments\"" (entries "ppt/slides/_rels/slide1.xml.rels"))))
+    (testing "commentAuthors.xml + its wiring from presentation.xml.rels are included"
+      (is (contains? entries "ppt/commentAuthors.xml"))
+      (is (re-find #"<p:cmAuthor id=\"0\" name=\"Jun Kawasaki\" initials=\"JK\"" (entries "ppt/commentAuthors.xml")))
+      (is (re-find #"Type=\"[^\"]*commentAuthors\"" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "[Content_Types].xml declares both parts"
+      (is (re-find #"PartName=\"/ppt/commentAuthors.xml\"" (entries "[Content_Types].xml")))
+      (is (re-find #"PartName=\"/ppt/comments/comment1.xml\"" (entries "[Content_Types].xml")))))
+  (testing "a deck with no comments on any slide writes no comment parts at all"
+    (let [deck (-> (m/deck "deck" {:slides/title "No comments"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (not (contains? entries "ppt/commentAuthors.xml")))
+      (is (not (re-find #"comments" (entries "ppt/slides/_rels/slide1.xml.rels")))))))
+
+(deftest review-comments-round-trip-through-import
+  (let [comments [{:author "Jun Kawasaki" :text "Looks good" :date "2026-07-02T00:00:00.000" :x 1.0 :y 0.5}]
+        deck (-> (m/deck "deck" {:slides/title "Round trip"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Slide" :slides/comments comments})
+                      (m/add-shape (m/text-box "title" "Slide")))))
+        reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})]
+    (is (= comments (-> reimported :slides/slides first :slides/comments)))))
+
+(deftest multiple-authors-across-slides-get-stable-shared-ids
+  (let [deck (-> (m/deck "deck" {:slides/title "Two authors"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/comments [{:author "Alice" :text "A comment"}]})
+                      (m/add-shape (m/text-box "t" "One"))))
+                 (m/add-slide
+                  (-> (m/slide "s2" {:slides/comments [{:author "Bob" :text "B comment"}
+                                                       {:author "Alice" :text "Another Alice comment"}]})
+                      (m/add-shape (m/text-box "t" "Two")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "commentAuthors.xml lists each DISTINCT author once, in first-appearance order across the whole deck"
+      (is (re-find #"<p:cmAuthor id=\"0\" name=\"Alice\"" (entries "ppt/commentAuthors.xml")))
+      (is (re-find #"<p:cmAuthor id=\"1\" name=\"Bob\"" (entries "ppt/commentAuthors.xml")))
+      (is (= 2 (count (re-seq #"<p:cmAuthor " (entries "ppt/commentAuthors.xml"))))))
+    (testing "each slide's own comments reference the SAME author id, consistent across parts"
+      (is (re-find #"authorId=\"0\"" (entries "ppt/comments/comment1.xml")))
+      (is (re-find #"authorId=\"1\"" (entries "ppt/comments/comment2.xml")))
+      (is (re-find #"authorId=\"0\"" (entries "ppt/comments/comment2.xml"))))))
+
 (deftest pic-media-references-round-trip-through-import
   (let [entries
         {"ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\"/></p:presentation>"
