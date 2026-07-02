@@ -1631,3 +1631,26 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:bodyPr></a:bodyPr>" slide-xml))
       (is (not (re-find #"<a:bodyPr [^>]" slide-xml))))))
+
+(deftest writes-and-round-trips-gradient-fill
+  (let [gradient {:stops [{:position 0.0 :color "336699"}
+                          {:position 50.0 :color "88AACC"}
+                          {:position 100.0 :color "AABBCC"}]
+                  :angle 90.0}
+        deck (-> (m/deck "deck" {:slides/title "Gradient rect"})
+                 (m/add-slide (-> (m/slide "s1")
+                                  (m/add-shape (m/rect "r" {:slides/gradient gradient})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a real multi-stop <a:gradFill> is written, not a flattened <a:solidFill>"
+      (is (re-find #"<a:gradFill><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"336699\"/></a:gs><a:gs pos=\"50000\"><a:srgbClr val=\"88AACC\"/></a:gs><a:gs pos=\"100000\"><a:srgbClr val=\"AABBCC\"/></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"1\"/></a:gradFill>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= gradient (:slides/gradient rect))))))
+  (testing "no :slides/gradient -- plain <a:solidFill>, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<a:gradFill" slide-xml))))))
