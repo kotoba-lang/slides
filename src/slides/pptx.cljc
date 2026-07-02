@@ -619,6 +619,38 @@
        (when orient (str " orient=\"" (esc orient) "\""))
        "/>"))
 
+(defn- body-pr-xml
+  "A shape's <a:bodyPr> from its :slides/body-props (carried through
+  unchanged from import's drawingml/body-props -- see
+  drawingml.parse/text-body-props). wrap/lIns/tIns/rIns/rIns/anchor/
+  anchorCtr are all attributes on the tag itself (CT_TextBodyProperties);
+  the autofit choice (spAutoFit/noAutofit/normAutofit) is its one child
+  element. nil :slides/body-props (the common case) still emits a bare
+  <a:bodyPr></a:bodyPr> -- semantically identical to the historical
+  hardcoded wrap=\"square\" (PowerPoint's own default when wrap is
+  omitted), just without redundantly spelling out the default."
+  [{:keys [wrap anchor anchor-center margin-left margin-top margin-right margin-bottom
+           autofit font-scale line-spacing-reduction]}]
+  (str "<a:bodyPr"
+       (when (= wrap :none) " wrap=\"none\"")
+       (when margin-left (str " lIns=\"" (emu margin-left) "\""))
+       (when margin-top (str " tIns=\"" (emu margin-top) "\""))
+       (when margin-right (str " rIns=\"" (emu margin-right) "\""))
+       (when margin-bottom (str " bIns=\"" (emu margin-bottom) "\""))
+       (when (= anchor :center) " anchor=\"ctr\"")
+       (when (= anchor :bottom) " anchor=\"b\"")
+       (when anchor-center " anchorCtr=\"1\"")
+       ">"
+       (case autofit
+         :resize-shape "<a:spAutoFit/>"
+         :none "<a:noAutofit/>"
+         :shrink (str "<a:normAutofit"
+                      (when font-scale (str " fontScale=\"" (long (* font-scale 1000)) "\""))
+                      (when line-spacing-reduction (str " lnSpcReduction=\"" (long (* line-spacing-reduction 1000)) "\""))
+                      "/>")
+         nil "")
+       "</a:bodyPr>"))
+
 (defn- text-shape
   ([deck idx shape] (text-shape deck idx shape {}))
   ([deck idx {:slides/keys [id fill line placeholder] :as shape} opts]
@@ -642,7 +674,7 @@
             "<a:ln><a:noFill/></a:ln>")
           (shadow-xml shape)
           "</p:spPr>"
-          "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
+          "<p:txBody>" (body-pr-xml (:slides/body-props shape)) "<a:lstStyle/>"
           (apply str (map #(paragraph-xml deck shape major? ea-font hlink-rel-id %) (shape-paragraphs shape)))
           "</p:txBody></p:sp>"))))
 

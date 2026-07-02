@@ -1608,3 +1608,26 @@
         (is (= 1 (:level (nth reimported-paras 1))))
         (is (= 2 (:level (nth reimported-paras 2))))
         (is (= 1.0 (:margin-left (nth reimported-paras 2))))))))
+
+(deftest writes-and-round-trips-text-body-properties
+  (let [body-props {:wrap :none :anchor :center :anchor-center true
+                    :margin-left 0.05 :margin-top 0.025 :margin-right 0.05 :margin-bottom 0.025
+                    :autofit :shrink :font-scale 90.0 :line-spacing-reduction 10.0}
+        deck (-> (m/deck "deck" {:slides/title "Autofit text"})
+                 (m/add-slide (-> (m/slide "s1")
+                                  (m/add-shape (m/text-box "t" "Autofit text" {:slides/body-props body-props})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "wrap/anchor/anchorCtr/margins are all written as <a:bodyPr> attributes, normAutofit as its child"
+      (is (re-find #"<a:bodyPr wrap=\"none\" lIns=\"45720\" tIns=\"22860\" rIns=\"45720\" bIns=\"22860\" anchor=\"ctr\" anchorCtr=\"1\">" slide-xml))
+      (is (re-find #"<a:normAutofit fontScale=\"90000\" lnSpcReduction=\"10000\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (first (-> reimported :slides/slides first :slides/shapes))]
+        (is (= body-props (:slides/body-props shape))))))
+  (testing "no :slides/body-props -- a bare <a:bodyPr></a:bodyPr>, semantically identical to the historical wrap=\"square\" default"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:bodyPr></a:bodyPr>" slide-xml))
+      (is (not (re-find #"<a:bodyPr [^>]" slide-xml))))))
