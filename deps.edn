@@ -15,7 +15,7 @@
          :git/sha "3d5191bcd6c86e93626291eed84c37908714b3d4"}
         io.github.kotoba-lang/presentationml
         {:git/url "https://github.com/kotoba-lang/presentationml.git"
-         :git/sha "9f14f92621bf2992bec11ebefe1b6e644d4470c9"}
+         :git/sha "4c1ad465206f2dd9b1a57393a072909250255fe2"}
         io.github.kotoba-lang/office-style
         {:git/url "https://github.com/kotoba-lang/office-style.git"
          :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}
