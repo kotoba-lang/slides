@@ -364,6 +364,65 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:xfrm><a:off" slide-xml)))))
 
+(deftest writes-run-formatting-attributes
+  (let [deck (-> (m/deck "deck" {:slides/title "Formatted"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "t" "Fancy"
+                                               {:slides/bold true :slides/italic true
+                                                :slides/underline true :slides/strikethrough true
+                                                :slides/baseline 30.0})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:rPr[^>]*\bb=\"1\"" slide-xml))
+    (is (re-find #"<a:rPr[^>]*\bi=\"1\"" slide-xml))
+    (is (re-find #"<a:rPr[^>]*\bu=\"sng\"" slide-xml))
+    (is (re-find #"<a:rPr[^>]*\bstrike=\"sngStrike\"" slide-xml))
+    (is (re-find #"<a:rPr[^>]*\bbaseline=\"30000\"" slide-xml)))
+  (testing "plain text has none of these attributes"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"\bi=\"1\"" slide-xml)))
+      (is (not (re-find #"\bu=\"sng\"" slide-xml)))
+      (is (not (re-find #"\bstrike=\"sngStrike\"" slide-xml)))
+      (is (not (re-find #"\bbaseline=" slide-xml))))))
+
+(deftest writes-hyperlink-as-native-hlinkclick-and-relationship
+  (let [deck (-> (m/deck "deck" {:slides/title "Linked"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "link" "Click here" {:slides/hyperlink "https://example.com/"})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "the run's rPr carries an hlinkClick pointing at a relationship id"
+      (is (re-find #"<a:hlinkClick r:id=\"(rId\d+)\"/>" slide-xml)))
+    (testing "that relationship id resolves, in the slide's own .rels, to an External hyperlink target"
+      (let [rel-id (second (re-find #"<a:hlinkClick r:id=\"(rId\d+)\"/>" slide-xml))]
+        (is (re-find (re-pattern (str "Id=\"" rel-id "\"[^>]*Type=\"[^\"]*hyperlink\"[^>]*Target=\"https://example.com/\"[^>]*TargetMode=\"External\"")) rels-xml))))
+    (testing "a shape with no :slides/hyperlink gets no hlinkClick at all"
+      (let [deck2 (-> (m/deck "deck" {:slides/title "Unlinked"})
+                      (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+            entries2 (zip-entries (pptx/pptx-bytes deck2))]
+        (is (not (re-find #"hlinkClick" (entries2 "ppt/slides/slide1.xml"))))))))
+
+(deftest writes-line-dash-pattern
+  (let [deck (-> (m/deck "deck" {:slides/title "Dashed"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/line "445566" :slides/line-dash :dash})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:prstDash val=\"dash\"/>" slide-xml)))
+  (testing "no :slides/line-dash -- no prstDash element, solid line"
+    (let [deck (-> (m/deck "deck" {:slides/title "Solid"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r" {:slides/line "445566"})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<a:prstDash" slide-xml))))))
+
 (deftest writes-speaker-notes-as-native-notes-slide-part
   (let [deck (-> (m/deck "deck" {:slides/title "With notes"})
                  (m/add-slide
@@ -396,6 +455,29 @@
         reimported (office/deck-from-office-bytes bytes {})]
     (is (= "Speaker note text\nSecond line"
            (-> reimported :slides/slides first :slides/notes)))))
+
+(deftest formatting-hyperlink-and-line-dash-round-trip-through-import
+  (let [deck (-> (m/deck "deck" {:slides/title "Round trip"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "t" "Fancy linked text"
+                                               {:slides/bold true :slides/italic true
+                                                :slides/underline true :slides/strikethrough true
+                                                :slides/baseline 30.0
+                                                :slides/hyperlink "https://example.com/"}))
+                      (m/add-shape (m/rect "r" {:slides/line "445566" :slides/line-dash :dash})))))
+        bytes (pptx/pptx-bytes deck)
+        reimported (office/deck-from-office-bytes bytes {})
+        shapes (-> reimported :slides/slides first :slides/shapes)
+        text-shape (first (filter #(= :text (:slides/shape %)) shapes))
+        rect-shape (first (filter #(= :rect (:slides/shape %)) shapes))]
+    (is (true? (:slides/bold text-shape)))
+    (is (true? (:slides/italic text-shape)))
+    (is (true? (:slides/underline text-shape)))
+    (is (true? (:slides/strikethrough text-shape)))
+    (is (= 30.0 (:slides/baseline text-shape)))
+    (is (= "https://example.com/" (:slides/hyperlink text-shape)))
+    (is (= :dash (:slides/line-dash rect-shape)))))
 
 (deftest writes-gradient-background-when-configured
   (let [deck (m/deck "deck" {:slides/title "Gradient bg"

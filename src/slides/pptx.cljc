@@ -25,6 +25,7 @@
 (def rel-package "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package")
 (def rel-notes-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide")
 (def rel-notes-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster")
+(def rel-hyperlink "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
 
@@ -371,17 +372,22 @@
            nil nil)
          "</a:pPr>")))
 
-(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold] :as shape} text major? ea-font]
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline] :as shape} text major? ea-font hlink-rel-id]
   (str "<a:r><a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
        (when bold " b=\"1\"")
+       (when italic " i=\"1\"")
+       (when underline " u=\"sng\"")
+       (when strikethrough " strike=\"sngStrike\"")
+       (when baseline (str " baseline=\"" (long (* baseline 1000)) "\""))
        "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
        (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
+       (when hlink-rel-id (str "<a:hlinkClick r:id=\"" hlink-rel-id "\"/>"))
        "</a:rPr><a:t>" (esc text) "</a:t></a:r>"))
 
-(defn- paragraph-xml [deck shape major? ea-font {:keys [text] :as para}]
+(defn- paragraph-xml [deck shape major? ea-font hlink-rel-id {:keys [text] :as para}]
   (str "<a:p>" (or (paragraph-ppr-xml para) "")
-       (paragraph-run-xml deck shape text major? ea-font)
+       (paragraph-run-xml deck shape text major? ea-font hlink-rel-id)
        "</a:p>"))
 
 (defn- shape-paragraphs
@@ -409,23 +415,30 @@
   (let [v (some-> (:slides/geometry shape) name)]
     (if (and v (re-matches geometry-preset-pattern v)) v "rect")))
 
-(defn- text-shape [deck idx {:slides/keys [id fill line] :as shape}]
-  (let [font-size (:slides/font-size shape)
-        major? (>= (positive-numeric font-size 24) 30)
-        ea-font (font-face-ea deck major?)]
-    (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
-         "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
-         "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
-         (if fill
-           (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
-           "<a:noFill/>")
-         (if line
-           (str "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>")
-           "<a:ln><a:noFill/></a:ln>")
-         "</p:spPr>"
-         "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
-         (apply str (map #(paragraph-xml deck shape major? ea-font %) (shape-paragraphs shape)))
-         "</p:txBody></p:sp>")))
+(defn- line-dash-xml [shape]
+  (when-let [dash (:slides/line-dash shape)]
+    (str "<a:prstDash val=\"" (esc (name dash)) "\"/>")))
+
+(defn- text-shape
+  ([deck idx shape] (text-shape deck idx shape {}))
+  ([deck idx {:slides/keys [id fill line] :as shape} opts]
+   (let [font-size (:slides/font-size shape)
+         major? (>= (positive-numeric font-size 24) 30)
+         ea-font (font-face-ea deck major?)
+         hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])]
+     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
+          "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+          "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
+          (if fill
+            (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
+            "<a:noFill/>")
+          (if line
+            (str "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
+            "<a:ln><a:noFill/></a:ln>")
+          "</p:spPr>"
+          "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
+          (apply str (map #(paragraph-xml deck shape major? ea-font hlink-rel-id %) (shape-paragraphs shape)))
+          "</p:txBody></p:sp>"))))
 
 (defn- rect-shape [idx {:slides/keys [id fill line] :as shape}]
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
@@ -433,7 +446,7 @@
        "<p:spPr>" (shape-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
        "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"
-       "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>"
+       "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
        "</p:spPr></p:sp>"))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]
@@ -441,7 +454,7 @@
        "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\"><a:avLst/></a:prstGeom>"
-       "<a:ln><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill></a:ln>"
+       "<a:ln><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
        "</p:spPr></p:cxnSp>"))
 
 ;; PowerPoint's built-in "Medium Style 2 - Accent 1" table style GUID: a real
@@ -529,16 +542,16 @@
          chart-rel-id (get-in opts [:chart-rels (:slides/id shape)])]
      (case (:slides/shape shape)
        :rect (rect-shape idx shape)
-       :text (text-shape deck idx shape)
+       :text (text-shape deck idx shape opts)
        :table (table-shape idx shape)
        :connector (connector-shape idx shape)
        :image (if image-rel-id
                 (pic-shape idx shape image-rel-id)
-                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Image"))))
+                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Image")) opts))
        :chart (if chart-rel-id
                 (chart-shape idx shape chart-rel-id)
-                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Chart"))))
-       (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) "")))))))
+                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Chart")) opts))
+       (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) "")) opts)))))
 
 (defn- guide-shapes [deck]
   (when (:slides/show-guides deck)
@@ -634,8 +647,26 @@
        :notes-rels-path (str "ppt/notesSlides/_rels/" filename ".rels")
        :notes-rels-xml (notes-slide-rels-xml)})))
 
-(defn- slide-rels-xml [image-entries chart-entries notes-entry]
-  (if (or (seq image-entries) (seq chart-entries) notes-entry)
+(defn- slide-hyperlink-entries
+  "Every :slides/hyperlink-bearing shape on `slide`, assigned a rel-id local
+  to the slide's own .rels, continuing on from wherever image/chart/notes
+  rIds left off (2 + images + charts + (if notes 1 0))."
+  [deck slide rid-start]
+  (let [shapes (->> (slide-shapes deck slide)
+                    (filterv #(and (:slides/id %) (:slides/hyperlink %))))]
+    (vec
+     (map-indexed
+      (fn [i shape]
+        {:shape-id (:slides/id shape)
+         :rel-id (str "rId" (+ rid-start i))
+         :url (:slides/hyperlink shape)})
+      shapes))))
+
+(defn- hyperlink-rels-map [hyperlink-entries]
+  (into {} (map (juxt :shape-id :rel-id)) hyperlink-entries))
+
+(defn- slide-rels-xml [image-entries chart-entries notes-entry hyperlink-entries]
+  (if (or (seq image-entries) (seq chart-entries) notes-entry (seq hyperlink-entries))
     (ooxml/relationships-xml
      (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]
            (concat
@@ -647,7 +678,10 @@
                  chart-entries)
             (when notes-entry
               [(ooxml/relationship {:id (:rel-id notes-entry) :type rel-notes-slide
-                                    :target (str "../notesSlides/" (:notes-filename notes-entry))})]))))
+                                    :target (str "../notesSlides/" (:notes-filename notes-entry))})])
+            (map (fn [{:keys [rel-id url]}]
+                   (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
+                 hyperlink-entries))))
     slide-rels))
 
 (defn- image-rels-map [image-entries]
@@ -673,8 +707,9 @@
         per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index]} slide]
                             (let [images (slide-image-entries deck slide media-index 2)
                                   charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))
-                                  notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))]
-                              {:acc (conj acc {:slide slide :images images :charts charts :notes notes})
+                                  notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))
+                                  hyperlinks (slide-hyperlink-entries deck slide (+ 2 (count images) (count charts) (if notes 1 0)))]
+                              {:acc (conj acc {:slide slide :images images :charts charts :notes notes :hyperlinks hyperlinks})
                                :media-index (+ media-index (count images))
                                :chart-index (+ chart-index (count charts))
                                :notes-index (+ notes-index (if notes 1 0))}))
@@ -701,12 +736,13 @@
       (when has-notes?
         [["ppt/notesMasters/notesMaster1.xml" (notes-master-xml)]
          ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
-      (mapcat (fn [[idx {:keys [slide images charts notes]}]]
+      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks]}]]
                 (let [n (inc idx)
-                      opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)}]
+                      opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)
+                            :hyperlink-rels (hyperlink-rels-map hyperlinks)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts notes)]]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts notes hyperlinks)]]
                    (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
                    (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
                              [[chart-path chart-xml]
