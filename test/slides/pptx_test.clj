@@ -275,6 +275,28 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"srcRect" slide-xml))))))
 
+(deftest writes-and-round-trips-picture-recolor
+  (let [deck (-> (m/deck "deck" {:slides/title "Recolored"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Photo"})
+                      (m/add-shape (m/image "logo" one-pixel-png-base64
+                                            {:slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 2.0
+                                             :slides/recolor {:grayscale? true :alpha-mod 50.0}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "<a:blip> is no longer self-closing, and its recolor children are written"
+      (is (re-find #"<a:blip r:embed=\"rId2\"><a:alphaModFix amt=\"50000\"/><a:grayscl/></a:blip>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "logo" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= {:grayscale? true :alpha-mod 50.0} (:slides/recolor shape))))))
+  (testing "no :slides/recolor -- <a:blip> stays self-closing, unchanged from before this feature existed"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/image "logo" one-pixel-png-base64)))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:blip r:embed=\"rId2\"/>" slide-xml)))))
+
 (deftest image-shape-with-invalid-image-data-falls-back-to-text-safely
   (let [deck (-> (m/deck "deck" {:slides/title "Bad image"})
                  (m/add-slide
