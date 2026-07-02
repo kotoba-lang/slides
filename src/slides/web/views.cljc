@@ -1,19 +1,19 @@
 (ns slides.web.views
   "Pure-hiccup views for the slides web editor (.cljc, no reagent import).
 
-  The SAME hiccup data is rendered live by reagent in the browser (cljs) and to
-  HTML by shitsuke.hiccup/->html for SSR (clj) — the dual-render contract. Views
-  take the app-db map and derive; they carry no side-effects.
+  The SAME hiccup data can be rendered by a browser host adapter and to HTML by
+  shitsuke.hiccup/->html for SSR (clj) — the dual-render contract. Views take
+  the app-db map and derive; they carry no side-effects.
 
   Interaction is via stable data-attributes (not cljs callbacks) so the SSR HTML
-  is identical to the live DOM and a single enhancer (slides.web.app) can drive
-  re-frame dispatch for both:
+  is identical to the host-rendered DOM and an external enhancer can drive
+  re-frame dispatch:
     :data-act      button actions (new-deck, add-slide, ...)
     :data-slide    slide thumbnail selection (idx)
     :data-shape    shape selection (idx)
     :data-field    property input (prefixed: shape.x / slide.title / ...)
-  This mirrors the legacy document-level dispatch model (so behaviour is
-  preserved) while the rendering moves from innerHTML strings to hiccup data."
+  This preserves the document-level dispatch model while keeping the rendering
+  surface as portable hiccup data."
   (:require [clojure.string :as str]
             [slides.design :as design]
             [shitsuke.style :as sstyle]))

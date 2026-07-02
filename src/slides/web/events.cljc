@@ -3,10 +3,10 @@
 
   Pure state transitions (portable .cljc): registered against
   `shitsuke.re-frame.core` so the SAME events/subs run on the JVM mini runtime
-  (tests, SSR) and on real re-frame in the browser. App code stays within the
-  portable 7-fn subset — no effects/cofx/interceptors. Side-effects (localStorage,
-  PPTX import/export) live in slides.web.effects (cljs) and are invoked from
-  slides.web.app around dispatch, not inside event handlers."
+  (tests, SSR) and by any browser host adapter. App code stays within the
+  portable 7-fn subset — no effects/cofx/interceptors. Side-effects such as
+  localStorage, PPTX import/export, and DOM event wiring belong to host adapters,
+  not this library namespace."
   (:require #?(:cljs [re-frame.core :as rf]
                :clj [shitsuke.re-frame.core :as rf])
             [kotoba.editor :as editor]

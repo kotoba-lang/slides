@@ -1,10 +1,9 @@
 (ns slides.web.ssr
   "SSR parity: render slides.web.views with a sample db via shitsuke.hiccup/->html.
 
-  Proves the dual-render contract — the SAME views reagent mounts in the browser
-  also render to HTML on the JVM. The live slides site is client-only (loads the
-  deck from localStorage); this namespace is exercised by the parity test, not
-  by the served shell."
+  Proves the dual-render contract: the same portable view data a browser host
+  adapter can mount also renders to HTML on the JVM. Browser persistence and
+  file effects are adapter-owned outside this library."
   (:require [shitsuke.hiccup :as hic]
             [slides.web.views :as views]
             [slides.web.sample :as sample]))

@@ -20,8 +20,7 @@
         {:git/url "https://github.com/kotoba-lang/office-style.git"
          :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}
         ;; shitsuke: shared UI design system (tokens + hiccup + style +
-        ;; portable re-frame seam + components). Pure .cljc, zero runtime deps;
-        ;; real reagent/re-frame come via the :cljs alias below.
+        ;; portable re-frame seam + components). Pure .cljc, zero runtime deps.
         io.github.kotoba-lang/shitsuke
         {:git/url "https://github.com/kotoba-lang/shitsuke.git"
          :git/sha "d7988c24f5cb37074b6bfc1f0c2e223f4e218f84"}}
@@ -39,27 +38,14 @@
                           {:local/root "../office-style"}
                           io.github.kotoba-lang/shitsuke
                           {:local/root "../shitsuke"}}}
-  :pages {:extra-deps {com.thheller/shadow-css {:mvn/version "0.6.4"
-                                  :exclusions [com.thheller/shadow-cljs]}
-                      thheller/shadow-cljs {:mvn/version "2.28.21"}}
-          :main-opts ["-m" "slides.build"]}
-  :cljs {:extra-deps {thheller/shadow-cljs      {:mvn/version "2.28.21"}
-                      reagent/reagent           {:mvn/version "1.2.0"}
-                      re-frame/re-frame         {:mvn/version "1.4.3"}}
-         :main-opts ["-m" "shadow.cljs.devtools.cli" "release" "app"]}
+  :pages {:main-opts ["-m" "slides.build"]}
   :test {:extra-paths ["test"]
-         :extra-deps {com.thheller/shadow-css {:mvn/version "0.6.4"
-                                  :exclusions [com.thheller/shadow-cljs]}
-                      thheller/shadow-cljs {:mvn/version "2.28.21"}
-                      io.github.cognitect-labs/test-runner
+         :extra-deps {io.github.cognitect-labs/test-runner
                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
          :main-opts ["-m" "cognitect.test-runner"]
          :exec-fn cognitect.test-runner.api/test}
   :coverage {:extra-paths ["test"]
              :extra-deps {cloverage/cloverage {:mvn/version "1.2.4"}
-                          com.thheller/shadow-css {:mvn/version "0.6.4"
-                                  :exclusions [com.thheller/shadow-cljs]}
-                      thheller/shadow-cljs {:mvn/version "2.28.21"}
                           io.github.cognitect-labs/test-runner
                           {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
              :main-opts ["-m" "cloverage.coverage"
