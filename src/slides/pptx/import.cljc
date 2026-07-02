@@ -52,6 +52,7 @@
     (:drawingml/fill shape) (assoc :slides/fill (:drawingml/fill shape))
     (:drawingml/line shape) (assoc :slides/line (:drawingml/line shape))
     (:drawingml/line-dash shape) (assoc :slides/line-dash (:drawingml/line-dash shape))
+    (:drawingml/line-width shape) (assoc :slides/line-width (:drawingml/line-width shape))
     (:drawingml/bold shape) (assoc :slides/bold (:drawingml/bold shape))
     (:drawingml/italic shape) (assoc :slides/italic (:drawingml/italic shape))
     (:drawingml/underline shape) (assoc :slides/underline (:drawingml/underline shape))
