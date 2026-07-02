@@ -424,6 +424,34 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-placeholder-type-on-full-regen
+  (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "title" "Hello"
+                                               {:slides/placeholder {:type "title"}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a shape with :slides/placeholder gets a real <p:ph>, and its OWN cNvSpPr drops txBox=\"1\" (a placeholder isn't a free text box -- the deck's synthetic footer shape, elsewhere in the doc, is still a plain txBox, so this must be scoped to the title shape's own nvSpPr, not a doc-wide absence check)"
+      (is (re-find #"<p:ph type=\"title\"/>" slide-xml))
+      (is (re-find #"<p:cNvSpPr/><p:nvPr><p:ph type=\"title\"/></p:nvPr>" slide-xml))))
+  (testing "a shape with idx/sz/orient carries all of them"
+    (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape (m/text-box "body" "Body text"
+                                                 {:slides/placeholder {:type "body" :idx "1" :size "half" :orient "horz"}})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<p:ph type=\"body\" idx=\"1\" sz=\"half\" orient=\"horz\"/>" slide-xml))))
+  (testing "no :slides/placeholder -- historical plain textbox, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<p:cNvSpPr txBox=\"1\"/><p:nvPr/>" slide-xml))
+      (is (not (re-find #"<p:ph" slide-xml))))))
+
 (deftest writes-and-round-trips-line-width
   (let [deck (-> (m/deck "deck" {:slides/title "Thick line"})
                  (m/add-slide

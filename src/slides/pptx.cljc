@@ -452,16 +452,36 @@
 (defn- blip-fill-xml [rel-id]
   (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"))
 
+(defn- placeholder-xml
+  "A shape's <p:ph .../> from its :slides/placeholder (carried through
+  unchanged from import's drawingml/placeholder -- see
+  drawingml.parse/placeholder). Previously the FULL-REGEN writer never
+  emitted <p:ph> at all: a re-exported title/body shape was written as a
+  plain, non-placeholder textbox, invisible to PowerPoint's Outline view
+  or Reset Layout (the update/patch path, which never touches <p:nvSpPr>,
+  already preserved it correctly for shapes patched in place -- this only
+  affects a shape re-rendered from scratch)."
+  [{:keys [type idx size orient]}]
+  (str "<p:ph"
+       (when type (str " type=\"" (esc type) "\""))
+       (when idx (str " idx=\"" (esc idx) "\""))
+       (when size (str " sz=\"" (esc size) "\""))
+       (when orient (str " orient=\"" (esc orient) "\""))
+       "/>"))
+
 (defn- text-shape
   ([deck idx shape] (text-shape deck idx shape {}))
-  ([deck idx {:slides/keys [id fill line] :as shape} opts]
+  ([deck idx {:slides/keys [id fill line placeholder] :as shape} opts]
    (let [font-size (:slides/font-size shape)
          major? (>= (positive-numeric font-size 24) 30)
          ea-font (font-face-ea deck major?)
          hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])
          fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
-          "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+          (if placeholder
+            (str "<p:cNvSpPr/><p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>")
+            "<p:cNvSpPr txBox=\"1\"/><p:nvPr/>")
+          "</p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
           (cond
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
