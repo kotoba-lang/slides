@@ -441,9 +441,11 @@
     (re-find #"[一-鿿㐀-䶿]" (str text)) "zh-CN"
     :else "en-US"))
 
-(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing]}]
-  (when (or align bullet line-spacing)
+(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing level margin-left]}]
+  (when (or align bullet line-spacing level margin-left)
     (str "<a:pPr"
+         (when level (str " lvl=\"" (long level) "\""))
+         (when margin-left (str " marL=\"" (emu margin-left) "\""))
          (when align (str " algn=\"" (case align :center "ctr" :right "r" :justify "just" "l") "\""))
          ">"
          (when line-spacing

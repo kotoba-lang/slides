@@ -1585,3 +1585,26 @@
       (is (= "title" (:slides/layout-type
                       (some #(when (= (:slides/layout-ref (nth slides 0)) (:slides/id %)) %)
                             (:slides/layouts reimported))))))))
+
+(deftest writes-and-round-trips-paragraph-indent-level
+  (let [paragraphs [{:text "Top level" :bullet {:type :char :char "•"}}
+                    {:text "Sub bullet" :bullet {:type :char :char "•"} :level 1}
+                    {:text "Sub-sub, explicit margin" :bullet {:type :char :char "•"} :level 2 :margin-left 1.0}]
+        deck (-> (m/deck "deck" {:slides/title "Nested bullets"})
+                 (m/add-slide (-> (m/slide "s1")
+                                  (m/add-shape (m/text-box "t" "" {:slides/paragraphs paragraphs})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "lvl and marL are written as <a:pPr> attributes, in schema order (lvl, marL, algn)"
+      (is (re-find #"<a:pPr lvl=\"1\">" slide-xml))
+      (is (re-find #"<a:pPr lvl=\"2\" marL=\"914400\">" slide-xml)))
+    (testing "no level on a paragraph -- no lvl attribute at all (level 0, the implicit default)"
+      (is (re-find #"<a:pPr><a:buChar char=\"•\"/></a:pPr><a:r><a:rPr[^>]*><a:latin[^>]*/><a:solidFill[^>]*>[\s\S]*?</a:solidFill></a:rPr><a:t>Top level</a:t></a:r>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            reimported-paras (:slides/paragraphs (first (-> reimported :slides/slides first :slides/shapes)))]
+        (is (not (contains? (nth reimported-paras 0) :level)))
+        (is (= 1 (:level (nth reimported-paras 1))))
+        (is (= 2 (:level (nth reimported-paras 2))))
+        (is (= 1.0 (:margin-left (nth reimported-paras 2))))))))
