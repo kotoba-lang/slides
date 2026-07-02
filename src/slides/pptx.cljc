@@ -120,7 +120,16 @@
     (ooxml/relationship {:id "rId2" :type rel-core-props :target "docProps/core.xml"})
     (ooxml/relationship {:id "rId3" :type rel-app-props :target "docProps/app.xml"})]))
 
-(defn- core-props [deck]
+(defn- core-props
+  "docProps/core.xml. Beyond dc:title/dc:creator (always present -- the
+  latter defaults to this package's own name, unchanged from before, but
+  now yields to a deck-supplied :slides/author when present so a re-
+  exported imported deck keeps its original author instead of losing it
+  to the tool-branding default), every other Dublin Core field is OPTIONAL
+  and simply omitted when the deck doesn't carry it -- a deck with no
+  extended metadata (this package's own synthetic decks, the common case)
+  produces byte-for-byte the same core.xml as before this feature."
+  [deck]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
        "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" "
        "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
@@ -128,14 +137,25 @@
        "xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" "
        "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">"
        "<dc:title>" (esc (:slides/title deck (:slides/id deck "slides"))) "</dc:title>"
-       "<dc:creator>kotoba-lang/slides</dc:creator>"
+       "<dc:creator>" (esc (:slides/author deck "kotoba-lang/slides")) "</dc:creator>"
+       (when-let [subject (:slides/subject deck)] (str "<dc:subject>" (esc subject) "</dc:subject>"))
+       (when-let [keywords (:slides/keywords deck)] (str "<cp:keywords>" (esc keywords) "</cp:keywords>"))
+       (when-let [category (:slides/category deck)] (str "<cp:category>" (esc category) "</cp:category>"))
+       (when-let [lmb (:slides/last-modified-by deck)] (str "<cp:lastModifiedBy>" (esc lmb) "</cp:lastModifiedBy>"))
+       (when-let [created (:slides/created deck)] (str "<dcterms:created xsi:type=\"dcterms:W3CDTF\">" (esc created) "</dcterms:created>"))
+       (when-let [modified (:slides/modified deck)] (str "<dcterms:modified xsi:type=\"dcterms:W3CDTF\">" (esc modified) "</dcterms:modified>"))
        "</cp:coreProperties>"))
 
-(defn- app-props [slide-count]
+(defn- app-props
+  "docProps/app.xml. :slides/company/:slides/manager are optional and
+  omitted when the deck doesn't carry them, same as core-props' fields."
+  [deck slide-count]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
        "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" "
        "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">"
        "<Application>kotoba-lang/slides</Application>"
+       (when-let [company (:slides/company deck)] (str "<Company>" (esc company) "</Company>"))
+       (when-let [manager (:slides/manager deck)] (str "<Manager>" (esc manager) "</Manager>"))
        "<PresentationFormat>On-screen Show (16:9)</PresentationFormat>"
        "<Slides>" slide-count "</Slides>"
        "</Properties>"))
@@ -1012,7 +1032,7 @@
       [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
-       ["docProps/app.xml" (app-props (count slides))]
+       ["docProps/app.xml" (app-props deck (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height master-count)]
        ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
