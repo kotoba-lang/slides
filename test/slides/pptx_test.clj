@@ -820,6 +820,33 @@
       (is (not (contains? entries "ppt/handoutMasters/handoutMaster1.xml")))
       (is (not (re-find #"handoutMaster" (entries "ppt/_rels/presentation.xml.rels")))))))
 
+(deftest writes-and-round-trips-custom-xml-parts
+  (let [custom-xml-parts [{:content "<root xmlns=\"http://example.com/schema\"><field>value</field></root>"
+                           :props-content
+                           (str "<ds:datastoreItem ds:itemID=\"{11111111-1111-1111-1111-111111111111}\" "
+                                "xmlns:ds=\"http://schemas.openxmlformats.org/officeDocument/2006/customXml\">"
+                                "<ds:schemaRefs/></ds:datastoreItem>")}]
+        deck (-> (m/deck "deck" {:slides/title "With custom XML" :slides/custom-xml-parts custom-xml-parts})
+                 (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Slide")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "the item + itemProps + item's own .rels are all written verbatim"
+      (is (= "<root xmlns=\"http://example.com/schema\"><field>value</field></root>"
+             (entries "customXml/item1.xml")))
+      (is (= (:props-content (first custom-xml-parts)) (entries "customXml/itemProps1.xml")))
+      (is (re-find #"Type=\"[^\"]*customXmlProps\"" (entries "customXml/_rels/item1.xml.rels"))))
+    (testing "presentation.xml.rels wires a relationship to the item, up one level from ppt/"
+      (is (re-find #"Type=\"[^\"]*customXml\"[^/]*Target=\"\.\./customXml/item1\.xml\"" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "[Content_Types].xml declares itemProps' own content type (item1.xml uses the default xml mapping)"
+      (is (re-find #"PartName=\"/customXml/itemProps1\.xml\"" (entries "[Content_Types].xml"))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})]
+        (is (= custom-xml-parts (:slides/custom-xml-parts reimported))))))
+  (testing "no :slides/custom-xml-parts -- no customXml/ entries at all, the common case"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"}) (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Hi")))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (not (some #(str/starts-with? % "customXml/") (keys entries))))
+      (is (not (re-find #"customXml" (entries "ppt/_rels/presentation.xml.rels")))))))
+
 (deftest writes-review-comments-as-native-comments-part
   (let [comments [{:author "Jun Kawasaki" :text "Looks good" :date "2026-07-02T00:00:00.000" :x 1.0 :y 0.5}
                   {:author "Jun Kawasaki" :text "Second comment, no position"}]

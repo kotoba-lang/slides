@@ -153,6 +153,7 @@
             (when (seq layouts) {:slides/layouts layouts})
             (when (seq (:presentationml/sections parsed)) {:slides/sections (:presentationml/sections parsed)})
             (when (:presentationml/handout-master? parsed) {:slides/handout-master? true})
+            (when (seq (:presentationml/custom-xml-parts parsed)) {:slides/custom-xml-parts (:presentationml/custom-xml-parts parsed)})
             (doc-properties->slides parsed)))))
 
 (defn useful-deck? [deck]
