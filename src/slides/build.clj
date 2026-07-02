@@ -1,14 +1,17 @@
 (ns slides.build
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
             [shitsuke.tokens :as tokens]
-            [slides.site :as site]))
+            [slides.site :as site]
+            [slides.web.styles :as styles]))
 
-(defn css-release! []
+(defn css-release!
+  "docs/main.css = shitsuke.tokens' generated :root block + the page-chrome
+  rules from slides.web.styles (css.core EDN data — see that ns docstring for
+  why a second, hand-typed :root block also survives inside `generated`)."
+  []
   (let [out (io/file "docs" "main.css")
-        static-css (slurp (io/resource "slides/static.css"))
         root-vars (tokens/css-variables)
-        generated (str/replace static-css (str root-vars "\n") "")]
+        generated (styles/static-css)]
     (io/make-parents out)
     (spit out (str root-vars "\n" generated))
     out))

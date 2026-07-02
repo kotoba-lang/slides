@@ -8,7 +8,10 @@
 
 (deftest index-html-renders-github-pages-shell
   (let [html (site/index-html)]
-    (is (.startsWith html "<!doctype html>"))
+    ;; kotoba.html/html5 emits uppercase DOCTYPE (HTML doctype is case-
+    ;; insensitive; this is the same substrate shitsuke.hiccup itself is
+    ;; built on, see slides.site ns docstring / 90-docs/adr/2607022800)
+    (is (.startsWith html "<!DOCTYPE html>"))
     (is (re-find #"<title>kotoba-lang/slides</title>" html))
     (is (re-find #"<link rel=\"stylesheet\" href=\"\./main\.css\">" html))
     (is (re-find #"<body class=\"slides-page\">" html))
@@ -31,7 +34,12 @@
       (is (= out (build/css-release!)))
       (let [css (slurp out)]
         (is (.startsWith css (tokens/css-variables)))
-        (is (str/includes? css ".top{display:flex"))))))
+        ;; css.core/css renders "selector { prop: val; ... }" (spaced, not
+        ;; minified) with map-iteration declaration order, not source order —
+        ;; check rule presence + a declaration it contains rather than an
+        ;; exact minified substring (see slides.web.styles ns docstring).
+        (is (str/includes? css ".top {"))
+        (is (str/includes? css "display: flex"))))))
 
 (deftest pages-writes-html-before-css-release
   (let [calls (atom [])]

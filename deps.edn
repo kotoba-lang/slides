@@ -23,7 +23,18 @@
         ;; portable re-frame seam + components). Pure .cljc, zero runtime deps.
         io.github.kotoba-lang/shitsuke
         {:git/url "https://github.com/kotoba-lang/shitsuke.git"
-         :git/sha "d7988c24f5cb37074b6bfc1f0c2e223f4e218f84"}}
+         :git/sha "d7988c24f5cb37074b6bfc1f0c2e223f4e218f84"}
+        ;; kotoba-lang/html: standalone hiccup->HTML renderer (the extracted
+        ;; substrate shitsuke.hiccup itself is built on). Used for the docs/
+        ;; Pages shell (site.clj) per 90-docs/adr/2607022800.
+        io.github.kotoba-lang/html
+        {:git/url "https://github.com/kotoba-lang/html.git"
+         :git/sha "31a26731f68f635d10c3ebf1e791d53c07a711b3"}
+        ;; kotoba-lang/css: CSS as EDN data. Used for the docs/main.css build
+        ;; (build.clj) instead of a hand-typed static.css string.
+        io.github.kotoba-lang/css
+        {:git/url "https://github.com/kotoba-lang/css.git"
+         :git/sha "e8bb830b69aa1a726bb79dbd28f098f0875db673"}}
  :aliases
  {:cli {:main-opts ["-m" "slides.cli"]}
   :local {:override-deps {io.github.kotoba-lang/office
@@ -37,7 +48,11 @@
                           io.github.kotoba-lang/office-style
                           {:local/root "../office-style"}
                           io.github.kotoba-lang/shitsuke
-                          {:local/root "../shitsuke"}}}
+                          {:local/root "../shitsuke"}
+                          io.github.kotoba-lang/html
+                          {:local/root "../html"}
+                          io.github.kotoba-lang/css
+                          {:local/root "../css"}}}
   :pages {:main-opts ["-m" "slides.build"]}
   :test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
