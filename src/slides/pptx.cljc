@@ -28,6 +28,8 @@
 (def rel-notes-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster")
 (def rel-comments "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments")
 (def rel-handout-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/handoutMaster")
+(def rel-custom-xml "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXml")
+(def rel-custom-xml-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/customXmlProps")
 (def rel-hyperlink "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
@@ -82,16 +84,18 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] [] [] 1 1 [] false))
+  ([slide-count] (content-types slide-count [] [] [] 1 1 [] false 0))
   ([slide-count media-extensions-used chart-paths notes-slide-paths]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1 [] false))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1 [] false 0))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count [] false))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count [] false 0))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count [] false))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count [] false 0))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths false))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths false 0))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths has-handout-master?]
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths has-handout-master? 0))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count comment-paths has-handout-master? custom-xml-count]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -124,7 +128,10 @@
      (for [path comment-paths]
        (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.comments+xml"))
      (when has-handout-master?
-       [(ooxml/override-content-type "/ppt/handoutMasters/handoutMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.handoutMaster+xml")])))))
+       [(ooxml/override-content-type "/ppt/handoutMasters/handoutMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.handoutMaster+xml")])
+     (for [idx (range 1 (inc custom-xml-count))]
+       (ooxml/override-content-type (str "/customXml/itemProps" idx ".xml")
+                                    "application/vnd.openxmlformats-officedocument.customXmlProperties+xml"))))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -229,33 +236,40 @@
 (def rel-comment-authors "http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentAuthors")
 
 (defn- presentation-rels
-  ([slide-count] (presentation-rels slide-count false 1 false false))
-  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1 false false))
-  ([slide-count has-notes? master-count] (presentation-rels slide-count has-notes? master-count false false))
+  ([slide-count] (presentation-rels slide-count false 1 false false 0))
+  ([slide-count has-notes?] (presentation-rels slide-count has-notes? 1 false false 0))
+  ([slide-count has-notes? master-count] (presentation-rels slide-count has-notes? master-count false false 0))
   ([slide-count has-notes? master-count has-comments?]
-   (presentation-rels slide-count has-notes? master-count has-comments? false))
+   (presentation-rels slide-count has-notes? master-count has-comments? false 0))
   ([slide-count has-notes? master-count has-comments? has-handout-master?]
-   (ooxml/relationships-xml
-    (concat
-     (for [idx (range 1 (inc master-count))]
-       (ooxml/relationship {:id (str "rId" idx) :type rel-slide-master
-                            :target (str "slideMasters/slideMaster" idx ".xml")}))
-     (for [idx (range 1 (inc slide-count))]
-       (ooxml/relationship {:id (str "rId" (+ master-count idx))
-                            :type rel-slide
-                            :target (str "slides/slide" idx ".xml")}))
-     (when has-notes?
-       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1))
-                             :type rel-notes-master
-                             :target "notesMasters/notesMaster1.xml"})])
-     (when has-comments?
-       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0)))
-                             :type rel-comment-authors
-                             :target "commentAuthors.xml"})])
-     (when has-handout-master?
-       [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0) (if has-comments? 1 0)))
-                             :type rel-handout-master
-                             :target "handoutMasters/handoutMaster1.xml"})])))))
+   (presentation-rels slide-count has-notes? master-count has-comments? has-handout-master? 0))
+  ([slide-count has-notes? master-count has-comments? has-handout-master? custom-xml-count]
+   (let [base-rid (+ master-count slide-count 1 (if has-notes? 1 0) (if has-comments? 1 0) (if has-handout-master? 1 0))]
+     (ooxml/relationships-xml
+      (concat
+       (for [idx (range 1 (inc master-count))]
+         (ooxml/relationship {:id (str "rId" idx) :type rel-slide-master
+                              :target (str "slideMasters/slideMaster" idx ".xml")}))
+       (for [idx (range 1 (inc slide-count))]
+         (ooxml/relationship {:id (str "rId" (+ master-count idx))
+                              :type rel-slide
+                              :target (str "slides/slide" idx ".xml")}))
+       (when has-notes?
+         [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1))
+                               :type rel-notes-master
+                               :target "notesMasters/notesMaster1.xml"})])
+       (when has-comments?
+         [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0)))
+                               :type rel-comment-authors
+                               :target "commentAuthors.xml"})])
+       (when has-handout-master?
+         [(ooxml/relationship {:id (str "rId" (+ master-count slide-count 1 (if has-notes? 1 0) (if has-comments? 1 0)))
+                               :type rel-handout-master
+                               :target "handoutMasters/handoutMaster1.xml"})])
+       (for [idx (range 1 (inc custom-xml-count))]
+         (ooxml/relationship {:id (str "rId" (+ base-rid idx -1))
+                              :type rel-custom-xml
+                              :target (str "../customXml/item" idx ".xml")})))))))
 
 (def default-theme (:slides/theme design/default-design))
 
@@ -432,6 +446,29 @@
 (def handout-master-rels
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-theme :target "../theme/theme1.xml"})]))
+
+(defn- custom-xml-item-rels-xml [idx]
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-custom-xml-props :target (str "itemProps" idx ".xml")})]))
+
+(defn- custom-xml-parts-entries
+  "The full set of package entries for a deck's own :slides/custom-xml-parts
+  ({:content ... :props-content ...}, the same shape presentationml.parse/
+  custom-xml-parts already produces on import -- both preserved verbatim
+  as opaque raw XML strings, this package doesn't reinterpret custom XML
+  content) -- customXml/itemN.xml always, plus itemPropsN.xml + item's own
+  .rels only when the source part actually had props-content."
+  [custom-xml-parts]
+  (apply concat
+         (map-indexed
+          (fn [i {:keys [content props-content]}]
+            (let [idx (inc i)]
+              (concat
+               [[(str "customXml/item" idx ".xml") content]]
+               (when props-content
+                 [[(str "customXml/itemProps" idx ".xml") props-content]
+                  [(str "customXml/_rels/item" idx ".xml.rels") (custom-xml-item-rels-xml idx)]]))))
+          custom-xml-parts)))
 
 (defn- notes-paragraphs-xml [notes-text]
   (apply str (map (fn [line] (str "<a:p><a:r><a:t>" (esc line) "</a:t></a:r></a:p>"))
@@ -1388,15 +1425,17 @@
         all-comment-paths (keep (fn [{:keys [comments]}] (:comments-path comments)) slide-plans)
         has-notes? (boolean (seq all-notes-paths))
         has-comments? (boolean (seq all-comment-paths))
-        has-handout-master? (boolean (:slides/handout-master? deck))]
+        has-handout-master? (boolean (:slides/handout-master? deck))
+        custom-xml-parts (:slides/custom-xml-parts deck)
+        custom-xml-count (count custom-xml-parts)]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count all-comment-paths has-handout-master?)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count all-comment-paths has-handout-master? custom-xml-count)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props deck (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height master-count (:slides/sections deck))]
-       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count has-comments? has-handout-master?)]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count has-comments? has-handout-master? custom-xml-count)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
       (mapcat (fn [master-idx]
                 (let [layout-indices (master-layout-indices layout-entries master-idx)
@@ -1417,6 +1456,7 @@
       (when has-handout-master?
         [["ppt/handoutMasters/handoutMaster1.xml" (handout-master-xml)]
          ["ppt/handoutMasters/_rels/handoutMaster1.xml.rels" handout-master-rels]])
+      (custom-xml-parts-entries custom-xml-parts)
       (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks comments layout-idx]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)
