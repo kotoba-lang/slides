@@ -58,6 +58,8 @@
     (:drawingml/strikethrough shape) (assoc :slides/strikethrough (:drawingml/strikethrough shape))
     (:drawingml/baseline shape) (assoc :slides/baseline (:drawingml/baseline shape))
     (:drawingml/hyperlink shape) (assoc :slides/hyperlink (:drawingml/hyperlink shape))
+    (:drawingml/fill-image-rel-id shape) (assoc :slides/fill-image-rel-id (:drawingml/fill-image-rel-id shape))
+    (:drawingml/fill-image-part shape) (assoc :slides/fill-image-part (:drawingml/fill-image-part shape))
     (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))
     (:drawingml/group shape) (assoc :slides/group (:drawingml/group shape))
     (:drawingml/placeholder shape) (assoc :slides/placeholder (:drawingml/placeholder shape))
