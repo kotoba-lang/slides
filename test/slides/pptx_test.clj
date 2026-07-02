@@ -87,6 +87,33 @@
     (testing "table geometry uses <p:xfrm>, not <a:xfrm> inside <p:spPr> (graphicFrame convention)"
       (is (re-find #"<p:xfrm>" slide-xml)))))
 
+(deftest writes-and-round-trips-table-style-flags
+  (testing "explicit :slides/table-style-flags override the writer's own default"
+    (let [deck (-> (m/deck "deck" {:slides/title "Banded columns"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "t1" :slides/shape :table
+                                      :slides/w 4.0 :slides/h 1.0
+                                      :slides/rows [["A" "B"] ["1" "2"]]
+                                      :slides/table-style-flags {:band-col? true}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:tblPr bandCol=\"1\">" slide-xml))
+      (is (not (re-find #"firstRow" slide-xml)))
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= {:band-col? true} (:slides/table-style-flags table))))))
+  (testing "no :slides/table-style-flags -- the historical firstRow+bandRow default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "t1" :slides/shape :table
+                                      :slides/w 4.0 :slides/h 1.0
+                                      :slides/rows [["A" "B"] ["1" "2"]]}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:tblPr firstRow=\"1\" bandRow=\"1\">" slide-xml)))))
+
 (deftest writes-and-round-trips-table-cell-merge-and-fill
   (let [deck (-> (m/deck "deck" {:slides/title "Merged header"})
                  (m/add-slide

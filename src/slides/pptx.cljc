@@ -1080,6 +1080,28 @@
   (let [rows (if (seq rows) rows [[""]])]
     (mapv (fn [row] (vec (take col-count (concat (map normalize-cell row) (repeat ""))))) rows)))
 
+(defn- table-style-flags-xml
+  "A table's own :slides/table-style-flags ({:first-row? true ...}, from
+  drawingml.parse/table-style-flags on import) into <a:tblPr>'s own
+  firstRow/lastRow/firstCol/lastCol/bandRow/bandCol attributes. When the
+  shape carries NO table-style-flags at all (a hand-authored deck that
+  never went through import, or a source table whose own <a:tblPr> set
+  none of these), defaults to this writer's own historical firstRow+
+  bandRow -- unchanged output for every deck built before this feature
+  existed. Previously hardcoded UNCONDITIONALLY regardless of the source
+  table's actual flags -- an imported table banding COLUMNS instead of
+  rows, or one with no header-row emphasis at all, always had its real
+  style silently overwritten on export."
+  [flags]
+  (if flags
+    (str (when (:first-row? flags) " firstRow=\"1\"")
+         (when (:last-row? flags) " lastRow=\"1\"")
+         (when (:first-col? flags) " firstCol=\"1\"")
+         (when (:last-col? flags) " lastCol=\"1\"")
+         (when (:band-row? flags) " bandRow=\"1\"")
+         (when (:band-col? flags) " bandCol=\"1\""))
+    " firstRow=\"1\" bandRow=\"1\""))
+
 (defn- table-shape
   "Writes a :table shape as a native <p:graphicFrame><a:tbl> instead of
   degrading to plain text -- table cells (:slides/cells when the table has
@@ -1101,7 +1123,7 @@
          "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
          "<a:ext cx=\"" total-w "\" cy=\"" total-h "\"/></p:xfrm>"
          "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
-         "<a:tbl><a:tblPr firstRow=\"1\" bandRow=\"1\"><a:tableStyleId>" default-table-style-id "</a:tableStyleId></a:tblPr>"
+         "<a:tbl><a:tblPr" (table-style-flags-xml (:slides/table-style-flags shape)) "><a:tableStyleId>" default-table-style-id "</a:tableStyleId></a:tblPr>"
          (table-grid-xml (repeat col-count col-w))
          (apply str (map #(table-row-xml row-h %) norm-rows))
          "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>")))
