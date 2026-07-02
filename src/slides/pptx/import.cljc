@@ -40,6 +40,7 @@
            :slides/w (:drawingml/w shape)
            :slides/h (:drawingml/h shape)}
     (:drawingml/text shape) (assoc :slides/text (:drawingml/text shape))
+    (:drawingml/paragraphs shape) (assoc :slides/paragraphs (:drawingml/paragraphs shape))
     (:drawingml/rows shape) (assoc :slides/rows (:drawingml/rows shape))
     (:drawingml/font-size shape) (assoc :slides/font-size (:drawingml/font-size shape))
     (:drawingml/color shape) (assoc :slides/color (:drawingml/color shape))

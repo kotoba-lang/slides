@@ -274,20 +274,55 @@
     (re-find #"[一-鿿㐀-䶿]" (str text)) "zh-CN"
     :else "en-US"))
 
-(defn- text-shape [deck idx {:slides/keys [id text font-size color bold] :as shape}]
-  (let [major? (>= (positive-numeric font-size 24) 30)
-        ea-font (font-face-ea deck major?)]
-    (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
-       "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
-       "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
-       "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
-       "<a:p><a:r><a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
+(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing]}]
+  (when (or align bullet line-spacing)
+    (str "<a:pPr"
+         (when align (str " algn=\"" (case align :center "ctr" :right "r" :justify "just" "l") "\""))
+         ">"
+         (when line-spacing
+           (str "<a:lnSpc><a:spcPct val=\"" (long (* line-spacing 100000)) "\"/></a:lnSpc>"))
+         (case (:type bullet)
+           :char (str "<a:buChar char=\"" (esc (:char bullet)) "\"/>")
+           :auto-num (str "<a:buAutoNum type=\"" (esc (or (:scheme bullet) "arabicPeriod")) "\"/>")
+           :none "<a:buNone/>"
+           nil nil)
+         "</a:pPr>")))
+
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold] :as shape} text major? ea-font]
+  (str "<a:r><a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
        (when bold " b=\"1\"")
        "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
        (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
-       "</a:rPr><a:t>" (esc text) "</a:t></a:r></a:p>"
-       "</p:txBody></p:sp>")))
+       "</a:rPr><a:t>" (esc text) "</a:t></a:r>"))
+
+(defn- paragraph-xml [deck shape major? ea-font {:keys [text] :as para}]
+  (str "<a:p>" (or (paragraph-ppr-xml para) "")
+       (paragraph-run-xml deck shape text major? ea-font)
+       "</a:p>"))
+
+(defn- shape-paragraphs
+  "Structured paragraphs when the shape carries them (from a PPTX import,
+  see drawingml.parse/paragraphs -- bullets/alignment/line-spacing survive),
+  else one plain paragraph per newline in :slides/text. Splitting on \\n is
+  the historical behavior improved: previously the whole (possibly
+  multi-line) text was written into a SINGLE <a:p>, which real renderers
+  don't break into visual lines on an embedded newline -- multi-line text
+  boxes silently lost their line breaks on export."
+  [{:slides/keys [text paragraphs]}]
+  (if (seq paragraphs)
+    paragraphs
+    (mapv (fn [line] {:text line}) (str/split (str text) #"\n" -1))))
+
+(defn- text-shape [deck idx {:slides/keys [id font-size] :as shape}]
+  (let [major? (>= (positive-numeric font-size 24) 30)
+        ea-font (font-face-ea deck major?)]
+    (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
+         "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+         "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
+         "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
+         (apply str (map #(paragraph-xml deck shape major? ea-font %) (shape-paragraphs shape)))
+         "</p:txBody></p:sp>")))
 
 (defn- rect-shape [idx {:slides/keys [id fill line] :as shape}]
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"

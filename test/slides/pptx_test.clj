@@ -260,6 +260,46 @@
     (testing "a plain-Latin run keeps en-US and doesn't get a spurious <a:ea>"
       (is (re-find #"<a:rPr lang=\"en-US\"[^>]*sz=\"1800\"" slide-xml)))))
 
+(deftest multiline-text-splits-into-separate-paragraphs-not-one-run
+  (let [deck (-> (m/deck "deck" {:slides/title "Multiline"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Lines"})
+                      (m/add-shape (m/text-box "body" "Line one\nLine two\nLine three")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "three lines become three <a:p> paragraphs, not one <a:t> with embedded newlines"
+      ;; +1 for the default design master footer shape's own paragraph.
+      (is (= 4 (count (re-seq #"<a:p>" slide-xml))))
+      (is (re-find #"<a:t>Line one</a:t>" slide-xml))
+      (is (re-find #"<a:t>Line two</a:t>" slide-xml))
+      (is (re-find #"<a:t>Line three</a:t>" slide-xml))
+      (is (not (re-find #"Line one\\nLine two" slide-xml))))))
+
+(deftest writes-structured-paragraphs-with-bullets-alignment-and-line-spacing
+  (let [deck (-> (m/deck "deck" {:slides/title "Bulleted"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "List"})
+                      (m/add-shape {:slides/id "body" :slides/shape :text
+                                    :slides/x 0.8 :slides/y 1.0 :slides/w 8.0 :slides/h 2.0
+                                    :slides/font-size 18
+                                    :slides/paragraphs
+                                    [{:text "Centered heading" :align :center :line-spacing 1.5}
+                                     {:text "Bulleted item" :bullet {:type :char :char "•"}}
+                                     {:text "Numbered item" :bullet {:type :auto-num :scheme "arabicPeriod"}}
+                                     {:text "Explicitly no bullet" :bullet {:type :none}}
+                                     {:text "Plain line"}]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    ;; +1 for the default design master footer shape's own paragraph.
+    (is (= 6 (count (re-seq #"<a:p>" slide-xml))))
+    (is (re-find #"<a:pPr algn=\"ctr\"><a:lnSpc><a:spcPct val=\"150000\"/></a:lnSpc>" slide-xml))
+    (is (re-find #"<a:buChar char=\"•\"/>" slide-xml))
+    (is (re-find #"<a:buAutoNum type=\"arabicPeriod\"/>" slide-xml))
+    (is (re-find #"<a:buNone/>" slide-xml))
+    (testing "a paragraph with none of align/bullet/line-spacing gets no <a:pPr> at all"
+      (let [plain-p (second (re-find #"(<a:p>(?:(?!</a:p>).)*Plain line(?:(?!</a:p>).)*</a:p>)" slide-xml))]
+        (is (not (re-find #"<a:pPr" plain-p)))))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"
