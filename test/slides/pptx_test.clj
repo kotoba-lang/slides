@@ -300,6 +300,55 @@
       (let [plain-p (second (re-find #"(<a:p>(?:(?!</a:p>).)*Plain line(?:(?!</a:p>).)*</a:p>)" slide-xml))]
         (is (not (re-find #"<a:pPr" plain-p)))))))
 
+(deftest text-shape-with-fill-writes-a-styled-non-rect-autoshape
+  (let [deck (-> (m/deck "deck" {:slides/title "Callout"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Callout"})
+                      (m/add-shape {:slides/id "note" :slides/shape :text
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 3.0 :slides/h 1.0
+                                    :slides/text "Rounded callout"
+                                    :slides/geometry :roundRect
+                                    :slides/fill "9BC15C" :slides/line "445566"}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the real preset geometry and fill/line are written, not the historical noFill rect box"
+      (is (re-find #"<a:prstGeom prst=\"roundRect\">" slide-xml))
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"9BC15C\"/></a:solidFill>" slide-xml))
+      (is (re-find #"<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"445566\"/>" slide-xml))))
+  (testing "a plain text box (no :slides/fill/:slides/geometry) keeps the historical noFill rect box"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain text")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:prstGeom prst=\"rect\">" slide-xml))
+      (is (re-find #"<a:noFill/><a:ln><a:noFill/></a:ln>" slide-xml)))))
+
+(deftest geometry-preset-rejects-unsafe-values
+  (let [deck (-> (m/deck "deck" {:slides/title "Bad geometry"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape {:slides/id "r" :slides/shape :rect
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                    :slides/geometry "rect\"/><bad/>"}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:prstGeom prst=\"rect\">" slide-xml)
+        "a geometry value that isn't a bare alphanumeric identifier falls back to \"rect\"")
+    (is (not (re-find #"<bad/>" slide-xml)))))
+
+(deftest writes-connector-shape-as-native-cxnsp
+  (let [deck (-> (m/deck "deck" {:slides/title "Flow"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Flow"})
+                      (m/add-shape {:slides/id "arrow1" :slides/shape :connector
+                                    :slides/x 1.0 :slides/y 2.0 :slides/w 3.0 :slides/h 0.0
+                                    :slides/line "445566"}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<p:cxnSp>" slide-xml))
+    (is (re-find #"<a:prstGeom prst=\"straightConnector1\">" slide-xml))
+    (is (re-find #"<a:ln><a:solidFill><a:srgbClr val=\"445566\"/>" slide-xml))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"

@@ -30,6 +30,7 @@
     :pic :image
     :table :table
     :chart :chart
+    :connector :connector
     :text))
 
 (defn- shape->slides [shape]
@@ -42,6 +43,7 @@
     (:drawingml/text shape) (assoc :slides/text (:drawingml/text shape))
     (:drawingml/paragraphs shape) (assoc :slides/paragraphs (:drawingml/paragraphs shape))
     (:drawingml/rows shape) (assoc :slides/rows (:drawingml/rows shape))
+    (:drawingml/geometry shape) (assoc :slides/geometry (:drawingml/geometry shape))
     (:drawingml/font-size shape) (assoc :slides/font-size (:drawingml/font-size shape))
     (:drawingml/color shape) (assoc :slides/color (:drawingml/color shape))
     (:drawingml/fill shape) (assoc :slides/fill (:drawingml/fill shape))

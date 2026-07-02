@@ -245,6 +245,15 @@
   (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
        "<a:ext cx=\"" (emu (positive-numeric w 1)) "\" cy=\"" (emu (positive-numeric h 1)) "\"/></a:xfrm>"))
 
+(defn- connector-xfrm
+  "Like shape-xfrm, but allows a zero width or height -- a perfectly
+  horizontal or vertical connector line legitimately has one, and
+  shape-xfrm's positive-numeric would silently substitute a 1-inch fallback,
+  turning a horizontal connector into a visibly diagonal one."
+  [{:slides/keys [x y w h]}]
+  (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
+       "<a:ext cx=\"" (emu (numeric w 1)) "\" cy=\"" (emu (numeric h 0)) "\"/></a:xfrm>"))
+
 (defn- font-face [deck major?]
   (get (design/fonts deck)
        (if major? :office-style.font/majorFont :office-style.font/minorFont)
@@ -314,12 +323,32 @@
     paragraphs
     (mapv (fn [line] {:text line}) (str/split (str text) #"\n" -1))))
 
-(defn- text-shape [deck idx {:slides/keys [id font-size] :as shape}]
-  (let [major? (>= (positive-numeric font-size 24) 30)
+(def ^:private geometry-preset-pattern #"^[A-Za-z][A-Za-z0-9]*$")
+
+(defn- geometry-preset
+  "The shape's <a:prstGeom> preset name, defaulting to \"rect\". Validated
+  against a conservative charset (OOXML preset names are always bare
+  alphanumeric identifiers, e.g. \"roundRect\"/\"ellipse\") rather than
+  trusted verbatim, since a hand-authored deck could set :slides/geometry to
+  anything."
+  [shape]
+  (let [v (some-> (:slides/geometry shape) name)]
+    (if (and v (re-matches geometry-preset-pattern v)) v "rect")))
+
+(defn- text-shape [deck idx {:slides/keys [id fill line] :as shape}]
+  (let [font-size (:slides/font-size shape)
+        major? (>= (positive-numeric font-size 24) 30)
         ea-font (font-face-ea deck major?)]
     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
          "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
-         "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
+         "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
+         (if fill
+           (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
+           "<a:noFill/>")
+         (if line
+           (str "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>")
+           "<a:ln><a:noFill/></a:ln>")
+         "</p:spPr>"
          "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
          (apply str (map #(paragraph-xml deck shape major? ea-font %) (shape-paragraphs shape)))
          "</p:txBody></p:sp>")))
@@ -328,10 +357,18 @@
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
        "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
        "<p:spPr>" (shape-xfrm shape)
-       "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+       "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
        "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"
        "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill></a:ln>"
        "</p:spPr></p:sp>"))
+
+(defn- connector-shape [idx {:slides/keys [id line] :as shape}]
+  (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"/>"
+       "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
+       "<p:spPr>" (connector-xfrm shape)
+       "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\"><a:avLst/></a:prstGeom>"
+       "<a:ln><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill></a:ln>"
+       "</p:spPr></p:cxnSp>"))
 
 ;; PowerPoint's built-in "Medium Style 2 - Accent 1" table style GUID: a real
 ;; style id every PowerPoint/LibreOffice recognizes, giving header-row +
@@ -420,6 +457,7 @@
        :rect (rect-shape idx shape)
        :text (text-shape deck idx shape)
        :table (table-shape idx shape)
+       :connector (connector-shape idx shape)
        :image (if image-rel-id
                 (pic-shape idx shape image-rel-id)
                 (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Image"))))
@@ -1026,9 +1064,12 @@
 
 (defn- patch-or-insert-xfrm
   "Position/size patch. p:graphicFrame (tables, charts) places its transform
-  in a <p:xfrm> child, not <a:xfrm> inside <p:spPr> the way p:sp/p:pic do."
+  in a <p:xfrm> child, not <a:xfrm> inside <p:spPr> the way p:sp/p:pic do.
+  p:cxnSp (connectors) can legitimately have a zero width or height (a
+  perfectly horizontal/vertical line) -- shape-xfrm's positive-numeric would
+  otherwise silently substitute a 1-inch fallback and visibly skew the line."
   [block shape kind]
-  (let [xfrm (shape-xfrm shape)]
+  (let [xfrm (if (= :p/cxnSp kind) (connector-xfrm shape) (shape-xfrm shape))]
     (if (= :p/graphicFrame kind)
       (let [frame-xfrm (str/replace xfrm "a:xfrm" "p:xfrm")]
         (if (re-find #"<p:xfrm\b[\s\S]*?</p:xfrm>" block)
@@ -1208,6 +1249,7 @@
   (case kind
     :p/sp "p:sp"
     :p/pic "p:pic"
+    :p/cxnSp "p:cxnSp"
     :p/graphicFrame "p:graphicFrame"
     :a/tbl "a:tbl"
     :fallback/text nil
