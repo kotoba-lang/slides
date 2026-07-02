@@ -524,6 +524,30 @@
   (when-let [dash (:slides/line-dash shape)]
     (str "<a:prstDash val=\"" (esc (name dash)) "\"/>")))
 
+(defn- line-cap-attr
+  "The <a:ln>'s own cap=\"...\" attribute from :slides/line-cap (:round ->
+  \"rnd\", :square -> \"sq\"), or \"\" when absent -- PowerPoint's own
+  default (flat) needs no explicit attribute at all."
+  [shape]
+  (case (:slides/line-cap shape)
+    :round " cap=\"rnd\""
+    :square " cap=\"sq\""
+    ""))
+
+(defn- line-join-xml
+  "The <a:ln>'s one join child from :slides/line-join ({:type :round}/
+  {:type :bevel}/{:type :miter :limit pct}, from drawingml.parse/line-join
+  on import), or \"\" when absent -- PowerPoint's own default (round)
+  needs no explicit child at all. :limit (a plain percentage) converts
+  back to OOXML's own thousandths-of-a-percent lim attribute."
+  [shape]
+  (let [{:keys [type limit]} (:slides/line-join shape)]
+    (case type
+      :round "<a:round/>"
+      :bevel "<a:bevel/>"
+      :miter (str "<a:miter" (when limit (str " lim=\"" (long (Math/round (* (double limit) 1000.0))) "\"")) "/>")
+      "")))
+
 (defn- avlst-xml
   "A shape's <a:avLst> with its actual adjustment handle values
   (:slides/adjustments, the same {:name ... :fmla ...} shape drawingml's
@@ -687,7 +711,7 @@
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
             :else "<a:noFill/>")
           (if line
-            (str "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
+            (str "<a:ln" (line-width-attr shape) (line-cap-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>")
             "<a:ln><a:noFill/></a:ln>")
           (shadow-xml shape)
           "</p:spPr>"
@@ -707,7 +731,7 @@
             (:slides/gradient shape) (gradient-fill-xml (:slides/gradient shape))
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
             :else (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
-          "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+          "<a:ln" (line-width-attr shape) (line-cap-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>"
           (shadow-xml shape)
           "</p:spPr></p:sp>"))))
 
@@ -716,8 +740,8 @@
        "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\">" (avlst-xml shape) "</a:prstGeom>"
-       "<a:ln" (when (:slides/line-width shape) (line-width-attr shape))
-       "><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+       "<a:ln" (when (:slides/line-width shape) (line-width-attr shape)) (line-cap-attr shape)
+       "><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) (line-join-xml shape) "</a:ln>"
        "</p:spPr></p:cxnSp>"))
 
 ;; PowerPoint's built-in "Medium Style 2 - Accent 1" table style GUID: a real
