@@ -251,6 +251,45 @@
     (is (re-find #"Actual" chart-xml))
     (is (re-find #"Forecast" chart-xml))))
 
+(deftest area-chart-type-renders-with-axes
+  (let [deck (-> (m/deck "deck" {:slides/title "Area"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Growth"})
+                      (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type :area
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                    :slides/chart-data {:rows [["Month" "Users"]
+                                                               ["Jan" 100] ["Feb" 150]]}}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        chart-xml (entries "ppt/charts/chart1.xml")]
+    (is (re-find #"<c:areaChart>" chart-xml))
+    (is (re-find #"<c:catAx>" chart-xml) "area, like bar/line, plots against category + value axes")
+    (is (re-find #"<c:valAx>" chart-xml))))
+
+(deftest pie-and-doughnut-chart-types-plot-one-series-with-no-axes
+  (doseq [[chart-type expected-tag] [[:pie "c:pieChart"] [:doughnut "c:doughnutChart"]]]
+    (let [deck (-> (m/deck "deck" {:slides/title "Share"})
+                   (m/add-slide
+                    (-> (m/slide "s1" {:slides/title "Market share"})
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type chart-type
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data {:rows [["Segment" "Share"]
+                                                                 ["A" 40] ["B" 35] ["C" 25]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (testing (str chart-type)
+        (is (re-find (re-pattern (str "<" expected-tag ">")) chart-xml))
+        (is (= 1 (count (re-seq #"<c:ser>" chart-xml))) "exactly one series, unlike bar/line/area's one-per-column")
+        (is (not (re-find #"<c:catAx>" chart-xml)))
+        (is (not (re-find #"<c:valAx>" chart-xml))))))
+  (testing "doughnut's one structural difference from pie: holeSize"
+    (let [deck (-> (m/deck "deck" {:slides/title "Share"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type :doughnut
+                                      :slides/chart-data {:rows [["Segment" "Share"] ["A" 40] ["B" 60]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (re-find #"<c:holeSize val=\"50\"/>" (entries "ppt/charts/chart1.xml"))))))
+
 (deftest chart-shape-without-chart-data-falls-back-to-text-safely
   (let [deck (-> (m/deck "deck" {:slides/title "No data"})
                  (m/add-slide
