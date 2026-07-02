@@ -424,6 +424,50 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-picture-fill-as-shape-fill
+  (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
+        b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
+        deck (-> (m/deck "deck" {:slides/title "Picture-filled"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "card" {:slides/fill-image-data b64 :slides/media-type "image/png"})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "the shape's own fill is a real <a:blipFill>, not a solid color"
+      (is (re-find #"<a:blipFill><a:blip r:embed=\"rId\d+\"/>" slide-xml))
+      (is (re-find #"</a:prstGeom><a:blipFill>" slide-xml)
+          "the FILL immediately after prstGeom is blipFill, not solidFill (the line's own solidFill, further along, is unrelated)"))
+    (testing "a media part + image relationship were added, same machinery as an :image shape"
+      (is (some #(str/starts-with? % "ppt/media/image") (keys entries)))
+      (is (re-find #"Type=\"[^\"]*relationships/image\"" rels-xml))))
+  (testing "a :rect with no :slides/fill-image-data still writes the historical solidFill"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r" {:slides/fill "445566"})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"445566\"/></a:solidFill>" slide-xml))
+      (is (not (re-find #"<a:blipFill>" slide-xml))))))
+
+(deftest fill-image-reference-round-trips-through-import
+  (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "card" {:ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}})))))]
+    (testing "an EXISTING blipFill shape survives update-path patching untouched (patch-solid-fill no-ops without :slides/fill)"
+      (let [base-bytes (zip-bytes {"[Content_Types].xml" "<Types/>"
+                                   "_rels/.rels" "<Relationships/>"
+                                   "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                                   "ppt/slides/slide1.xml"
+                                   (str "<p:sld><p:cSld><p:spTree>"
+                                        "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"card\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                                        "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                        "<a:blipFill><a:blip r:embed=\"rId5\"/></a:blipFill></p:spPr></p:sp>"
+                                        "</p:spTree></p:cSld></p:sld>")})
+            reexported (pptx/update-pptx-bytes base-bytes deck)
+            slide-xml (get (zip-entries reexported) "ppt/slides/slide1.xml")]
+        (is (re-find #"<a:blipFill><a:blip r:embed=\"rId5\"/></a:blipFill>" slide-xml))))))
+
 (deftest writes-speaker-notes-as-native-notes-slide-part
   (let [deck (-> (m/deck "deck" {:slides/title "With notes"})
                  (m/add-slide

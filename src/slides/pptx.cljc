@@ -442,19 +442,24 @@
   (when-let [dash (:slides/line-dash shape)]
     (str "<a:prstDash val=\"" (esc (name dash)) "\"/>")))
 
+(defn- blip-fill-xml [rel-id]
+  (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"))
+
 (defn- text-shape
   ([deck idx shape] (text-shape deck idx shape {}))
   ([deck idx {:slides/keys [id fill line] :as shape} opts]
    (let [font-size (:slides/font-size shape)
          major? (>= (positive-numeric font-size 24) 30)
          ea-font (font-face-ea deck major?)
-         hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])]
+         hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])
+         fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
           "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
-          (if fill
-            (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
-            "<a:noFill/>")
+          (cond
+            fill-image-rel-id (blip-fill-xml fill-image-rel-id)
+            fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
+            :else "<a:noFill/>")
           (if line
             (str "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
             "<a:ln><a:noFill/></a:ln>")
@@ -463,14 +468,19 @@
           (apply str (map #(paragraph-xml deck shape major? ea-font hlink-rel-id %) (shape-paragraphs shape)))
           "</p:txBody></p:sp>"))))
 
-(defn- rect-shape [idx {:slides/keys [id fill line] :as shape}]
-  (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
-       "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
-       "<p:spPr>" (shape-xfrm shape)
-       "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
-       "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"
-       "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
-       "</p:spPr></p:sp>"))
+(defn- rect-shape
+  ([idx shape] (rect-shape idx shape {}))
+  ([idx {:slides/keys [id fill line] :as shape} opts]
+   (let [fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
+     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
+          "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+          "<p:spPr>" (shape-xfrm shape)
+          "<a:prstGeom prst=\"" (geometry-preset shape) "\"><a:avLst/></a:prstGeom>"
+          (if fill-image-rel-id
+            (blip-fill-xml fill-image-rel-id)
+            (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
+          "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+          "</p:spPr></p:sp>"))))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]
   (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"/>"
@@ -564,7 +574,7 @@
          image-rel-id (get-in opts [:image-rels (:slides/id shape)])
          chart-rel-id (get-in opts [:chart-rels (:slides/id shape)])]
      (case (:slides/shape shape)
-       :rect (rect-shape idx shape)
+       :rect (rect-shape idx shape opts)
        :text (text-shape deck idx shape opts)
        :table (table-shape idx shape)
        :connector (connector-shape idx shape)
@@ -633,19 +643,24 @@
    [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})]))
 
 (defn- slide-image-entries
-  "Decodes every :image shape's :slides/image-data on `slide` into a media
+  "Decodes every :image shape's :slides/image-data on `slide` INTO a media
   part, assigning each a rel-id local to that slide's own .rels (rId1 is
   reserved for the layout relationship) starting at `rid-start`, and a media
   part path built from the running `next-index` (shared across the whole
   deck so two slides' images never collide on the same ppt/media/imageN
-  path)."
+  path). Also picks up any :rect/:text shape's :slides/fill-image-data --
+  a shape whose own FILL is a picture (<a:blipFill> in <p:spPr>, distinct
+  from a <p:pic> :image shape) needs the exact same media-part/relationship
+  wiring, just rendered differently (see render-shape)."
   [deck slide next-index rid-start]
   (let [images (->> (slide-shapes deck slide)
-                    (filterv #(and (= :image (:slides/shape %)) (:slides/id %) (:slides/image-data %))))]
+                    (filterv #(and (:slides/id %)
+                                   (or (and (= :image (:slides/shape %)) (:slides/image-data %))
+                                       (:slides/fill-image-data %)))))]
     (vec
      (keep-indexed
       (fn [i shape]
-        (when-let [bytes (decode-base64 (:slides/image-data shape))]
+        (when-let [bytes (decode-base64 (or (:slides/image-data shape) (:slides/fill-image-data shape)))]
           (let [media-type (or (:slides/media-type shape) "image/png")]
             {:shape-id (:slides/id shape)
              :rel-id (str "rId" (+ rid-start i))
