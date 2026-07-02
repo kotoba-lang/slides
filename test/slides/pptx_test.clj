@@ -799,6 +799,25 @@
         (is (contains? plain-entries "ppt/slideMasters/slideMaster1.xml"))
         (is (not (contains? plain-entries "ppt/slideMasters/slideMaster2.xml")))))))
 
+(deftest round-trips-multi-stop-gradient-master-background-through-import
+  (let [gradient-bg {:stops [[0 "112233"] [50 "334455"] [100 "556677"]] :angle 45}
+        deck (m/deck "deck" {:slides/title "Gradient masters"
+                             :slides/masters [{:slides/id "gradient" :slides/background gradient-bg}
+                                              {:slides/id "plain" :slides/background "EEEEEE"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/master-ref "gradient"}) (m/add-shape (m/text-box "t" "Gradient section"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/master-ref "plain"}) (m/add-shape (m/text-box "t" "Plain section")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "a real multi-stop <a:gradFill> is written for the gradient master's own background"
+      (is (re-find #"<a:gradFill rotWithShape=\"1\"><a:gsLst><a:gs pos=\"0\">.*112233.*<a:gs pos=\"50000\">.*334455.*<a:gs pos=\"100000\">.*556677"
+                    (entries "ppt/slideMasters/slideMaster2.xml"))))
+    (testing "round-trips through import -- previously always collapsed to a single flat first-stop color"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            gradient-master (some #(when (map? (:slides/background %)) %) (:slides/masters reimported))]
+        (is (some? gradient-master))
+        (is (= 3 (count (:stops (:slides/background gradient-master)))))
+        (is (= 45.0 (:angle (:slides/background gradient-master))))))))
+
 (deftest writes-multiple-layouts-within-a-single-master
   (let [deck (m/deck "deck" {:slides/title "Layout diversity"
                              :slides/layouts [{:slides/id "title-slide" :slides/layout-type "title"
