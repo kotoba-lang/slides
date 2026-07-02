@@ -79,10 +79,12 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] [] [] 1))
+  ([slide-count] (content-types slide-count [] [] [] 1 1))
   ([slide-count media-extensions-used chart-paths notes-slide-paths]
-   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1))
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths 1 1))
   ([slide-count media-extensions-used chart-paths notes-slide-paths master-count]
+   (content-types slide-count media-extensions-used chart-paths notes-slide-paths master-count master-count))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths master-count layout-count]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -94,7 +96,7 @@
      (for [idx (range 1 (inc master-count))]
        (ooxml/override-content-type (str "/ppt/slideMasters/slideMaster" idx ".xml")
                                     "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"))
-     (for [idx (range 1 (inc master-count))]
+     (for [idx (range 1 (inc layout-count))]
        (ooxml/override-content-type (str "/ppt/slideLayouts/slideLayout" idx ".xml")
                                     "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"))
      (for [idx (range 1 (inc slide-count))]
@@ -267,30 +269,67 @@
       (str "<a:solidFill><a:srgbClr val=\"" (hex-color bg "FFFFFF") "\"/></a:solidFill>"))))
 
 (defn- slide-master
-  "A single <p:sldMaster> part for `master-map`, referencing its own
-  <p:sldLayoutId> at `layout-idx` (1:1 master<->layout pairing -- this
-  package's layouts carry no distinct placeholder content of their own
-  beyond the master's, so one layout per master is sufficient)."
-  [master-map layout-idx]
+  "A single <p:sldMaster> part for `master-map`, referencing EVERY layout
+  (global file index) in `layout-indices` that belongs to it -- a master
+  can now own multiple distinct layouts (Title Slide, Title and Content,
+  Blank, ...), not just one."
+  [master-map layout-indices]
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
 <p:sldMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
   <p:cSld name=\"kotoba\"><p:bg><p:bgPr>" (background-fill-xml master-map) "</p:bgPr></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
-  <p:sldLayoutIdLst><p:sldLayoutId id=\"" (+ 2147483649 layout-idx -1) "\" r:id=\"rId1\"/></p:sldLayoutIdLst>
+  <p:sldLayoutIdLst>"
+       (apply str (map-indexed (fn [i layout-idx]
+                                 (str "<p:sldLayoutId id=\"" (+ 2147483649 i) "\" r:id=\"rId" (inc i) "\"/>"))
+                               layout-indices))
+       "</p:sldLayoutIdLst>
   <p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles>
 </p:sldMaster>"))
 
-(defn- slide-master-rels [layout-idx]
+(defn- slide-master-rels [layout-indices]
   (ooxml/relationships-xml
-   [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target (str "../slideLayouts/slideLayout" layout-idx ".xml")})
-    (ooxml/relationship {:id "rId2" :type rel-theme :target "../theme/theme1.xml"})]))
+   (concat
+    (map-indexed (fn [i layout-idx]
+                   (ooxml/relationship {:id (str "rId" (inc i)) :type rel-slide-layout
+                                        :target (str "../slideLayouts/slideLayout" layout-idx ".xml")}))
+                 layout-indices)
+    [(ooxml/relationship {:id (str "rId" (inc (count layout-indices))) :type rel-theme :target "../theme/theme1.xml"})])))
 
-(defn- slide-layout []
-  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
-<p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"blank\" preserve=\"1\">
-  <p:cSld name=\"Blank\"><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+(defn- layout-placeholder-shape-xml
+  [n {:keys [type idx x y w h]}]
+  (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 n) "\" name=\"Placeholder " n "\"/>"
+       "<p:cNvSpPr><a:spLocks noGrp=\"1\"/></p:cNvSpPr>"
+       "<p:nvPr><p:ph"
+       (when type (str " type=\"" (esc type) "\""))
+       (when idx (str " idx=\"" (esc (str idx)) "\""))
+       "/></p:nvPr></p:nvSpPr>"
+       "<p:spPr>"
+       (when (and x y w h) (str "<a:xfrm><a:off x=\"" (emu x) "\" y=\"" (emu y) "\"/><a:ext cx=\"" (emu w) "\" cy=\"" (emu h) "\"/></a:xfrm>"))
+       "</p:spPr>"
+       "<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang=\"en-US\"/></a:p></p:txBody>"
+       "</p:sp>"))
+
+(defn- slide-layout
+  "A single <p:sldLayout> part. `layout-map` (design/layout-by-ref, nil for
+  the historical implicit default) supplies its own :slides/layout-type
+  (the type=\"...\" attribute PowerPoint's New Slide/Reset Layout gallery
+  keys off of -- \"title\"/\"obj\"/\"twoObj\"/\"blank\"/...) and optional
+  :slides/placeholders (positioned <p:ph> shape templates, the same
+  {:type ... :idx ... :x ... :y ... :w ... :h ...} shape drawingml's
+  placeholder produces on import) -- previously every layout was an
+  identical, content-free \"blank\" template regardless of what the deck
+  actually wanted a slide to look like when reset to its layout."
+  ([] (slide-layout nil))
+  ([layout-map]
+   (let [layout-type (or (:slides/layout-type layout-map) "blank")
+         placeholders (:slides/placeholders layout-map)]
+     (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<p:sldLayout xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" type=\"" (esc layout-type) "\" preserve=\"1\">
+  <p:cSld name=\"" (esc (or (:slides/id layout-map) "Blank")) "\"><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
+          (apply str (map-indexed layout-placeholder-shape-xml placeholders))
+          "</p:spTree></p:cSld>
   <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
-</p:sldLayout>"))
+</p:sldLayout>"))))
 
 (defn- notes-master-xml []
   (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
@@ -887,19 +926,53 @@
 (defn- slide-master-idx [master-refs slide]
   (inc (or (first (keep-indexed (fn [i r] (when (= r (:slides/master-ref slide)) i)) master-refs)) 0)))
 
+(defn- deck-layout-entries
+  "One entry per DISTINCT (master-idx, layout-ref) pair actually needed:
+  every master always gets its own implicit default (nil layout-ref, the
+  historical blank layout) entry first, PLUS one additional entry per
+  distinct non-nil :slides/layout-ref a slide belonging to that master
+  actually uses -- so a deck where no slide sets an explicit layout-ref
+  still gets exactly one layout per master (identical output to before
+  layout diversity existed), while one that DOES use named layouts gets
+  one layout part per distinct (master, layout) combination used. Order
+  (and therefore each entry's GLOBAL 1-based file index) is master-major:
+  all of master 1's layouts, then all of master 2's, ..."
+  [slides master-refs]
+  (let [by-master (group-by #(slide-master-idx master-refs %) slides)]
+    (vec
+     (mapcat (fn [master-idx]
+               (let [master-slides (get by-master master-idx [])
+                     layout-refs (into [nil] (distinct) (keep :slides/layout-ref master-slides))]
+                 (map (fn [layout-ref] {:master-idx master-idx :layout-ref layout-ref}) layout-refs)))
+             (range 1 (inc (count master-refs)))))))
+
+(defn- slide-layout-idx [layout-entries master-idx layout-ref]
+  (inc (or (first (keep-indexed (fn [i e]
+                                  (when (and (= master-idx (:master-idx e)) (= layout-ref (:layout-ref e)))
+                                    i))
+                                layout-entries))
+           0)))
+
+(defn- master-layout-indices [layout-entries master-idx]
+  (vec (keep-indexed (fn [i e] (when (= master-idx (:master-idx e)) (inc i))) layout-entries)))
+
 (defn pptx-files [deck]
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
         height (positive-numeric (:slides/height deck) default-height-in)
         master-refs (deck-master-refs slides)
         master-count (count master-refs)
+        layout-entries (deck-layout-entries slides master-refs)
+        layout-count (count layout-entries)
         per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index]} slide]
-                            (let [images (slide-image-entries deck slide media-index 2)
+                            (let [master-idx (slide-master-idx master-refs slide)
+                                  layout-idx (slide-layout-idx layout-entries master-idx (:slides/layout-ref slide))
+                                  images (slide-image-entries deck slide media-index 2)
                                   charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))
                                   notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))
                                   hyperlinks (slide-hyperlink-entries deck slide (+ 2 (count images) (count charts) (if notes 1 0)))]
                               {:acc (conj acc {:slide slide :images images :charts charts :notes notes :hyperlinks hyperlinks
-                                               :master-idx (slide-master-idx master-refs slide)})
+                                               :master-idx master-idx :layout-idx layout-idx})
                                :media-index (+ media-index (count images))
                                :chart-index (+ chart-index (count charts))
                                :notes-index (+ notes-index (if notes 1 0))}))
@@ -912,30 +985,34 @@
         has-notes? (boolean (seq all-notes-paths))]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths master-count layout-count)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height master-count)]
        ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
-      (mapcat (fn [[idx ref]]
+      (mapcat (fn [master-idx]
+                (let [layout-indices (master-layout-indices layout-entries master-idx)
+                      master-ref (nth master-refs (dec master-idx))]
+                  [[(str "ppt/slideMasters/slideMaster" master-idx ".xml") (slide-master (design/master-by-ref deck master-ref) layout-indices)]
+                   [(str "ppt/slideMasters/_rels/slideMaster" master-idx ".xml.rels") (slide-master-rels layout-indices)]]))
+              (range 1 (inc master-count)))
+      (mapcat (fn [[idx {:keys [master-idx layout-ref]}]]
                 (let [n (inc idx)]
-                  [[(str "ppt/slideMasters/slideMaster" n ".xml") (slide-master (design/master-by-ref deck ref) n)]
-                   [(str "ppt/slideMasters/_rels/slideMaster" n ".xml.rels") (slide-master-rels n)]
-                   [(str "ppt/slideLayouts/slideLayout" n ".xml") (slide-layout)]
-                   [(str "ppt/slideLayouts/_rels/slideLayout" n ".xml.rels") (slide-layout-rels n)]]))
-              (map-indexed vector master-refs))
+                  [[(str "ppt/slideLayouts/slideLayout" n ".xml") (slide-layout (design/layout-by-ref deck layout-ref))]
+                   [(str "ppt/slideLayouts/_rels/slideLayout" n ".xml.rels") (slide-layout-rels master-idx)]]))
+              (map-indexed vector layout-entries))
       (when has-notes?
         [["ppt/notesMasters/notesMaster1.xml" (notes-master-xml)]
          ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
-      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks master-idx]}]]
+      (mapcat (fn [[idx {:keys [slide images charts notes hyperlinks layout-idx]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)
                             :hyperlink-rels (hyperlink-rels-map hyperlinks)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml master-idx images charts notes hyperlinks)]]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml layout-idx images charts notes hyperlinks)]]
                    (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
                    (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
                              [[chart-path chart-xml]

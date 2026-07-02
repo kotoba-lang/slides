@@ -114,6 +114,26 @@
   [deck slide]
   (master-by-ref deck (:slides/master-ref slide)))
 
+(defn layouts
+  "The deck's :slides/layouts list -- named layout templates (each with
+  its own :slides/layout-type, e.g. \"title\"/\"obj\"/\"twoObj\"/\"blank\",
+  and optionally :slides/placeholders, positioned <p:ph> shape templates)
+  a slide can select via :slides/layout-ref. Every master always has at
+  least its own implicit default (blank) layout even when a deck defines
+  none of these -- unchanged behavior for the common case."
+  [deck]
+  (:slides/layouts deck))
+
+(defn layout-by-ref
+  "The named layout matching `ref` (a :slides/id in (layouts deck)), or nil
+  when `ref` is nil/doesn't match (the caller then falls back to the
+  implicit default blank layout)."
+  [deck ref]
+  (and ref (some #(when (= ref (:slides/id %)) %) (layouts deck))))
+
+(defn layout-for-slide [deck slide]
+  (layout-by-ref deck (:slides/layout-ref slide)))
+
 (defn guides [deck]
   (:slides/guides (deck-design deck)))
 
