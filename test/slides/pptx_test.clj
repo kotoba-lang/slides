@@ -1566,3 +1566,22 @@
       (is (not (re-find #"<a:fld" slide-xml)))
       (is (not (re-find #"type=\"dt\"" slide-xml)))
       (is (not (re-find #"type=\"sldNum\"" slide-xml))))))
+
+(deftest round-trips-per-slide-layout-ref-through-import
+  (let [deck (m/deck "deck" {:slides/title "Layout diversity"
+                             :slides/layouts [{:slides/id "title-slide" :slides/layout-type "title"}
+                                              {:slides/id "two-content" :slides/layout-type "twoObj"}]})
+        deck (-> deck
+                (m/add-slide (-> (m/slide "s1" {:slides/layout-ref "title-slide"}) (m/add-shape (m/text-box "t" "Title"))))
+                (m/add-slide (-> (m/slide "s2" {:slides/layout-ref "two-content"}) (m/add-shape (m/text-box "t" "Content"))))
+                (m/add-slide (-> (m/slide "s3") (m/add-shape (m/text-box "t" "Default")))))
+        reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+        slides (:slides/slides reimported)]
+    (testing "previously lost entirely on reimport -- every slide fell back to its master's implicit default layout"
+      (is (= 3 (count (:slides/layouts reimported))))
+      (is (some? (:slides/layout-ref (nth slides 0))))
+      (is (some? (:slides/layout-ref (nth slides 1))))
+      (is (not= (:slides/layout-ref (nth slides 0)) (:slides/layout-ref (nth slides 1))))
+      (is (= "title" (:slides/layout-type
+                      (some #(when (= (:slides/layout-ref (nth slides 0)) (:slides/id %)) %)
+                            (:slides/layouts reimported))))))))
