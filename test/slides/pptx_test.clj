@@ -349,6 +349,21 @@
     (is (re-find #"<a:prstGeom prst=\"straightConnector1\">" slide-xml))
     (is (re-find #"<a:ln><a:solidFill><a:srgbClr val=\"445566\"/>" slide-xml))))
 
+(deftest writes-rotation-and-flip-attributes-on-xfrm
+  (let [deck (-> (m/deck "deck" {:slides/title "Rotated"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/rotation 45 :slides/flip-h true})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:xfrm rot=\"2700000\" flipH=\"1\">" slide-xml)))
+  (testing "a shape with no rotation/flip gets a plain <a:xfrm> with no extra attributes"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:xfrm><a:off" slide-xml)))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"

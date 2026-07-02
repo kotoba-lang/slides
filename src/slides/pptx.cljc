@@ -241,8 +241,17 @@
   (ooxml/relationships-xml
    [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "../slideMasters/slideMaster1.xml"})]))
 
-(defn- shape-xfrm [{:slides/keys [x y w h]}]
-  (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
+(defn- xfrm-attrs
+  "rot/flipH/flipV attributes for an <a:xfrm> opening tag. rot is stored on
+  the shape as plain degrees (:slides/rotation) and converted to OOXML's
+  60,000ths-of-a-degree unit here."
+  [{:slides/keys [rotation flip-h flip-v]}]
+  (str (when rotation (str " rot=\"" (long (Math/round (* (double rotation) 60000.0))) "\""))
+       (when flip-h " flipH=\"1\"")
+       (when flip-v " flipV=\"1\"")))
+
+(defn- shape-xfrm [{:slides/keys [x y w h] :as shape}]
+  (str "<a:xfrm" (xfrm-attrs shape) "><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
        "<a:ext cx=\"" (emu (positive-numeric w 1)) "\" cy=\"" (emu (positive-numeric h 1)) "\"/></a:xfrm>"))
 
 (defn- connector-xfrm
@@ -250,8 +259,8 @@
   horizontal or vertical connector line legitimately has one, and
   shape-xfrm's positive-numeric would silently substitute a 1-inch fallback,
   turning a horizontal connector into a visibly diagonal one."
-  [{:slides/keys [x y w h]}]
-  (str "<a:xfrm><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
+  [{:slides/keys [x y w h] :as shape}]
+  (str "<a:xfrm" (xfrm-attrs shape) "><a:off x=\"" (emu (numeric x 0)) "\" y=\"" (emu (numeric y 0)) "\"/>"
        "<a:ext cx=\"" (emu (numeric w 1)) "\" cy=\"" (emu (numeric h 0)) "\"/></a:xfrm>"))
 
 (defn- font-face [deck major?]
