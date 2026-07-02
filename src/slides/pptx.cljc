@@ -21,6 +21,8 @@
 (def rel-slide-layout "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout")
 (def rel-theme "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme")
 (def rel-image "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
+(def rel-chart "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart")
+(def rel-package "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
 
@@ -31,15 +33,17 @@
 (defn- media-extension [media-type]
   (get media-extensions media-type "png"))
 
-#?(:clj
-   (defn- decode-base64
-     "nil (not an exception) on malformed input -- callers treat a shape whose
-     image data doesn't decode as if it had none, falling back to a plain
-     text box instead of embedding corrupt bytes or crashing the export."
-     [s]
-     (try
-       (.decode (java.util.Base64/getDecoder) (str s))
-       (catch Exception _ nil))))
+(defn- decode-base64
+  "nil (not an exception) on malformed input -- callers treat a shape whose
+  image data doesn't decode as if it had none, falling back to a plain text
+  box instead of embedding corrupt bytes or crashing the export. CLJS always
+  returns nil: byte-producing export (pptx-bytes) is JVM-only already (see
+  below), so there is no host zip to embed decoded bytes into there yet."
+  [s]
+  #?(:clj (try
+            (.decode (java.util.Base64/getDecoder) (str s))
+            (catch Exception _ nil))
+     :cljs nil))
 
 (defn- esc [x]
   (-> (str (or x ""))
@@ -72,8 +76,8 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count []))
-  ([slide-count media-extensions-used]
+  ([slide-count] (content-types slide-count [] []))
+  ([slide-count media-extensions-used chart-paths]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -88,7 +92,11 @@
        (ooxml/override-content-type (str "/ppt/slides/slide" idx ".xml")
                                     "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"))
      (for [[extension media-type] (into {} (map (fn [mt] [(media-extension mt) mt])) media-extensions-used)]
-       (ooxml/default-content-type extension media-type))))))
+       (ooxml/default-content-type extension media-type))
+     (when (seq chart-paths)
+       [(ooxml/default-content-type "xlsx" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")])
+     (for [path chart-paths]
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"))))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -322,11 +330,27 @@
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
        "</p:pic>"))
 
+(defn- chart-shape
+  "Writes a :chart shape as a native <p:graphicFrame><c:chart> referencing an
+  already-generated chart part via `rel-id` (see `slide-chart-entries`/
+  `pptx-files`). Like `pic-shape`, callers must only reach this when a rel-id
+  actually exists -- otherwise render-shape falls back to plain text."
+  [idx {:slides/keys [id] :as shape} rel-id]
+  (str "<p:graphicFrame>"
+       "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Chart " idx))) "\"/>"
+       "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+       "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
+       "<a:ext cx=\"" (emu (positive-numeric (:slides/w shape) 4)) "\" cy=\"" (emu (positive-numeric (:slides/h shape) 3)) "\"/></p:xfrm>"
+       "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+       "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"" rel-id "\"/>"
+       "</a:graphicData></a:graphic></p:graphicFrame>"))
+
 (defn- render-shape
   ([deck idx shape] (render-shape deck idx shape {}))
   ([deck idx shape opts]
    (let [shape (design/resolve-shape deck shape)
-         image-rel-id (get-in opts [:image-rels (:slides/id shape)])]
+         image-rel-id (get-in opts [:image-rels (:slides/id shape)])
+         chart-rel-id (get-in opts [:chart-rels (:slides/id shape)])]
      (case (:slides/shape shape)
        :rect (rect-shape idx shape)
        :text (text-shape deck idx shape)
@@ -334,6 +358,9 @@
        :image (if image-rel-id
                 (pic-shape idx shape image-rel-id)
                 (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Image"))))
+       :chart (if chart-rel-id
+                (chart-shape idx shape chart-rel-id)
+                (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) "Chart"))))
        (text-shape deck idx (assoc shape :slides/text (or (:slides/text shape) (:slides/title shape) "")))))))
 
 (defn- guide-shapes [deck]
@@ -395,10 +422,11 @@
 (defn- slide-image-entries
   "Decodes every :image shape's :slides/image-data on `slide` into a media
   part, assigning each a rel-id local to that slide's own .rels (rId1 is
-  reserved for the layout relationship) and a media part path built from the
-  running `next-index` (shared across the whole deck so two slides' images
-  never collide on the same ppt/media/imageN path)."
-  [deck slide next-index]
+  reserved for the layout relationship) starting at `rid-start`, and a media
+  part path built from the running `next-index` (shared across the whole
+  deck so two slides' images never collide on the same ppt/media/imageN
+  path)."
+  [deck slide next-index rid-start]
   (let [images (->> (slide-shapes deck slide)
                     (filterv #(and (= :image (:slides/shape %)) (:slides/id %) (:slides/image-data %))))]
     (vec
@@ -407,23 +435,32 @@
         (when-let [bytes (decode-base64 (:slides/image-data shape))]
           (let [media-type (or (:slides/media-type shape) "image/png")]
             {:shape-id (:slides/id shape)
-             :rel-id (str "rId" (+ 2 i))
+             :rel-id (str "rId" (+ rid-start i))
              :media-type media-type
              :filename (str "image" (+ next-index i) "." (media-extension media-type))
              :bytes bytes})))
       images))))
 
-(defn- slide-rels-xml [image-entries]
-  (if (seq image-entries)
+(declare slide-chart-entries)
+
+(defn- slide-rels-xml [image-entries chart-entries]
+  (if (or (seq image-entries) (seq chart-entries))
     (ooxml/relationships-xml
      (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]
-           (map (fn [{:keys [rel-id filename]}]
-                  (ooxml/relationship {:id rel-id :type rel-image :target (str "../media/" filename)})))
-           image-entries))
+           (concat
+            (map (fn [{:keys [rel-id filename]}]
+                   (ooxml/relationship {:id rel-id :type rel-image :target (str "../media/" filename)}))
+                 image-entries)
+            (map (fn [{:keys [rel-id chart-filename]}]
+                   (ooxml/relationship {:id rel-id :type rel-chart :target (str "../charts/" chart-filename)}))
+                 chart-entries))))
     slide-rels))
 
 (defn- image-rels-map [image-entries]
   (into {} (map (juxt :shape-id :rel-id)) image-entries))
+
+(defn- chart-rels-map [chart-entries]
+  (into {} (map (juxt :shape-id :rel-id)) chart-entries))
 
 (defn deck-slides [deck]
   (let [slides (:slides/slides deck)
@@ -439,17 +476,20 @@
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
         height (positive-numeric (:slides/height deck) default-height-in)
-        per-slide (reduce (fn [{:keys [acc next-index]} slide]
-                            (let [images (slide-image-entries deck slide next-index)]
-                              {:acc (conj acc {:slide slide :images images})
-                               :next-index (+ next-index (count images))}))
-                          {:acc [] :next-index 1}
+        per-slide (reduce (fn [{:keys [acc media-index chart-index]} slide]
+                            (let [images (slide-image-entries deck slide media-index 2)
+                                  charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))]
+                              {:acc (conj acc {:slide slide :images images :charts charts})
+                               :media-index (+ media-index (count images))
+                               :chart-index (+ chart-index (count charts))}))
+                          {:acc [] :media-index 1 :chart-index 1}
                           slides)
         slide-plans (:acc per-slide)
-        all-media-types (mapcat (fn [{:keys [images]}] (map :media-type images)) slide-plans)]
+        all-media-types (mapcat (fn [{:keys [images]}] (map :media-type images)) slide-plans)
+        all-chart-paths (mapcat (fn [{:keys [charts]}] (map :chart-path charts)) slide-plans)]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props (count slides))]
@@ -460,13 +500,18 @@
        ["ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels]
        ["ppt/slideLayouts/slideLayout1.xml" (slide-layout deck)]
        ["ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels]]
-      (mapcat (fn [[idx {:keys [slide images]}]]
+      (mapcat (fn [[idx {:keys [slide images charts]}]]
                 (let [n (inc idx)
-                      opts {:image-rels (image-rels-map images)}]
+                      opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images)]]
-                   (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images))))
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts)]]
+                   (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
+                   (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
+                             [[chart-path chart-xml]
+                              [chart-rels-path chart-rels-xml]
+                              [embed-path embed-bytes]])
+                           charts))))
               (map-indexed vector slide-plans))))))
 
 #?(:clj
@@ -717,6 +762,152 @@
             chart-xml
             (map-indexed vector series))
     chart-xml))
+
+;; ---------------------------------------------------------------------------
+;; Native chart export (full regeneration path). A chart shape's data source
+;; (:slides/chart-data, the same {:rows [...]} shape `update`'s chart-data
+;; patching already accepts) drives THREE new parts per chart: the chart XML
+;; itself, that chart's own relationship to an embedded data workbook, and a
+;; from-scratch minimal .xlsx holding the same rows so PowerPoint's "Edit
+;; Data" has something real to open -- not just cached display values.
+;; ---------------------------------------------------------------------------
+
+(defn- chart-series-xml
+  "One <c:ser> from scratch (unlike patch-chart-series-block, which only
+  rewrites <c:tx>/<c:cat>/<c:val> inside an ALREADY-EXISTING series block).
+  `series-idx` is this series' 0-based position among all of the chart's
+  series, which is also how its data column is derived: category data always
+  lives in column A, so the first series is column B, the second C, etc."
+  [series-idx {:keys [name categories values]}]
+  (let [col (index->col (+ 2 series-idx))
+        last-row (+ 1 (max 1 (count categories) (count values)))]
+    (str "<c:ser>"
+         "<c:idx val=\"" series-idx "\"/><c:order val=\"" series-idx "\"/>"
+         "<c:tx><c:strRef><c:f>Sheet1!$" col "$1</c:f><c:strCache><c:ptCount val=\"1\"/>"
+         (cache-pt 0 name false) "</c:strCache></c:strRef></c:tx>"
+         "<c:cat><c:strRef><c:f>Sheet1!$A$2:$A$" last-row "</c:f>" (str-cache categories) "</c:strRef></c:cat>"
+         "<c:val><c:numRef><c:f>Sheet1!$" col "$2:$" col "$" last-row "</c:f>" (num-cache values) "</c:numRef></c:val>"
+         "</c:ser>")))
+
+(defn- bar-chart-body-xml [series]
+  (str "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>"
+       (apply str (map-indexed chart-series-xml series))
+       "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>"))
+
+(defn- line-chart-body-xml [series]
+  (str "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>"
+       (apply str (map-indexed chart-series-xml series))
+       "<c:marker val=\"1\"/><c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:lineChart>"))
+
+(defn- pie-chart-body-xml
+  "A pie chart plots exactly one series and has no value/category axes."
+  [series]
+  (str "<c:pieChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series)) "</c:pieChart>"))
+
+(defn- chart-space-xml [{:keys [chart-type series]}]
+  (let [pie? (= :pie chart-type)
+        body (case chart-type
+               :line (line-chart-body-xml series)
+               :pie (pie-chart-body-xml series)
+               (bar-chart-body-xml series))]
+    (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+         "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+         "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+         "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+         "<c:chart><c:plotArea><c:layout/>"
+         body
+         (when-not pie?
+           (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+                "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
+                "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+                "<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"))
+         "</c:plotArea><c:legend><c:legendPos val=\"b\"/><c:overlay val=\"0\"/></c:legend>"
+         "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>")))
+
+;; -- a minimal, valid .xlsx (itself an OPC package) embedded as the chart's
+;;    editable data source, reusing the same cell-writing primitives
+;;    patch-workbook-bytes uses so initial generation and later `update`-path
+;;    edits stay consistent.
+
+(defn- xlsx-content-types-xml []
+  (ooxml/content-types-xml
+   [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
+    (ooxml/default-content-type "xml" (:xml ooxml/content-types))
+    (ooxml/override-content-type "/xl/workbook.xml" (:xlsx ooxml/content-types))
+    (ooxml/override-content-type "/xl/worksheets/sheet1.xml" "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")]))
+
+(defn- xlsx-root-rels-xml []
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type ooxml/office-document-rel :target "xl/workbook.xml"})]))
+
+(defn- xlsx-workbook-xml []
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+       "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+       "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"))
+
+(defn- xlsx-workbook-rels-xml []
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1"
+                         :type "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+                         :target "worksheets/sheet1.xml"})]))
+
+(defn- xlsx-sheet-xml [rows]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>"
+       (apply str
+              (map-indexed
+               (fn [r row]
+                 (str "<row r=\"" (inc r) "\">"
+                      (apply str (map-indexed (fn [c v] (cell-value-xml (offset-cell-ref "A1" r c) v)) row))
+                      "</row>"))
+               rows))
+       "</sheetData></worksheet>"))
+
+(defn- xlsx-bytes
+  "nil in CLJS: byte-producing export is JVM-only already (pptx-bytes throws
+  for :cljs), so a chart shape simply contributes no entries there -- same
+  degrade-to-nil-then-fall-back-to-text pattern as decode-base64."
+  [rows]
+  #?(:clj (zip-bytes-from-entries
+           {"[Content_Types].xml" (text-entry-bytes (xlsx-content-types-xml))
+            "_rels/.rels" (text-entry-bytes (xlsx-root-rels-xml))
+            "xl/workbook.xml" (text-entry-bytes (xlsx-workbook-xml))
+            "xl/_rels/workbook.xml.rels" (text-entry-bytes (xlsx-workbook-rels-xml))
+            "xl/worksheets/sheet1.xml" (text-entry-bytes (xlsx-sheet-xml rows))})
+     :cljs nil))
+
+(defn- slide-chart-entries
+  "For every :chart shape on `slide` with usable :slides/chart-data, builds
+  the chart XML part + its own relationship to a freshly generated embedded
+  xlsx workbook, assigning each a rel-id local to the SLIDE's own .rels
+  starting at `rid-start` (continuing on from wherever slide-image-entries
+  left off, so a slide with both pictures and charts never collides on the
+  same rId) and a globally-unique chart index from the running `next-index`."
+  [deck slide next-index rid-start]
+  (let [charts (->> (slide-shapes deck slide)
+                    (filterv #(and (= :chart (:slides/shape %)) (:slides/id %) (:slides/chart-data %))))]
+    (vec
+     (keep-indexed
+      (fn [i shape]
+        (let [series (chart-series-from-rows (:slides/chart-data shape))]
+          (when (seq series)
+            (let [n (+ next-index i)
+                  chart-filename (str "chart" n ".xml")
+                  embed-bytes (xlsx-bytes (:rows (:slides/chart-data shape)))]
+              (when embed-bytes
+                {:shape-id (:slides/id shape)
+                 :rel-id (str "rId" (+ rid-start i))
+                 :chart-path (str "ppt/charts/" chart-filename)
+                 :chart-filename chart-filename
+                 :chart-xml (chart-space-xml {:chart-type (:slides/chart-type shape) :series series})
+                 :chart-rels-path (str "ppt/charts/_rels/chart" n ".xml.rels")
+                 :chart-rels-xml (ooxml/relationships-xml
+                                  [(ooxml/relationship {:id "rId1" :type rel-package
+                                                        :target (str "../embeddings/Microsoft_Excel_Sheet" n ".xlsx")})])
+                 :embed-path (str "ppt/embeddings/Microsoft_Excel_Sheet" n ".xlsx")
+                 :embed-bytes embed-bytes})))))
+      charts))))
 
 (defn pptx-bytes
   "Returns a JVM byte array containing a .pptx generated from an EDN deck map."

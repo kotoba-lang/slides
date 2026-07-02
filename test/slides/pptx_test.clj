@@ -161,6 +161,75 @@
     (is (re-find #"<p:sp>" slide-xml)
         "falls back to a plain text box instead of corrupting the package")))
 
+(deftest writes-chart-shape-as-native-graphic-frame-with-embedded-workbook
+  (let [deck (-> (m/deck "deck" {:slides/title "With chart"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Revenue"})
+                      (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                    :slides/chart-data {:rows [["Quarter" "Revenue"]
+                                                               ["Q1" 120] ["Q2" 180] ["Q3" 240]]}}))))
+        bytes (pptx/pptx-bytes deck)
+        entries (zip-entries bytes)
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")
+        chart-xml (entries "ppt/charts/chart1.xml")
+        chart-rels-xml (entries "ppt/charts/_rels/chart1.xml.rels")]
+    (testing "a native <p:graphicFrame><c:chart> reference is emitted, not a plain text box"
+      (is (re-find #"<p:graphicFrame>" slide-xml))
+      (is (re-find #"<c:chart\b[^>]*r:id=\"rId2\"" slide-xml)))
+    (testing "the slide's own .rels wires rId2 to the chart part"
+      (is (re-find #"Id=\"rId2\"[^>]*charts/chart1.xml" rels-xml)))
+    (testing "the chart part itself has a real <c:barChart> with one <c:ser> per data column"
+      (is (some? chart-xml))
+      (is (re-find #"<c:barChart>" chart-xml))
+      (is (= 1 (count (re-seq #"<c:ser>" chart-xml))))
+      (is (re-find #"Revenue" chart-xml)))
+    (testing "the chart part's own .rels wires to a freshly embedded xlsx workbook"
+      (is (some? chart-rels-xml))
+      (is (re-find #"Type=\"[^\"]*relationships/package\"" chart-rels-xml))
+      (is (re-find #"embeddings/Microsoft_Excel_Sheet1.xlsx" chart-rels-xml)))
+    (testing "the embedded workbook is a real, non-empty, independently-openable xlsx package"
+      (is (contains? entries "ppt/embeddings/Microsoft_Excel_Sheet1.xlsx"))
+      (let [xlsx-bytes (zip-entry-bytes bytes "ppt/embeddings/Microsoft_Excel_Sheet1.xlsx")
+            xlsx-inner-entries (zip-entries xlsx-bytes)]
+        (is (pos? (count xlsx-bytes)))
+        (is (contains? xlsx-inner-entries "xl/workbook.xml"))
+        (is (contains? xlsx-inner-entries "xl/worksheets/sheet1.xml"))
+        (is (re-find #"Revenue" (xlsx-inner-entries "xl/worksheets/sheet1.xml")))
+        (is (re-find #"<v>120</v>" (xlsx-inner-entries "xl/worksheets/sheet1.xml")))))
+    (testing "[Content_Types].xml declares both the chart XML and the xlsx extension"
+      (is (re-find #"PartName=\"/ppt/charts/chart1.xml\"" (entries "[Content_Types].xml")))
+      (is (re-find #"Extension=\"xlsx\"" (entries "[Content_Types].xml"))))))
+
+(deftest chart-shape-with-multiple-series-and-line-type-renders-all-series
+  (let [deck (-> (m/deck "deck" {:slides/title "Multi-series"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Trend"})
+                      (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type :line
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                    :slides/chart-data {:rows [["Month" "Actual" "Forecast"]
+                                                               ["Jan" 10 12]
+                                                               ["Feb" 14 15]]}}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        chart-xml (entries "ppt/charts/chart1.xml")]
+    (is (re-find #"<c:lineChart>" chart-xml))
+    (is (= 2 (count (re-seq #"<c:ser>" chart-xml))) "one series per data column (Actual, Forecast)")
+    (is (re-find #"Actual" chart-xml))
+    (is (re-find #"Forecast" chart-xml))))
+
+(deftest chart-shape-without-chart-data-falls-back-to-text-safely
+  (let [deck (-> (m/deck "deck" {:slides/title "No data"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Empty"})
+                      (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                    :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (not (re-find #"<c:chart\b" slide-xml)))
+    (is (not (contains? entries "ppt/charts/chart1.xml")))
+    (is (re-find #"<p:sp>" slide-xml) "falls back to a plain text box, not a dangling chart reference")))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"
