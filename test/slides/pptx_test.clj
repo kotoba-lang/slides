@@ -528,6 +528,32 @@
     (is (re-find #"<a:prstGeom prst=\"straightConnector1\">" slide-xml))
     (is (re-find #"<a:ln><a:solidFill><a:srgbClr val=\"445566\"/>" slide-xml))))
 
+(deftest writes-and-round-trips-connector-connections
+  (let [connections {:start {:shape-id 2 :idx 1} :end {:shape-id 3 :idx 3}}
+        deck (-> (m/deck "deck" {:slides/title "Flow"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Flow"})
+                      (m/add-shape {:slides/id "arrow1" :slides/shape :connector
+                                    :slides/x 1.0 :slides/y 2.0 :slides/w 3.0 :slides/h 0.0
+                                    :slides/line "445566" :slides/connections connections}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "both ends are written as <p:cNvCxnSpPr>'s own <a:stCxn>/<a:endCxn> children"
+      (is (re-find #"<p:cNvCxnSpPr><a:stCxn id=\"2\" idx=\"1\"/><a:endCxn id=\"3\" idx=\"3\"/></p:cNvCxnSpPr>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "arrow1" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= connections (:slides/connections shape))))))
+  (testing "no :slides/connections -- bare <p:cNvCxnSpPr/>, unchanged from before this feature existed"
+    (let [deck (-> (m/deck "deck" {:slides/title "Flow"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "arrow1" :slides/shape :connector
+                                      :slides/x 1.0 :slides/y 2.0 :slides/w 3.0 :slides/h 0.0}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<p:cNvCxnSpPr/>" slide-xml)))))
+
 (deftest writes-rotation-and-flip-attributes-on-xfrm
   (let [deck (-> (m/deck "deck" {:slides/title "Rotated"})
                  (m/add-slide
