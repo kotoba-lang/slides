@@ -54,6 +54,8 @@
     (:drawingml/line shape) (assoc :slides/line (:drawingml/line shape))
     (:drawingml/line-dash shape) (assoc :slides/line-dash (:drawingml/line-dash shape))
     (:drawingml/line-width shape) (assoc :slides/line-width (:drawingml/line-width shape))
+    (:drawingml/line-cap shape) (assoc :slides/line-cap (:drawingml/line-cap shape))
+    (:drawingml/line-join shape) (assoc :slides/line-join (:drawingml/line-join shape))
     (:drawingml/bold shape) (assoc :slides/bold (:drawingml/bold shape))
     (:drawingml/italic shape) (assoc :slides/italic (:drawingml/italic shape))
     (:drawingml/underline shape) (assoc :slides/underline (:drawingml/underline shape))

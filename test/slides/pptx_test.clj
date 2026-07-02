@@ -642,6 +642,31 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:ln><a:solidFill>" slide-xml)))))
 
+(deftest writes-and-round-trips-line-cap-and-join
+  (let [deck (-> (m/deck "deck" {:slides/title "Cap and join"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/line "445566"
+                                                :slides/line-cap :round
+                                                :slides/line-join {:type :miter :limit 800.0}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "cap is an <a:ln> attribute, join its one child, miter's limit converted back to thousandths-of-a-percent"
+      (is (re-find #"<a:ln w=\"12700\" cap=\"rnd\">" slide-xml))
+      (is (re-find #"<a:miter lim=\"800000\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= :round (:slides/line-cap rect)))
+        (is (= {:type :miter :limit 800.0} (:slides/line-join rect))))))
+  (testing "no :slides/line-cap/:slides/line-join -- no cap attribute, no join child, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"cap=" slide-xml)))
+      (is (not (re-find #"<a:round/>|<a:bevel/>|<a:miter" slide-xml))))))
+
 (deftest writes-picture-fill-as-shape-fill
   (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
         b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
