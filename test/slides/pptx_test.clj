@@ -553,13 +553,27 @@
           entries (zip-entries (pptx/pptx-bytes deck))
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<p:ph type=\"body\" idx=\"1\" sz=\"half\" orient=\"horz\"/>" slide-xml))))
-  (testing "no :slides/placeholder -- historical plain textbox, unchanged"
+  (testing "no :slides/placeholder -- historical plain textbox, unchanged (the deck's synthetic footer shape, elsewhere in the doc, now legitimately DOES carry <p:ph type=\"ftr\"> -- see writes-real-footer-placeholder -- so this only checks the \"t\" shape's own nvSpPr, not a doc-wide absence)"
     (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
                    (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
           entries (zip-entries (pptx/pptx-bytes deck))
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<p:cNvSpPr txBox=\"1\"/><p:nvPr/>" slide-xml))
-      (is (not (re-find #"<p:ph" slide-xml))))))
+      (is (re-find #"<p:cNvPr id=\"10\" name=\"t\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/>" slide-xml)
+          "the \"t\" shape's own nvSpPr specifically has no <p:ph>"))))
+
+(deftest writes-real-footer-placeholder
+  (let [deck (-> (m/deck "deck" {:slides/title "Deck"})
+                 (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the default design's footer is a real <p:ph type=\"ftr\"> placeholder, not a plain textbox"
+      (is (re-find #"<p:cNvPr id=\"11\" name=\"master-footer\"/><p:cNvSpPr/><p:nvPr><p:ph type=\"ftr\"/></p:nvPr>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            footer (some #(when (= "ftr" (get-in % [:slides/placeholder :type])) %)
+                         (-> reimported :slides/slides first :slides/shapes))]
+        (is (some? footer))))))
 
 (deftest writes-and-round-trips-line-width
   (let [deck (-> (m/deck "deck" {:slides/title "Thick line"})
