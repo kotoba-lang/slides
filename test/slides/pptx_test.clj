@@ -1485,3 +1485,36 @@
           entries (zip-entries (pptx/pptx-bytes deck))
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<p:transition spd=\"fast\"></p:transition>" slide-xml)))))
+
+(deftest writes-and-round-trips-doc-properties
+  (let [props {:slides/author "Jun Kawasaki" :slides/subject "Q3 Review"
+               :slides/keywords "quarterly, review" :slides/category "Business"
+               :slides/last-modified-by "Jun Kawasaki"
+               :slides/created "2026-01-01T00:00:00Z" :slides/modified "2026-07-02T00:00:00Z"
+               :slides/company "GFTD" :slides/manager "Someone"}
+        deck (m/deck "deck" (merge {:slides/title "Metadata deck"} props
+                                    {:slides/slides [(m/slide "s1")]}))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        core-xml (entries "docProps/core.xml")
+        app-xml (entries "docProps/app.xml")]
+    (testing "every extended field is written"
+      (is (re-find #"<dc:creator>Jun Kawasaki</dc:creator>" core-xml))
+      (is (re-find #"<dc:subject>Q3 Review</dc:subject>" core-xml))
+      (is (re-find #"<cp:keywords>quarterly, review</cp:keywords>" core-xml))
+      (is (re-find #"<cp:category>Business</cp:category>" core-xml))
+      (is (re-find #"<cp:lastModifiedBy>Jun Kawasaki</cp:lastModifiedBy>" core-xml))
+      (is (re-find #"<dcterms:created xsi:type=\"dcterms:W3CDTF\">2026-01-01T00:00:00Z</dcterms:created>" core-xml))
+      (is (re-find #"<dcterms:modified xsi:type=\"dcterms:W3CDTF\">2026-07-02T00:00:00Z</dcterms:modified>" core-xml))
+      (is (re-find #"<Company>GFTD</Company>" app-xml))
+      (is (re-find #"<Manager>Someone</Manager>" app-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})]
+        (is (= props (select-keys reimported (keys props))))))))
+
+(deftest core-props-defaults-author-when-deck-has-none
+  (let [deck (m/deck "deck" {:slides/title "Plain" :slides/slides [(m/slide "s1")]})
+        entries (zip-entries (pptx/pptx-bytes deck))
+        core-xml (entries "docProps/core.xml")]
+    (is (re-find #"<dc:creator>kotoba-lang/slides</dc:creator>" core-xml))
+    (is (not (re-find #"<dc:subject>" core-xml)))
+    (is (not (re-find #"<cp:keywords>" core-xml)))))

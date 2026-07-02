@@ -107,6 +107,19 @@
   (cond-> {:slides/id (:presentationml/id master)}
     (:presentationml/background master) (assoc :slides/background (:presentationml/background master))))
 
+(def ^:private doc-properties-keys
+  "presentationml.parse/doc-properties' fields carry the SAME names on the
+  :slides side, just under the :slides/ namespace -- a plain rekey, no
+  transformation."
+  [:author :subject :keywords :category :last-modified-by :created :modified :company :manager])
+
+(defn- doc-properties->slides [parsed]
+  (into {}
+        (keep (fn [k]
+                (when-let [v (get parsed (keyword "presentationml" (name k)))]
+                  [(keyword "slides" (name k)) v])))
+        doc-properties-keys))
+
 (defn deck-from-entries
   ([entries file-name] (deck-from-entries entries file-name {}))
   ([entries file-name opts]
@@ -123,7 +136,8 @@
                              :slides/text-extraction :drawingml-xml}
              :slides/slides (mapv slide->slides (:presentationml/slides parsed))}
             (when (seq theme) {:slides/theme theme})
-            (when (seq masters) {:slides/masters masters})))))
+            (when (seq masters) {:slides/masters masters})
+            (doc-properties->slides parsed)))))
 
 (defn useful-deck? [deck]
   (boolean (seq (:slides/slides deck))))
