@@ -34,7 +34,12 @@
       (is (= out (build/css-release!)))
       (let [css (slurp out)]
         (is (.startsWith css (tokens/css-variables)))
-        (is (str/includes? css ".top{display:flex"))))))
+        ;; css.core/css renders "selector { prop: val; ... }" (spaced, not
+        ;; minified) with map-iteration declaration order, not source order —
+        ;; check rule presence + a declaration it contains rather than an
+        ;; exact minified substring (see slides.web.styles ns docstring).
+        (is (str/includes? css ".top {"))
+        (is (str/includes? css "display: flex"))))))
 
 (deftest pages-writes-html-before-css-release
   (let [calls (atom [])]
