@@ -160,9 +160,41 @@
        "<Slides>" slide-count "</Slides>"
        "</Properties>"))
 
+(defn- section-xml
+  "One <p14:section> from a deck's own :slides/sections entry ({:name ...
+  :slide-indices [...]}, the same shape presentationml.parse/sections
+  already produces on import) -- id is a fixed-but-distinct placeholder
+  GUID (PowerPoint tolerates any well-formed GUID; its own refresh cycle
+  doesn't depend on a globally-unique value here, same convention as
+  slides.pptx/field-id), slide-indices convert back to the same 256+idx
+  sldId formula presentation's own <p:sldIdLst> uses."
+  [idx {:keys [name slide-indices]}]
+  (str "<p14:section name=\"" (esc (or name (str "Section " (inc idx))))
+       "\" id=\"{00000000-0000-0000-0000-" (format "%012d" (inc idx)) "}\">"
+       "<p14:sldIdLst>"
+       (apply str (for [slide-idx slide-indices] (str "<p14:sldId id=\"" (+ 256 slide-idx) "\"/>")))
+       "</p14:sldIdLst></p14:section>"))
+
+(defn- sections-ext-xml
+  "A deck's own :slides/sections (Insert > Section in PowerPoint's UI, a
+  common organizational/navigation aid for longer decks) into
+  <p:extLst>'s PowerPoint-2010 <p14:sectionLst> extension -- \"\" (no
+  element at all) when the deck has no sections, the common case.
+  Previously a sectioned deck always round-tripped losing that
+  organization completely; slide content itself was unaffected either
+  way."
+  [sections]
+  (if (seq sections)
+    (str "<p:extLst><p:ext uri=\"{521415D9-36F7-43E2-AB2F-B90AF26B5E84}\">"
+         "<p14:sectionLst xmlns:p14=\"http://schemas.microsoft.com/office/powerpoint/2010/main\">"
+         (apply str (map-indexed section-xml sections))
+         "</p14:sectionLst></p:ext></p:extLst>")
+    ""))
+
 (defn- presentation
-  ([slide-count width height] (presentation slide-count width height 1))
-  ([slide-count width height master-count]
+  ([slide-count width height] (presentation slide-count width height 1 nil))
+  ([slide-count width height master-count] (presentation slide-count width height master-count nil))
+  ([slide-count width height master-count sections]
    (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
         "<p:presentation xmlns:a=\"" dml/ns-a "\" "
         "xmlns:r=\"" pml/ns-r "\" "
@@ -179,6 +211,7 @@
         "</p:sldIdLst>"
         "<p:sldSz cx=\"" (emu width) "\" cy=\"" (emu height) "\" type=\"wide\"/>"
         "<p:notesSz cx=\"6858000\" cy=\"9144000\"/>"
+        (sections-ext-xml sections)
         "</p:presentation>")))
 
 (defn- presentation-rels
@@ -1243,7 +1276,7 @@
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props deck (count slides))]
-       ["ppt/presentation.xml" (presentation (count slides) width height master-count)]
+       ["ppt/presentation.xml" (presentation (count slides) width height master-count (:slides/sections deck))]
        ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes? master-count)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]]
       (mapcat (fn [master-idx]

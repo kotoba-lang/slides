@@ -150,6 +150,7 @@
             (when (seq theme) {:slides/theme theme})
             (when (seq masters) {:slides/masters masters})
             (when (seq layouts) {:slides/layouts layouts})
+            (when (seq (:presentationml/sections parsed)) {:slides/sections (:presentationml/sections parsed)})
             (doc-properties->slides parsed)))))
 
 (defn useful-deck? [deck]
