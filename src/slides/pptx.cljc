@@ -442,6 +442,13 @@
   (when-let [dash (:slides/line-dash shape)]
     (str "<a:prstDash val=\"" (esc (name dash)) "\"/>")))
 
+(defn- line-width-attr
+  "The <a:ln>'s own w=\"...\" EMU attribute from :slides/line-width (plain
+  points), defaulting to 1pt (12700 EMU) -- the writer's own historical
+  hardcoded value -- when absent."
+  [shape]
+  (str " w=\"" (long (* 12700 (positive-numeric (:slides/line-width shape) 1))) "\""))
+
 (defn- blip-fill-xml [rel-id]
   (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"))
 
@@ -461,7 +468,7 @@
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
             :else "<a:noFill/>")
           (if line
-            (str "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
+            (str "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>")
             "<a:ln><a:noFill/></a:ln>")
           "</p:spPr>"
           "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
@@ -479,7 +486,7 @@
           (if fill-image-rel-id
             (blip-fill-xml fill-image-rel-id)
             (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
-          "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+          "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
           "</p:spPr></p:sp>"))))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]
@@ -487,7 +494,8 @@
        "<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\"><a:avLst/></a:prstGeom>"
-       "<a:ln><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
+       "<a:ln" (when (:slides/line-width shape) (line-width-attr shape))
+       "><a:solidFill><a:srgbClr val=\"" (hex-color line "334155") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
        "</p:spPr></p:cxnSp>"))
 
 ;; PowerPoint's built-in "Medium Style 2 - Accent 1" table style GUID: a real

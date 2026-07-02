@@ -424,6 +424,34 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-and-round-trips-line-width
+  (let [deck (-> (m/deck "deck" {:slides/title "Thick line"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/line "445566" :slides/line-width 3.0})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "3pt -> 38100 EMU"
+      (is (re-find #"<a:ln w=\"38100\">" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= 3.0 (:slides/line-width rect))))))
+  (testing "no :slides/line-width -- historical 1pt (12700 EMU) default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Default"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r" {:slides/line "445566"})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:ln w=\"12700\">" slide-xml))))
+  (testing "a connector with no :slides/line-width still omits w= entirely, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Connector"})
+                   (m/add-slide (-> (m/slide "s1")
+                                    (m/add-shape {:slides/id "arrow" :slides/shape :connector
+                                                  :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 0.0}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:ln><a:solidFill>" slide-xml)))))
+
 (deftest writes-picture-fill-as-shape-fill
   (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
         b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
