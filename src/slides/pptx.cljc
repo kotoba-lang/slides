@@ -608,7 +608,9 @@
            (str "<a:lnSpc><a:spcPct val=\"" (long (* line-spacing 100000)) "\"/></a:lnSpc>"))
          (case (:type bullet)
            :char (str "<a:buChar char=\"" (esc (:char bullet)) "\"/>")
-           :auto-num (str "<a:buAutoNum type=\"" (esc (or (:scheme bullet) "arabicPeriod")) "\"/>")
+           :auto-num (str "<a:buAutoNum type=\"" (esc (or (:scheme bullet) "arabicPeriod")) "\""
+                          (when (:start-at bullet) (str " startAt=\"" (long (:start-at bullet)) "\""))
+                          "/>")
            :none "<a:buNone/>"
            nil nil)
          "</a:pPr>")))
