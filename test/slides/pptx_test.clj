@@ -1,5 +1,6 @@
 (ns slides.pptx-test
   (:require [clojure.test :refer [deftest is testing]]
+            [slides.design :as design]
             [slides.model :as m]
             [slides.office :as office]
             [slides.pptx :as pptx])
@@ -229,6 +230,35 @@
     (is (not (re-find #"<c:chart\b" slide-xml)))
     (is (not (contains? entries "ppt/charts/chart1.xml")))
     (is (re-find #"<p:sp>" slide-xml) "falls back to a plain text box, not a dangling chart reference")))
+
+(deftest theme-xml-carries-east-asian-and-complex-script-typefaces
+  (let [deck (m/deck "deck" {:slides/title "CJK theme"
+                             :slides/theme {:slides/fonts
+                                            {:office-style.font/majorFont "Aptos Display"
+                                             :office-style.font/majorFont-ea "游ゴシック"
+                                             :office-style.font/minorFont "Aptos"
+                                             :office-style.font/minorFont-ea "メイリオ"}}})
+        xml (pptx/theme-xml (design/theme deck))]
+    (is (re-find #"<a:ea typeface=\"游ゴシック\"/>" xml))
+    (is (re-find #"<a:ea typeface=\"メイリオ\"/>" xml))))
+
+(deftest japanese-text-run-gets-ja-jp-lang-and-east-asian-typeface
+  (let [deck (-> (m/deck "deck" {:slides/title "日本語デッキ"
+                                 :slides/theme {:slides/fonts
+                                                {:office-style.font/majorFont-ea "游ゴシック"
+                                                 :office-style.font/minorFont-ea "メイリオ"}}})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "スライド1"})
+                      (m/add-shape (m/text-box "title" "四半期業績アップデート" {:slides/font-size 32}))
+                      (m/add-shape (m/text-box "body" "Revenue, margin, and roadmap"
+                                                {:slides/font-size 18 :slides/y 2.0})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a run whose text is Japanese gets lang=\"ja-JP\" and the East Asian typeface"
+      (is (re-find #"<a:rPr lang=\"ja-JP\"[^>]*sz=\"3200\"" slide-xml))
+      (is (re-find #"<a:ea typeface=\"游ゴシック\"/>" slide-xml)))
+    (testing "a plain-Latin run keeps en-US and doesn't get a spurious <a:ea>"
+      (is (re-find #"<a:rPr lang=\"en-US\"[^>]*sz=\"1800\"" slide-xml)))))
 
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"

@@ -197,11 +197,14 @@
          "<a:hlink><a:srgbClr val=\"" (theme-color colors :office-style.color/hlink "315D8C") "\"/></a:hlink>"
          "<a:folHlink><a:srgbClr val=\"" (theme-color colors :office-style.color/folHlink "6A5A8E") "\"/></a:folHlink>"
          "</a:clrScheme>\n"
-         "<a:fontScheme name=\"kotoba\"><a:majorFont><a:latin typeface=\""
-         (theme-font fonts :office-style.font/majorFont "Aptos Display")
-         "\"/></a:majorFont><a:minorFont><a:latin typeface=\""
-         (theme-font fonts :office-style.font/minorFont "Aptos")
-         "\"/></a:minorFont></a:fontScheme>\n"
+         "<a:fontScheme name=\"kotoba\">"
+         "<a:majorFont><a:latin typeface=\"" (theme-font fonts :office-style.font/majorFont "Aptos Display") "\"/>"
+         "<a:ea typeface=\"" (esc (get fonts :office-style.font/majorFont-ea "")) "\"/>"
+         "<a:cs typeface=\"" (esc (get fonts :office-style.font/majorFont-cs "")) "\"/></a:majorFont>"
+         "<a:minorFont><a:latin typeface=\"" (theme-font fonts :office-style.font/minorFont "Aptos") "\"/>"
+         "<a:ea typeface=\"" (esc (get fonts :office-style.font/minorFont-ea "")) "\"/>"
+         "<a:cs typeface=\"" (esc (get fonts :office-style.font/minorFont-cs "")) "\"/></a:minorFont>"
+         "</a:fontScheme>\n"
          "<a:fmtScheme name=\"kotoba\"><a:fillStyleLst><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:fillStyleLst>"
          "<a:lnStyleLst><a:ln w=\"6350\"><a:solidFill><a:schemeClr val=\"phClr\"/></a:solidFill></a:ln></a:lnStyleLst>"
          "<a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst>"
@@ -247,17 +250,44 @@
        (if major? :office-style.font/majorFont :office-style.font/minorFont)
        (if major? "Aptos Display" "Aptos")))
 
+(defn- font-face-ea
+  "The theme's East Asian typeface for this role, or nil if the deck never
+  captured one (e.g. a theme with no CJK font configured at all) -- callers
+  only emit <a:ea> when this is non-nil, since a made-up font name would be
+  worse than PowerPoint's own fallback."
+  [deck major?]
+  (get (design/fonts deck)
+       (if major? :office-style.font/majorFont-ea :office-style.font/minorFont-ea)))
+
+(defn- cjk-lang
+  "A best-effort BCP-47 language tag from the run's own text -- Hiragana/
+  Katakana implies Japanese, Hangul implies Korean, bare CJK ideographs
+  (no kana) default to Chinese. Latin/other text keeps the historical
+  \"en-US\". This is a heuristic (a document can legitimately mix scripts
+  per run), not a real language detector, but it's strictly better than
+  always claiming en-US for CJK content -- PowerPoint's own font
+  substitution/proofing keys off this attribute."
+  [text]
+  (cond
+    (re-find #"[぀-ヿ]" (str text)) "ja-JP"
+    (re-find #"[가-힯]" (str text)) "ko-KR"
+    (re-find #"[一-鿿㐀-䶿]" (str text)) "zh-CN"
+    :else "en-US"))
+
 (defn- text-shape [deck idx {:slides/keys [id text font-size color bold] :as shape}]
-  (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
+  (let [major? (>= (positive-numeric font-size 24) 30)
+        ea-font (font-face-ea deck major?)]
+    (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
        "<p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>"
        "<p:txBody><a:bodyPr wrap=\"square\"/><a:lstStyle/>"
-       "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
+       "<a:p><a:r><a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
        (when bold " b=\"1\"")
-       "><a:latin typeface=\"" (esc (font-face deck (>= (positive-numeric font-size 24) 30))) "\"/>"
+       "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
+       (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
        "</a:rPr><a:t>" (esc text) "</a:t></a:r></a:p>"
-       "</p:txBody></p:sp>"))
+       "</p:txBody></p:sp>")))
 
 (defn- rect-shape [idx {:slides/keys [id fill line] :as shape}]
   (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
