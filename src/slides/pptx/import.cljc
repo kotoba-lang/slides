@@ -100,7 +100,8 @@
              :slides/shapes shapes
              :slides/shape-inventory (shape-inventory shapes)}
       (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide))
-      (:presentationml/master-ref slide) (assoc :slides/master-ref (:presentationml/master-ref slide)))))
+      (:presentationml/master-ref slide) (assoc :slides/master-ref (:presentationml/master-ref slide))
+      (:presentationml/transition slide) (assoc :slides/transition (:presentationml/transition slide)))))
 
 (defn- master->slides [master]
   (cond-> {:slides/id (:presentationml/id master)}

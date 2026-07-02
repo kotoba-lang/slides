@@ -15,7 +15,7 @@
          :git/sha "0560f53d142c8a079079d9d159570ce944d47c94"}
         io.github.kotoba-lang/presentationml
         {:git/url "https://github.com/kotoba-lang/presentationml.git"
-         :git/sha "2fb517ddc68c2aa6898299b7adfa86f182a6be7d"}
+         :git/sha "3465a406e368b5bb71845d75a76c57e4693a29ff"}
         io.github.kotoba-lang/office-style
         {:git/url "https://github.com/kotoba-lang/office-style.git"
          :git/sha "40ce484f923475e1bb59919cc03f6664737f0e08"}
@@ -34,7 +34,10 @@
         ;; (build.clj) instead of a hand-typed static.css string.
         io.github.kotoba-lang/css
         {:git/url "https://github.com/kotoba-lang/css.git"
-         :git/sha "e8bb830b69aa1a726bb79dbd28f098f0875db673"}}
+         :git/sha "e8bb830b69aa1a726bb79dbd28f098f0875db673"}
+        io.github.kotoba-lang/xml
+        {:git/url "https://github.com/kotoba-lang/xml.git"
+         :git/sha "568e022a38bea2d97dda2487b930d48d8a61609c"}}
  :aliases
  {:cli {:main-opts ["-m" "slides.cli"]}
   :local {:override-deps {io.github.kotoba-lang/office
@@ -52,7 +55,9 @@
                           io.github.kotoba-lang/html
                           {:local/root "../html"}
                           io.github.kotoba-lang/css
-                          {:local/root "../css"}}}
+                          {:local/root "../css"}
+                          io.github.kotoba-lang/xml
+                          {:local/root "../xml"}}}
   :pages {:main-opts ["-m" "slides.build"]}
   :test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner

@@ -1456,3 +1456,32 @@
     (is (re-find #"Keep me" slide))
     (is (not (re-find #"Delete me" slide)))
     (is (= 1 (count (re-seq #"<p:sp>" slide))))))
+
+(deftest writes-and-round-trips-slide-transition
+  (let [transition {:type "wipe" :attrs {"dir" "l"} :speed "slow"
+                     :advance-on-click false :advance-after-time 3000}
+        deck (-> (m/deck "deck" {:slides/title "Transitions"})
+                 (m/add-slide (-> (m/slide "s1" {:slides/transition transition})
+                                  (m/add-shape (m/rect "r")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a real <p:transition> is written as a sibling of <p:cSld>, with the effect element's own attrs"
+      (is (re-find #"</p:clrMapOvr><p:transition spd=\"slow\" advClick=\"0\" advTm=\"3000\"><p:wipe dir=\"l\" /></p:transition></p:sld>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            slide (first (:slides/slides reimported))]
+        (is (= transition (:slides/transition slide))))))
+  (testing "no :slides/transition -- no <p:transition> element at all, matching PowerPoint's own default"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<p:transition" slide-xml)))))
+  (testing "a transition with only timing attrs, no effect element"
+    (let [deck (-> (m/deck "deck" {:slides/title "Timing only"})
+                   (m/add-slide (-> (m/slide "s1" {:slides/transition {:speed "fast"}})
+                                    (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<p:transition spd=\"fast\"></p:transition>" slide-xml)))))

@@ -8,7 +8,8 @@
             [drawingml.core :as dml]
             [ooxml.core :as ooxml]
             [presentationml.core :as pml]
-            [slides.design :as design])
+            [slides.design :as design]
+            [xml.core :as xcore])
   #?(:clj (:import [java.io ByteArrayInputStream ByteArrayOutputStream FileOutputStream]
                    [java.util.regex Matcher]
                    [java.util.zip ZipEntry ZipInputStream ZipOutputStream])))
@@ -796,6 +797,27 @@
                 own-shapes
                 (when-let [footer (master-footer-shape deck slide)] [footer])))))
 
+(defn- transition-xml
+  "A slide's own :slides/transition ({:type ... :attrs {...} :speed ...
+  :advance-on-click bool :advance-after-time ms}) into <p:transition>, a
+  sibling of <p:cSld> in CT_Slide's own schema order (cSld, clrMapOvr?,
+  transition?, timing?, extLst?) -- NOT one of cSld's descendants. :type/
+  :attrs are the transition-effect element's raw tag/attrs (fade, wipe,
+  push, ... -- see presentationml.parse/transition, the read side this
+  mirrors); xml.core emits that child so its attrs are correctly escaped.
+  \"\" (no element at all) when the slide has no transition, matching
+  PowerPoint's own default of omitting <p:transition> entirely."
+  [{:keys [type attrs speed advance-on-click advance-after-time] :as transition}]
+  (if-not transition
+    ""
+    (str "<p:transition"
+         (when speed (str " spd=\"" speed "\""))
+         (when (false? advance-on-click) " advClick=\"0\"")
+         (when advance-after-time (str " advTm=\"" advance-after-time "\""))
+         ">"
+         (when type (xcore/xml [(keyword "p" type) (or attrs {})]))
+         "</p:transition>")))
+
 (defn- slide-xml
   ([deck slide] (slide-xml deck slide {}))
   ([deck slide opts]
@@ -810,7 +832,9 @@
           (if (seq shapes)
             (apply str (map-indexed (fn [idx shape] (render-shape deck idx shape opts)) shapes))
             (render-shape deck 0 {:slides/shape :text :slides/id "title" :slides/text (:slides/title slide) :slides/x 0.8 :slides/y 0.8 :slides/w 8.4 :slides/h 1.0 :slides/font-size 32} opts)))
-        "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>")))
+        "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>"
+        (transition-xml (:slides/transition slide))
+        "</p:sld>")))
 
 (defn- slide-rels [layout-idx]
   (ooxml/relationships-xml
