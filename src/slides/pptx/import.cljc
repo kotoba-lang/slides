@@ -63,6 +63,7 @@
     (:drawingml/fill-image-rel-id shape) (assoc :slides/fill-image-rel-id (:drawingml/fill-image-rel-id shape))
     (:drawingml/fill-image-part shape) (assoc :slides/fill-image-part (:drawingml/fill-image-part shape))
     (:drawingml/adjustments shape) (assoc :slides/adjustments (:drawingml/adjustments shape))
+    (:drawingml/custom-geometry shape) (assoc :slides/custom-geometry (:drawingml/custom-geometry shape))
     (:drawingml/shadow shape) (assoc :slides/shadow (:drawingml/shadow shape))
     (:drawingml/image-rel-id shape) (assoc :slides/image-rel-id (:drawingml/image-rel-id shape))
     (:drawingml/image-part shape) (assoc :slides/image-part (:drawingml/image-part shape))

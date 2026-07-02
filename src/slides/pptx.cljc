@@ -458,6 +458,40 @@
          "</a:avLst>")
     "<a:avLst/>"))
 
+(defn- path-command-xml
+  [{:keys [cmd pts w-radius h-radius start-angle swing-angle]}]
+  (case cmd
+    :close "<a:close/>"
+    :arcTo (str "<a:arcTo wR=\"" (long w-radius) "\" hR=\"" (long h-radius)
+                "\" stAng=\"" (long start-angle) "\" swAng=\"" (long swing-angle) "\"/>")
+    (str "<a:" (name cmd) ">"
+         (apply str (map (fn [{:keys [x y]}] (str "<a:pt x=\"" (long x) "\" y=\"" (long y) "\"/>")) pts))
+         "</a:" (name cmd) ">")))
+
+(defn- custgeom-xml [custom-geometry]
+  (str "<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>"
+       "<a:pathLst>"
+       (apply str (map (fn [{:keys [width height fill-rule commands]}]
+                         (str "<a:path w=\"" (long width) "\" h=\"" (long height) "\""
+                              (when fill-rule (str " fill=\"" (esc fill-rule) "\""))
+                              ">"
+                              (apply str (map path-command-xml commands))
+                              "</a:path>"))
+                       custom-geometry))
+       "</a:pathLst></a:custGeom>"))
+
+(defn- geometry-xml
+  "A shape's own <a:prstGeom>/<a:avLst>, OR (when :slides/custom-geometry
+  is present -- the same {:width ... :height ... :commands [...]} shape
+  drawingml's custom-geometry already produces on import) a real
+  <a:custGeom> instead -- previously every re-exported shape always wrote
+  a plain preset regardless of the source having used a custom vector
+  path."
+  [shape]
+  (if-let [custom (seq (:slides/custom-geometry shape))]
+    (custgeom-xml custom)
+    (str "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>")))
+
 (defn- shadow-xml
   "A shape's own <a:effectLst><a:outerShdw .../></a:effectLst> from
   :slides/shadow ({:blur pt :distance pt :angle deg :color hex :alpha
@@ -516,7 +550,7 @@
             (str "<p:cNvSpPr/><p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>")
             "<p:cNvSpPr txBox=\"1\"/><p:nvPr/>")
           "</p:nvSpPr>"
-          "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>"
+          "<p:spPr>" (shape-xfrm shape) (geometry-xml shape)
           (cond
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
@@ -537,7 +571,7 @@
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
           "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape)
-          "<a:prstGeom prst=\"" (geometry-preset shape) "\">" (avlst-xml shape) "</a:prstGeom>"
+          (geometry-xml shape)
           (if fill-image-rel-id
             (blip-fill-xml fill-image-rel-id)
             (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))

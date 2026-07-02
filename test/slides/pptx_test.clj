@@ -455,6 +455,40 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (not (re-find #"<a:prstDash" slide-xml))))))
 
+(deftest writes-and-round-trips-custom-geometry
+  (let [custom-geom [{:width 1000000.0 :height 1000000.0
+                      :commands [{:cmd :moveTo :pts [{:x 0.0 :y 500000.0}]}
+                                 {:cmd :lnTo :pts [{:x 500000.0 :y 0.0}]}
+                                 {:cmd :arcTo :w-radius 100000.0 :h-radius 100000.0 :start-angle 0.0 :swing-angle 5400000.0}
+                                 {:cmd :close}]}]
+        deck (-> (m/deck "deck" {:slides/title "Custom shape"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/rect "r" {:slides/geometry :custom :slides/custom-geometry custom-geom
+                                                :slides/fill "445566"})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "a real <a:custGeom>/<a:pathLst> is written, not a prstGeom"
+      (is (re-find #"<a:custGeom>" slide-xml))
+      (is (re-find #"<a:path w=\"1000000\" h=\"1000000\">" slide-xml))
+      (is (re-find #"<a:moveTo><a:pt x=\"0\" y=\"500000\"/></a:moveTo>" slide-xml))
+      (is (re-find #"<a:arcTo wR=\"100000\" hR=\"100000\" stAng=\"0\" swAng=\"5400000\"/>" slide-xml))
+      (is (re-find #"<a:close/>" slide-xml))
+      (is (re-find #"<p:spPr>[^<]*<a:xfrm[^>]*>.*?</a:xfrm><a:custGeom>" slide-xml)
+          "the custom shape's OWN spPr uses custGeom (the deck's synthetic footer shape, elsewhere in the doc, still uses plain prstGeom)"))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            rect (first (filter #(= :rect (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= :custom (:slides/geometry rect)))
+        (is (= custom-geom (:slides/custom-geometry rect))))))
+  (testing "no :slides/custom-geometry -- historical <a:prstGeom>, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:prstGeom prst=\"rect\">" slide-xml))
+      (is (not (re-find #"<a:custGeom" slide-xml))))))
+
 (deftest writes-and-round-trips-outer-shadow
   (let [deck (-> (m/deck "deck" {:slides/title "Shadowed"})
                  (m/add-slide
