@@ -602,6 +602,22 @@
 (defn- blip-fill-xml [rel-id]
   (str "<a:blipFill><a:blip r:embed=\"" rel-id "\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"))
 
+(defn- gradient-fill-xml
+  "A shape's own :slides/gradient ({:stops [{:position 0-100 :color
+  \"hex\"} ...] :angle deg}, from drawingml.parse/gradient-fill on
+  import) into a real multi-stop <a:gradFill> -- previously a gradient-
+  filled shape always wrote as a flat <a:solidFill> using its own first-
+  stop-only :slides/fill approximation, since no writer path ever
+  reconstructed the full gradient."
+  [{:keys [stops angle]}]
+  (str "<a:gradFill><a:gsLst>"
+       (apply str (for [{:keys [position color]} stops]
+                    (str "<a:gs" (when position (str " pos=\"" (long (Math/round (* (double position) 1000.0))) "\"")) ">"
+                         "<a:srgbClr val=\"" (hex-color color "336699") "\"/></a:gs>")))
+       "</a:gsLst>"
+       (when angle (str "<a:lin ang=\"" (long (Math/round (* (double angle) 60000.0))) "\" scaled=\"1\"/>"))
+       "</a:gradFill>"))
+
 (defn- placeholder-xml
   "A shape's <p:ph .../> from its :slides/placeholder (carried through
   unchanged from import's drawingml/placeholder -- see
@@ -666,6 +682,7 @@
           "</p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape) (geometry-xml shape)
           (cond
+            (:slides/gradient shape) (gradient-fill-xml (:slides/gradient shape))
             fill-image-rel-id (blip-fill-xml fill-image-rel-id)
             fill (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>")
             :else "<a:noFill/>")
@@ -686,9 +703,10 @@
           "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape)
           (geometry-xml shape)
-          (if fill-image-rel-id
-            (blip-fill-xml fill-image-rel-id)
-            (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
+          (cond
+            (:slides/gradient shape) (gradient-fill-xml (:slides/gradient shape))
+            fill-image-rel-id (blip-fill-xml fill-image-rel-id)
+            :else (str "<a:solidFill><a:srgbClr val=\"" (hex-color fill "EAF0F8") "\"/></a:solidFill>"))
           "<a:ln" (line-width-attr shape) "><a:solidFill><a:srgbClr val=\"" (hex-color line "496B9A") "\"/></a:solidFill>" (line-dash-xml shape) "</a:ln>"
           (shadow-xml shape)
           "</p:spPr></p:sp>"))))

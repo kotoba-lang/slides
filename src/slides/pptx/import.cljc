@@ -66,6 +66,7 @@
     (:drawingml/custom-geometry shape) (assoc :slides/custom-geometry (:drawingml/custom-geometry shape))
     (:drawingml/shadow shape) (assoc :slides/shadow (:drawingml/shadow shape))
     (:drawingml/body-props shape) (assoc :slides/body-props (:drawingml/body-props shape))
+    (:drawingml/gradient shape) (assoc :slides/gradient (:drawingml/gradient shape))
     (:drawingml/image-rel-id shape) (assoc :slides/image-rel-id (:drawingml/image-rel-id shape))
     (:drawingml/image-part shape) (assoc :slides/image-part (:drawingml/image-part shape))
     (:drawingml/video-rel-id shape) (assoc :slides/video-rel-id (:drawingml/video-rel-id shape))
