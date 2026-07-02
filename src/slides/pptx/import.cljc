@@ -74,11 +74,12 @@
 
 (defn- slide->slides [slide]
   (let [shapes (mapv shape->slides (:presentationml/shapes slide))]
-    {:slides/id (:presentationml/id slide)
-     :slides/title (:presentationml/title slide)
-     :slides/source (:presentationml/source slide)
-     :slides/shapes shapes
-     :slides/shape-inventory (shape-inventory shapes)}))
+    (cond-> {:slides/id (:presentationml/id slide)
+             :slides/title (:presentationml/title slide)
+             :slides/source (:presentationml/source slide)
+             :slides/shapes shapes
+             :slides/shape-inventory (shape-inventory shapes)}
+      (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide)))))
 
 (defn deck-from-entries
   ([entries file-name] (deck-from-entries entries file-name {}))

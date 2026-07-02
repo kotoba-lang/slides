@@ -23,6 +23,8 @@
 (def rel-image "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image")
 (def rel-chart "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart")
 (def rel-package "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package")
+(def rel-notes-slide "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide")
+(def rel-notes-master "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster")
 (def rel-core-props "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
 (def rel-app-props "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties")
 
@@ -76,8 +78,8 @@
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
-  ([slide-count] (content-types slide-count [] []))
-  ([slide-count media-extensions-used chart-paths]
+  ([slide-count] (content-types slide-count [] [] []))
+  ([slide-count media-extensions-used chart-paths notes-slide-paths]
    (ooxml/content-types-xml
     (concat
      [(ooxml/default-content-type "rels" (:rels ooxml/content-types))
@@ -96,7 +98,11 @@
      (when (seq chart-paths)
        [(ooxml/default-content-type "xlsx" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")])
      (for [path chart-paths]
-       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"))))))
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"))
+     (when (seq notes-slide-paths)
+       [(ooxml/override-content-type "/ppt/notesMasters/notesMaster1.xml" "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml")])
+     (for [path notes-slide-paths]
+       (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"))))))
 
 (def root-rels
   (ooxml/relationships-xml
@@ -139,14 +145,20 @@
        "<p:notesSz cx=\"6858000\" cy=\"9144000\"/>"
        "</p:presentation>"))
 
-(defn- presentation-rels [slide-count]
-  (ooxml/relationships-xml
-   (concat
-    [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "slideMasters/slideMaster1.xml"})]
-    (for [idx (range 1 (inc slide-count))]
-      (ooxml/relationship {:id (str "rId" (inc idx))
-                           :type rel-slide
-                           :target (str "slides/slide" idx ".xml")})))))
+(defn- presentation-rels
+  ([slide-count] (presentation-rels slide-count false))
+  ([slide-count has-notes?]
+   (ooxml/relationships-xml
+    (concat
+     [(ooxml/relationship {:id "rId1" :type rel-slide-master :target "slideMasters/slideMaster1.xml"})]
+     (for [idx (range 1 (inc slide-count))]
+       (ooxml/relationship {:id (str "rId" (inc idx))
+                            :type rel-slide
+                            :target (str "slides/slide" idx ".xml")}))
+     (when has-notes?
+       [(ooxml/relationship {:id (str "rId" (+ 2 slide-count))
+                             :type rel-notes-master
+                             :target "notesMasters/notesMaster1.xml"})])))))
 
 (def default-theme (:slides/theme design/default-design))
 
@@ -236,6 +248,40 @@
   <p:cSld name=\"Blank\"><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
   <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
 </p:sldLayout>"))
+
+(defn- notes-master-xml []
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<p:notesMaster xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
+  <p:cSld><p:bg><p:bgRef idx=\"1001\"><a:schemeClr val=\"bg1\"/></p:bgRef></p:bg><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld>
+  <p:clrMap accent1=\"accent1\" accent2=\"accent2\" accent3=\"accent3\" accent4=\"accent4\" accent5=\"accent5\" accent6=\"accent6\" bg1=\"lt1\" bg2=\"lt2\" folHlink=\"folHlink\" hlink=\"hlink\" tx1=\"dk1\" tx2=\"dk2\"/>
+  <p:notesStyle><a:lvl1pPr><a:defRPr sz=\"1200\"/></a:lvl1pPr></p:notesStyle>
+</p:notesMaster>"))
+
+(def notes-master-rels
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-theme :target "../theme/theme1.xml"})]))
+
+(defn- notes-paragraphs-xml [notes-text]
+  (apply str (map (fn [line] (str "<a:p><a:r><a:t>" (esc line) "</a:t></a:r></a:p>"))
+                   (str/split (str notes-text) #"\n" -1))))
+
+(defn- notes-slide-xml [notes-text]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<p:notes xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+       "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+       "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+       "<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
+       "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
+       "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Notes Placeholder\"/><p:cNvSpPr><a:spLocks noGrp=\"1\"/></p:cNvSpPr>"
+       "<p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr>"
+       "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>"
+       (notes-paragraphs-xml notes-text)
+       "</p:txBody></p:sp>"
+       "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>"))
+
+(defn- notes-slide-rels-xml []
+  (ooxml/relationships-xml
+   [(ooxml/relationship {:id "rId1" :type rel-notes-master :target "../notesMasters/notesMaster1.xml"})]))
 
 (def slide-layout-rels
   (ooxml/relationships-xml
@@ -555,8 +601,22 @@
 
 (declare slide-chart-entries)
 
-(defn- slide-rels-xml [image-entries chart-entries]
-  (if (or (seq image-entries) (seq chart-entries))
+(defn- slide-notes-entry
+  "The notesSlide part for one slide's :slides/notes, or nil. `rid` is this
+  slide's own rels id for the notesSlide relationship, continuing on from
+  wherever image/chart rIds left off (2 + images + charts)."
+  [slide next-index rid]
+  (when-let [notes-text (:slides/notes slide)]
+    (let [filename (str "notesSlide" next-index ".xml")]
+      {:rel-id (str "rId" rid)
+       :notes-filename filename
+       :notes-path (str "ppt/notesSlides/" filename)
+       :notes-xml (notes-slide-xml notes-text)
+       :notes-rels-path (str "ppt/notesSlides/_rels/" filename ".rels")
+       :notes-rels-xml (notes-slide-rels-xml)})))
+
+(defn- slide-rels-xml [image-entries chart-entries notes-entry]
+  (if (or (seq image-entries) (seq chart-entries) notes-entry)
     (ooxml/relationships-xml
      (into [(ooxml/relationship {:id "rId1" :type rel-slide-layout :target "../slideLayouts/slideLayout1.xml"})]
            (concat
@@ -565,7 +625,10 @@
                  image-entries)
             (map (fn [{:keys [rel-id chart-filename]}]
                    (ooxml/relationship {:id rel-id :type rel-chart :target (str "../charts/" chart-filename)}))
-                 chart-entries))))
+                 chart-entries)
+            (when notes-entry
+              [(ooxml/relationship {:id (:rel-id notes-entry) :type rel-notes-slide
+                                    :target (str "../notesSlides/" (:notes-filename notes-entry))})]))))
     slide-rels))
 
 (defn- image-rels-map [image-entries]
@@ -588,42 +651,52 @@
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
         height (positive-numeric (:slides/height deck) default-height-in)
-        per-slide (reduce (fn [{:keys [acc media-index chart-index]} slide]
+        per-slide (reduce (fn [{:keys [acc media-index chart-index notes-index]} slide]
                             (let [images (slide-image-entries deck slide media-index 2)
-                                  charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))]
-                              {:acc (conj acc {:slide slide :images images :charts charts})
+                                  charts (slide-chart-entries deck slide chart-index (+ 2 (count images)))
+                                  notes (slide-notes-entry slide notes-index (+ 2 (count images) (count charts)))]
+                              {:acc (conj acc {:slide slide :images images :charts charts :notes notes})
                                :media-index (+ media-index (count images))
-                               :chart-index (+ chart-index (count charts))}))
-                          {:acc [] :media-index 1 :chart-index 1}
+                               :chart-index (+ chart-index (count charts))
+                               :notes-index (+ notes-index (if notes 1 0))}))
+                          {:acc [] :media-index 1 :chart-index 1 :notes-index 1}
                           slides)
         slide-plans (:acc per-slide)
         all-media-types (mapcat (fn [{:keys [images]}] (map :media-type images)) slide-plans)
-        all-chart-paths (mapcat (fn [{:keys [charts]}] (map :chart-path charts)) slide-plans)]
+        all-chart-paths (mapcat (fn [{:keys [charts]}] (map :chart-path charts)) slide-plans)
+        all-notes-paths (keep (fn [{:keys [notes]}] (:notes-path notes)) slide-plans)
+        has-notes? (boolean (seq all-notes-paths))]
     (vec
      (concat
-      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths)]
+      [["[Content_Types].xml" (content-types (count slides) all-media-types all-chart-paths all-notes-paths)]
        ["_rels/.rels" root-rels]
        ["docProps/core.xml" (core-props deck)]
        ["docProps/app.xml" (app-props (count slides))]
        ["ppt/presentation.xml" (presentation (count slides) width height)]
-       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides))]
+       ["ppt/_rels/presentation.xml.rels" (presentation-rels (count slides) has-notes?)]
        ["ppt/theme/theme1.xml" (theme-xml (design/theme deck))]
        ["ppt/slideMasters/slideMaster1.xml" (slide-master deck)]
        ["ppt/slideMasters/_rels/slideMaster1.xml.rels" slide-master-rels]
        ["ppt/slideLayouts/slideLayout1.xml" (slide-layout deck)]
        ["ppt/slideLayouts/_rels/slideLayout1.xml.rels" slide-layout-rels]]
-      (mapcat (fn [[idx {:keys [slide images charts]}]]
+      (when has-notes?
+        [["ppt/notesMasters/notesMaster1.xml" (notes-master-xml)]
+         ["ppt/notesMasters/_rels/notesMaster1.xml.rels" notes-master-rels]])
+      (mapcat (fn [[idx {:keys [slide images charts notes]}]]
                 (let [n (inc idx)
                       opts {:image-rels (image-rels-map images) :chart-rels (chart-rels-map charts)}]
                   (concat
                    [[(str "ppt/slides/slide" n ".xml") (slide-xml deck slide opts)]
-                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts)]]
+                    [(str "ppt/slides/_rels/slide" n ".xml.rels") (slide-rels-xml images charts notes)]]
                    (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
                    (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
                              [[chart-path chart-xml]
                               [chart-rels-path chart-rels-xml]
                               [embed-path embed-bytes]])
-                           charts))))
+                           charts)
+                   (when notes
+                     [[(:notes-path notes) (:notes-xml notes)]
+                      [(:notes-rels-path notes) (:notes-rels-xml notes)]]))))
               (map-indexed vector slide-plans))))))
 
 #?(:clj

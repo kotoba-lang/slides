@@ -364,6 +364,39 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:xfrm><a:off" slide-xml)))))
 
+(deftest writes-speaker-notes-as-native-notes-slide-part
+  (let [deck (-> (m/deck "deck" {:slides/title "With notes"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Intro" :slides/notes "Remember to mention Q4 numbers"})
+                      (m/add-shape (m/text-box "title" "Intro")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "a notesSlide part is written, wired from the slide's own .rels"
+      (is (contains? entries "ppt/notesSlides/notesSlide1.xml"))
+      (is (re-find #"Remember to mention Q4 numbers" (entries "ppt/notesSlides/notesSlide1.xml")))
+      (is (re-find #"Type=\"[^\"]*notesSlide\"" (entries "ppt/slides/_rels/slide1.xml.rels"))))
+    (testing "the notesMaster + its wiring from presentation.xml.rels are included"
+      (is (contains? entries "ppt/notesMasters/notesMaster1.xml"))
+      (is (re-find #"Type=\"[^\"]*notesMaster\"" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "[Content_Types].xml declares both parts"
+      (is (re-find #"PartName=\"/ppt/notesMasters/notesMaster1.xml\"" (entries "[Content_Types].xml")))
+      (is (re-find #"PartName=\"/ppt/notesSlides/notesSlide1.xml\"" (entries "[Content_Types].xml")))))
+  (testing "a deck with no notes on any slide writes no notesMaster/notesSlides at all"
+    (let [deck (-> (m/deck "deck" {:slides/title "No notes"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))]
+      (is (not (contains? entries "ppt/notesMasters/notesMaster1.xml")))
+      (is (not (re-find #"notesSlide" (entries "ppt/slides/_rels/slide1.xml.rels")))))))
+
+(deftest speaker-notes-round-trip-through-import
+  (let [deck (-> (m/deck "deck" {:slides/title "Round trip"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Slide" :slides/notes "Speaker note text\nSecond line"})
+                      (m/add-shape (m/text-box "title" "Slide")))))
+        bytes (pptx/pptx-bytes deck)
+        reimported (office/deck-from-office-bytes bytes {})]
+    (is (= "Speaker note text\nSecond line"
+           (-> reimported :slides/slides first :slides/notes)))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"
