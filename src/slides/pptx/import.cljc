@@ -79,6 +79,7 @@
     (:drawingml/audio-rel-id shape) (assoc :slides/audio-rel-id (:drawingml/audio-rel-id shape))
     (:drawingml/audio-part shape) (assoc :slides/audio-part (:drawingml/audio-part shape))
     (:drawingml/crop shape) (assoc :slides/crop (:drawingml/crop shape))
+    (:drawingml/recolor shape) (assoc :slides/recolor (:drawingml/recolor shape))
     (:drawingml/connections shape) (assoc :slides/connections (:drawingml/connections shape))
     (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))
     (:drawingml/group shape) (assoc :slides/group (:drawingml/group shape))
