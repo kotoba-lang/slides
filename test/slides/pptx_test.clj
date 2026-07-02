@@ -622,6 +622,30 @@
       (is (not (contains? entries "ppt/notesMasters/notesMaster1.xml")))
       (is (not (re-find #"notesSlide" (entries "ppt/slides/_rels/slide1.xml.rels")))))))
 
+(deftest pic-media-references-round-trip-through-import
+  (let [entries
+        {"ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\"/></p:presentation>"
+         "ppt/slides/slide1.xml"
+         (str "<p:sld><p:cSld><p:spTree>"
+              "<p:pic><p:nvPicPr><p:cNvPr id=\"3\" name=\"Video\"/><p:cNvPicPr/>"
+              "<p:nvPr><a:videoFile r:link=\"rId6\"/></p:nvPr></p:nvPicPr>"
+              "<p:blipFill><a:blip r:embed=\"rId5\"/></p:blipFill>"
+              "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"1828800\"/></a:xfrm></p:spPr>"
+              "</p:pic>"
+              "</p:spTree></p:cSld></p:sld>")
+         "ppt/slides/_rels/slide1.xml.rels"
+         (str "<Relationships>"
+              "<Relationship Id=\"rId5\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/image1.png\"/>"
+              "<Relationship Id=\"rId6\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/video\" Target=\"../media/media1.mp4\"/>"
+              "</Relationships>")}
+        reimported (office/deck-from-office-bytes (zip-bytes entries) {})
+        pic (first (-> reimported :slides/slides first :slides/shapes))]
+    (testing "both the poster-frame image reference AND the video reference survive import"
+      (is (= "rId5" (:slides/image-rel-id pic)))
+      (is (= "ppt/media/image1.png" (:slides/image-part pic)))
+      (is (= "rId6" (:slides/video-rel-id pic)))
+      (is (= "ppt/media/media1.mp4" (:slides/video-part pic))))))
+
 (deftest speaker-notes-round-trip-through-import
   (let [deck (-> (m/deck "deck" {:slides/title "Round trip"})
                  (m/add-slide
