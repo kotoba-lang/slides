@@ -101,11 +101,16 @@
              :slides/shape-inventory (shape-inventory shapes)}
       (:presentationml/notes slide) (assoc :slides/notes (:presentationml/notes slide))
       (:presentationml/master-ref slide) (assoc :slides/master-ref (:presentationml/master-ref slide))
+      (:presentationml/layout-ref slide) (assoc :slides/layout-ref (:presentationml/layout-ref slide))
       (:presentationml/transition slide) (assoc :slides/transition (:presentationml/transition slide)))))
 
 (defn- master->slides [master]
   (cond-> {:slides/id (:presentationml/id master)}
     (:presentationml/background master) (assoc :slides/background (:presentationml/background master))))
+
+(defn- layout->slides [layout]
+  (cond-> {:slides/id (:presentationml/id layout)}
+    (:presentationml/layout-type layout) (assoc :slides/layout-type (:presentationml/layout-type layout))))
 
 (def ^:private doc-properties-keys
   "presentationml.parse/doc-properties' fields carry the SAME names on the
@@ -126,7 +131,8 @@
    (let [parsed (pml-parse/deck entries opts)
          title (:presentationml/title parsed (or (file-title file-name) "Imported deck"))
          theme (theme->slides (:presentationml/theme parsed))
-         masters (mapv master->slides (:presentationml/masters parsed))]
+         masters (mapv master->slides (:presentationml/masters parsed))
+         layouts (mapv layout->slides (:presentationml/layouts parsed))]
      (merge {:slides/id (:presentationml/id parsed "imported-pptx")
              :slides/title title
              :slides/width (:presentationml/width parsed)
@@ -137,6 +143,7 @@
              :slides/slides (mapv slide->slides (:presentationml/slides parsed))}
             (when (seq theme) {:slides/theme theme})
             (when (seq masters) {:slides/masters masters})
+            (when (seq layouts) {:slides/layouts layouts})
             (doc-properties->slides parsed)))))
 
 (defn useful-deck? [deck]
