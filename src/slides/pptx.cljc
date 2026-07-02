@@ -833,6 +833,46 @@
       (str (subs path 0 idx) "/_rels/" (subs path (inc idx)) ".rels")
       (str "_rels/" path ".rels"))))
 
+(defn- parse-long-safe [s]
+  #?(:clj (try (Long/parseLong (str s)) (catch Exception _ nil))
+     :cljs (let [n (js/parseInt (str s) 10)] (when-not (js/isNaN n) n))))
+
+(defn- existing-rels-max-rid
+  "The highest numeric rId already used in a slide's own .rels XML (0 if
+  none/blank) -- new relationships added by the update path (for brand-new
+  images/charts/notes/hyperlinks) must continue past this, not restart at
+  the full-regen path's usual rId2, or they'd collide with rIds the source
+  deck already assigned."
+  [rels-xml]
+  (->> (re-seq #"\bId=\"rId(\d+)\"" (or rels-xml ""))
+       (keep (comp parse-long-safe second))
+       (reduce max 0)))
+
+(defn- max-numbered-entry-index
+  "The highest N already used by entries whose path matches `pattern`
+  (capturing N), 0 if none -- so new media/chart/notes parts the update path
+  adds get filenames that can't collide with ones the source deck already
+  has (ppt/media/imageN.*, ppt/charts/chartN.xml, ppt/notesSlides/
+  notesSlideN.xml all number independently of one another)."
+  [entries pattern]
+  (->> (keys entries)
+       (keep (fn [path] (some->> (re-find pattern (str path)) second parse-long-safe)))
+       (reduce max 0)))
+
+(defn- append-relationships-into-rels-xml [rels-xml new-rels]
+  (if (seq new-rels)
+    (let [fragment (apply str (map ooxml/relationship-xml new-rels))]
+      (if (str/blank? (or rels-xml ""))
+        (ooxml/relationships-xml new-rels)
+        (str/replace-first rels-xml "</Relationships>" (str fragment "</Relationships>"))))
+    rels-xml))
+
+(defn- append-content-type-overrides [ct-xml new-overrides]
+  (if (seq new-overrides)
+    (let [fragment (apply str (map ooxml/content-type-xml new-overrides))]
+      (str/replace-first ct-xml "</Types>" (str fragment "</Types>")))
+    ct-xml))
+
 (defn- relationships-from-entries [entries part-path]
   (let [rels-xml (some-> (entries (rels-path part-path)) bytes->text)]
     (into {}
@@ -1415,12 +1455,14 @@
        (filterv map?)
        (remove #(get-in % [:ooxml/source :ooxml/part]))))
 
-(defn- append-shapes-xml [xml deck new-shapes]
-  (if (seq new-shapes)
-    ;; idx offset avoids colliding cNvPr ids with the slide's original shapes.
-    (let [fragment (apply str (map-indexed (fn [i shape] (render-shape deck (+ 1000 i) shape)) new-shapes))]
-      (str/replace-first xml #"</p:spTree>" (replacement-literal (str fragment "</p:spTree>"))))
-    xml))
+(defn- append-shapes-xml
+  ([xml deck new-shapes] (append-shapes-xml xml deck new-shapes {}))
+  ([xml deck new-shapes opts]
+   (if (seq new-shapes)
+     ;; idx offset avoids colliding cNvPr ids with the slide's original shapes.
+     (let [fragment (apply str (map-indexed (fn [i shape] (render-shape deck (+ 1000 i) shape opts)) new-shapes))]
+       (str/replace-first xml #"</p:spTree>" (replacement-literal (str fragment "</p:spTree>"))))
+     xml)))
 
 (defn- deleted-locators [slide]
   (let [inventory (or (:slides/shape-inventory slide) #{})
@@ -1444,15 +1486,15 @@
             xml
             by-tag)))
 
-(defn- patch-slide-structure
-  "Applies additions and deletions for one slide's part, after its surviving
-  shapes have already been patched in place (patch-slide-xml doesn't change
-  element count/order, so this can safely run afterwards against still-valid
-  positions)."
-  [xml deck slide]
-  (-> xml
-      (remove-shapes-xml slide)
-      (append-shapes-xml deck (new-shapes-for-slide slide))))
+(defn- patch-slide-deletions
+  "Applies deletions for one slide's part, after its surviving shapes have
+  already been patched in place (patch-slide-xml doesn't change element
+  count/order, so this can safely run afterwards against still-valid
+  positions). Additions run separately (patch-new-content), since a NEW
+  image/chart/notes shape needs new relationships/parts wired up too, not
+  just its own <p:sp>/<p:pic>/... fragment appended."
+  [xml slide]
+  (remove-shapes-xml xml slide))
 
 (defn- patch-base-entries [entries deck]
   (let [by-part (group-by #(get-in % [:ooxml/source :ooxml/part])
@@ -1467,10 +1509,140 @@
     (reduce (fn [acc slide]
               (let [part (:slides/source slide)]
                 (if-let [bytes (and part (get acc part))]
-                  (assoc acc part (text-entry-bytes (patch-slide-structure (bytes->text bytes) deck slide)))
+                  (assoc acc part (text-entry-bytes (patch-slide-deletions (bytes->text bytes) slide)))
                   acc)))
             entries
             (deck-slides deck))))
+
+(defn- new-content-relationships [images charts notes hyperlinks]
+  (concat
+   (map (fn [{:keys [rel-id filename]}]
+          (ooxml/relationship {:id rel-id :type rel-image :target (str "../media/" filename)}))
+        images)
+   (map (fn [{:keys [rel-id chart-filename]}]
+          (ooxml/relationship {:id rel-id :type rel-chart :target (str "../charts/" chart-filename)}))
+        charts)
+   (when notes
+     [(ooxml/relationship {:id (:rel-id notes) :type rel-notes-slide
+                           :target (str "../notesSlides/" (:notes-filename notes))})])
+   (map (fn [{:keys [rel-id url]}]
+          (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
+        hyperlinks)))
+
+(defn- new-content-parts [images charts notes]
+  (concat
+   (map (fn [{:keys [filename bytes]}] [(str "ppt/media/" filename) bytes]) images)
+   (mapcat (fn [{:keys [chart-path chart-xml chart-rels-path chart-rels-xml embed-path embed-bytes]}]
+             [[chart-path (text-entry-bytes chart-xml)]
+              [chart-rels-path (text-entry-bytes chart-rels-xml)]
+              [embed-path embed-bytes]])
+           charts)
+   (when notes
+     [[(:notes-path notes) (text-entry-bytes (:notes-xml notes))]
+      [(:notes-rels-path notes) (text-entry-bytes (:notes-rels-xml notes))]])))
+
+(defn- ensure-notes-master-entries [entries]
+  (if (contains? entries "ppt/notesMasters/notesMaster1.xml")
+    entries
+    (assoc entries
+           "ppt/notesMasters/notesMaster1.xml" (text-entry-bytes (notes-master-xml))
+           "ppt/notesMasters/_rels/notesMaster1.xml.rels" (text-entry-bytes notes-master-rels))))
+
+(defn- ensure-presentation-notes-master-rel
+  "Wires ppt/_rels/presentation.xml.rels to the notesMaster part, the one
+  piece of global (not per-slide) wiring a brand-new notesSlide needs when
+  the source deck previously had NO notes anywhere."
+  [entries]
+  (let [path "ppt/_rels/presentation.xml.rels"
+        rels-xml (some-> (get entries path) bytes->text)]
+    (if (or (nil? rels-xml) (str/includes? rels-xml rel-notes-master))
+      entries
+      (assoc entries path
+             (text-entry-bytes
+              (append-relationships-into-rels-xml
+               rels-xml
+               [(ooxml/relationship {:id (str "rId" (inc (existing-rels-max-rid rels-xml)))
+                                     :type rel-notes-master
+                                     :target "notesMasters/notesMaster1.xml"})]))))))
+
+(defn- patch-new-content
+  "Adds brand-new (no :ooxml/source) images/charts/notes/hyperlinks that a
+  patch-path edit introduced -- previously these silently fell back to a
+  plain text box (images/charts, via render-shape's opts-less call) or were
+  dropped entirely (notes/hyperlinks with no rId ever assigned), since
+  append-shapes-xml only ever emitted the shape's own fragment with no
+  accompanying relationship/media/chart-part/notesSlide-part wiring."
+  [entries deck]
+  (let [start-media (max-numbered-entry-index entries #"ppt/media/image(\d+)\.")
+        start-chart (max-numbered-entry-index entries #"ppt/charts/chart(\d+)\.xml")
+        start-notes (max-numbered-entry-index entries #"ppt/notesSlides/notesSlide(\d+)\.xml")
+        result
+        (reduce
+         (fn [{:keys [entries media-idx chart-idx notes-idx] :as acc} slide]
+           (let [part (:slides/source slide)
+                 new-shapes (new-shapes-for-slide slide)]
+             (if (or (nil? part) (not (contains? entries part)) (empty? new-shapes))
+               acc
+               (let [rels-part (rels-path part)
+                     rels-xml (some-> (get entries rels-part) bytes->text)
+                     rid-start (inc (existing-rels-max-rid rels-xml))
+                     already-has-notes-rel? (str/includes? (or rels-xml "") rel-notes-slide)
+                     synthetic-slide {:slides/shapes new-shapes
+                                      :slides/notes (when-not already-has-notes-rel? (:slides/notes slide))}
+                     images (slide-image-entries deck synthetic-slide (inc media-idx) rid-start)
+                     charts (slide-chart-entries deck synthetic-slide (inc chart-idx)
+                                                 (+ rid-start (count images)))
+                     notes (slide-notes-entry synthetic-slide (inc notes-idx)
+                                              (+ rid-start (count images) (count charts)))
+                     hyperlinks (slide-hyperlink-entries deck synthetic-slide
+                                                         (+ rid-start (count images) (count charts) (if notes 1 0)))
+                     opts {:image-rels (image-rels-map images)
+                           :chart-rels (chart-rels-map charts)
+                           :hyperlink-rels (hyperlink-rels-map hyperlinks)}
+                     patched-slide-xml (-> (bytes->text (get entries part))
+                                           (append-shapes-xml deck new-shapes opts))
+                     new-rels (new-content-relationships images charts notes hyperlinks)
+                     updated-rels-xml (when (seq new-rels)
+                                       (append-relationships-into-rels-xml rels-xml new-rels))]
+                 {:entries (into (cond-> (assoc entries part (text-entry-bytes patched-slide-xml))
+                                   updated-rels-xml (assoc rels-part (text-entry-bytes updated-rels-xml)))
+                                 (new-content-parts images charts notes))
+                  :media-idx (+ media-idx (count images))
+                  :chart-idx (+ chart-idx (count charts))
+                  :notes-idx (+ notes-idx (if notes 1 0))
+                  :media-types (into (:media-types acc) (map :media-type images))
+                  :chart-paths (into (:chart-paths acc) (map :chart-path charts))
+                  :notes-paths (into (:notes-paths acc) (when notes [(:notes-path notes)]))}))))
+         {:entries entries :media-idx start-media :chart-idx start-chart :notes-idx start-notes
+          :media-types [] :chart-paths [] :notes-paths []}
+         (deck-slides deck))
+        any-notes? (boolean (seq (:notes-paths result)))
+        entries' (cond-> (:entries result)
+                   any-notes? ensure-notes-master-entries
+                   any-notes? ensure-presentation-notes-master-rel)
+        ct-path "[Content_Types].xml"
+        ct-xml (some-> (get entries' ct-path) bytes->text)]
+    (if (str/blank? ct-xml)
+      entries'
+      (let [ct-xml (reduce (fn [xml media-type]
+                             (ooxml/ensure-content-type-extension xml (media-extension media-type) media-type))
+                           ct-xml
+                           (distinct (:media-types result)))
+            ct-xml (cond-> ct-xml
+                     (seq (:chart-paths result))
+                     (ooxml/ensure-content-type-extension "xlsx" "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            chart-overrides (for [path (:chart-paths result)
+                                  :when (not (str/includes? ct-xml path))]
+                              (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.drawingml.chart+xml"))
+            notes-overrides (concat
+                             (when (and any-notes? (not (str/includes? ct-xml "notesMaster1.xml")))
+                               [(ooxml/override-content-type "/ppt/notesMasters/notesMaster1.xml"
+                                                             "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml")])
+                             (for [path (:notes-paths result)
+                                   :when (not (str/includes? ct-xml path))]
+                               (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml")))
+            ct-xml (append-content-type-overrides ct-xml (concat chart-overrides notes-overrides))]
+        (assoc entries' ct-path (text-entry-bytes ct-xml))))))
 
 (defn- chart-data-shapes [deck]
   (->> (deck-slides deck)
@@ -1508,6 +1680,7 @@
        (if (seq patches)
          (-> (zip-entries-bytes base-bytes)
              (patch-base-entries deck)
+             (patch-new-content deck)
              (patch-chart-data-entries deck)
              zip-bytes-from-entries)
          (pptx-bytes deck)))

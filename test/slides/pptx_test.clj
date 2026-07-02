@@ -1,5 +1,6 @@
 (ns slides.pptx-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [slides.design :as design]
             [slides.model :as m]
             [slides.office :as office]
@@ -1000,6 +1001,89 @@
     (is (re-find #"Existing" slide))
     (is (re-find #"Brand new note" slide))
     (is (= 2 (count (re-seq #"<p:sp>" slide))))))
+
+(deftest update-pptx-adds-new-image-shape-with-media-and-relationship
+  (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
+        b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
+        base-bytes (zip-bytes
+                    {"[Content_Types].xml"
+                     (str "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                          "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                          "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                          "<Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>"
+                          "</Types>")
+                     "_rels/.rels" "<Relationships/>"
+                     "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\"/></p:presentation>"
+                     "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                   "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                   "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                   "<p:txBody><a:p><a:r><a:t>Existing</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                   "</p:spTree></p:cSld></p:sld>")
+                     "ppt/slides/_rels/slide1.xml.rels"
+                     (str "<Relationships>"
+                          "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                          "</Relationships>")})
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Existing"
+                                                :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "new-pic" :slides/shape :image
+                                                :slides/image-data b64 :slides/media-type "image/png"
+                                                :slides/x 1 :slides/y 3 :slides/w 3 :slides/h 2}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")
+        ct-xml (entries "[Content_Types].xml")]
+    (testing "the new shape renders as a real <p:pic>, not a text fallback"
+      (is (re-find #"<p:pic>" slide-xml)))
+    (testing "a NEW media part was added"
+      (is (some #(str/starts-with? % "ppt/media/image") (keys entries))))
+    (testing "the slide's .rels gained an image relationship, continuing past the pre-existing layout rId1"
+      (is (re-find #"Id=\"rId1\"[^>]*slideLayout" rels-xml))
+      (is (re-find #"Id=\"rId2\"[^>]*relationships/image" rels-xml)))
+    (testing "Content_Types.xml gained the png extension default"
+      (is (re-find #"Extension=\"png\"" ct-xml)))))
+
+(deftest update-pptx-adds-new-notes-with-notes-master-wiring-when-deck-had-none
+  (let [base-bytes (zip-bytes
+                    {"[Content_Types].xml"
+                     (str "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                          "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                          "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                          "<Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>"
+                          "</Types>")
+                     "_rels/.rels" "<Relationships/>"
+                     "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\"/></p:presentation>"
+                     "ppt/_rels/presentation.xml.rels"
+                     "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/></Relationships>"
+                     "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                   "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                   "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                   "<p:txBody><a:p><a:r><a:t>Existing</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                   "</p:spTree></p:cSld></p:sld>")
+                     "ppt/slides/_rels/slide1.xml.rels"
+                     (str "<Relationships>"
+                          "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                          "</Relationships>")})
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/notes "New speaker notes, deck previously had none"
+                               :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Existing"
+                                                :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "trigger" :slides/shape :text :slides/text "trigger new-shape pass"
+                                                :slides/x 1 :slides/y 3 :slides/w 3 :slides/h 1}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))]
+    (testing "a notesSlide part was added and wired from the slide's own .rels"
+      (is (contains? entries "ppt/notesSlides/notesSlide1.xml"))
+      (is (re-find #"New speaker notes" (entries "ppt/notesSlides/notesSlide1.xml")))
+      (is (re-find #"Type=\"[^\"]*notesSlide\"" (entries "ppt/slides/_rels/slide1.xml.rels"))))
+    (testing "the notesMaster + presentation.xml.rels wiring were added even though the deck had NO notes before"
+      (is (contains? entries "ppt/notesMasters/notesMaster1.xml"))
+      (is (re-find #"notesMaster" (entries "ppt/_rels/presentation.xml.rels"))))))
 
 (deftest update-pptx-removes-shapes-deleted-from-the-deck
   (let [base-bytes (zip-bytes {"[Content_Types].xml" "<Types/>"
