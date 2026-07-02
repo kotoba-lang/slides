@@ -1520,11 +1520,31 @@
   [series]
   (str "<c:pieChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series)) "</c:pieChart>"))
 
+(defn- area-chart-body-xml [series]
+  (str "<c:areaChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>"
+       (apply str (map-indexed chart-series-xml series))
+       "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:areaChart>"))
+
+(defn- doughnut-chart-body-xml
+  "A doughnut chart plots exactly one series and has no value/category
+  axes, same as pie -- its one structural difference is holeSize, the
+  ring's inner-hole diameter as a percentage of the outer diameter."
+  [series]
+  (str "<c:doughnutChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series))
+       "<c:holeSize val=\"50\"/></c:doughnutChart>"))
+
+(def ^:private axisless-chart-types
+  "Chart types with no value/category axes at all -- a pie/doughnut plots
+  proportions of a whole, not points against two scaled axes."
+  #{:pie :doughnut})
+
 (defn- chart-space-xml [{:keys [chart-type series]}]
-  (let [pie? (= :pie chart-type)
+  (let [axisless? (axisless-chart-types chart-type)
         body (case chart-type
                :line (line-chart-body-xml series)
+               :area (area-chart-body-xml series)
                :pie (pie-chart-body-xml series)
+               :doughnut (doughnut-chart-body-xml series)
                (bar-chart-body-xml series))]
     (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
          "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
@@ -1532,7 +1552,7 @@
          "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
          "<c:chart><c:plotArea><c:layout/>"
          body
-         (when-not pie?
+         (when-not axisless?
            (str "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
                 "<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
                 "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
