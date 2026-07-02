@@ -455,18 +455,38 @@
            nil nil)
          "</a:pPr>")))
 
-(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline] :as shape} text major? ea-font hlink-rel-id]
-  (str "<a:r><a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
-       (when bold " b=\"1\"")
-       (when italic " i=\"1\"")
-       (when underline " u=\"sng\"")
-       (when strikethrough " strike=\"sngStrike\"")
-       (when baseline (str " baseline=\"" (long (* baseline 1000)) "\""))
-       "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
-       (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
-       "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
-       (when hlink-rel-id (str "<a:hlinkClick r:id=\"" hlink-rel-id "\"/>"))
-       "</a:rPr><a:t>" (esc text) "</a:t></a:r>"))
+(def field-placeholder-types
+  "The two placeholder types whose content PowerPoint auto-computes at
+  render time (today's date, the slide's own position) rather than storing
+  as static text -- their <p:ph type> maps directly onto <a:fld>'s own
+  type attribute (\"datetime1\"/\"slidenum\"), so a date/slide-number
+  shape's placeholder type alone is enough to know its runs must be
+  <a:fld>, not <a:r> -- no separate field-vs-plain-text flag needed."
+  {"dt" "datetime1" "sldNum" "slidenum"})
+
+(def field-id
+  "A fixed <a:fld id=\"...\"> GUID. PowerPoint tolerates any well-formed
+  GUID here (its own refresh cycle re-derives the field's actual value at
+  open time regardless) -- a single constant keeps output deterministic,
+  matching this package's other hardcoded-but-valid identifiers (e.g.
+  default-table-style-id)."
+  "{5C7C1F09-0F5C-4B8A-9C1E-8A5F5D7B3E11}")
+
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline placeholder] :as shape} text major? ea-font hlink-rel-id]
+  (let [field-type (field-placeholder-types (:type placeholder))
+        open-tag (if field-type (str "<a:fld id=\"" field-id "\" type=\"" field-type "\">") "<a:r>")
+        close-tag (if field-type "</a:fld>" "</a:r>")]
+    (str open-tag "<a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
+         (when bold " b=\"1\"")
+         (when italic " i=\"1\"")
+         (when underline " u=\"sng\"")
+         (when strikethrough " strike=\"sngStrike\"")
+         (when baseline (str " baseline=\"" (long (* baseline 1000)) "\""))
+         "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
+         (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
+         "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
+         (when hlink-rel-id (str "<a:hlinkClick r:id=\"" hlink-rel-id "\"/>"))
+         "</a:rPr><a:t>" (esc text) "</a:t>" close-tag)))
 
 (defn- paragraph-xml [deck shape major? ea-font hlink-rel-id {:keys [text] :as para}]
   (str "<a:p>" (or (paragraph-ppr-xml para) "")
@@ -812,6 +832,45 @@
              :slides/placeholder {:type "ftr"}
              :slides/text (or (:slides/text footer) (:slides/title deck ""))))))
 
+(defn- master-date-shape
+  "A design's own :slides/date ({:slides/enabled true, positioning/style
+  same shape as :slides/footer, :slides/text an OPTIONAL fixed date string
+  -- PowerPoint recomputes today's date at open time regardless, so a
+  fixed string is only the DISPLAYED-until-refresh value, same as
+  PowerPoint's own behavior when authoring one by hand). Off (absent
+  entirely) unless the design opts in -- unlike the footer, no default
+  design ships with it enabled, so existing decks' output is unaffected."
+  [deck slide]
+  (let [date-cfg (:slides/date (design/master-for-slide deck slide))]
+    (when (:slides/enabled date-cfg)
+      (assoc date-cfg
+             :slides/id "master-date"
+             :slides/shape :text
+             :slides/placeholder {:type "dt"}
+             :slides/text (or (:slides/text date-cfg) "")))))
+
+(defn- slide-number
+  "slide's 1-based position within deck's own slide sequence -- derived
+  rather than threaded as an extra parameter through slide-shapes' several
+  call sites (image/chart/hyperlink scanning, none of which otherwise need
+  a slide index at all)."
+  [deck slide]
+  (inc (or (first (keep-indexed (fn [i s] (when (= s slide) i)) (:slides/slides deck))) 0)))
+
+(defn- master-slide-number-shape
+  "A design's own :slides/slide-number, same shape/opt-in convention as
+  master-date-shape -- :slides/text is always overridden to the slide's
+  own computed position (PowerPoint recomputes it at open time regardless;
+  a stale hand-authored number would be actively wrong)."
+  [deck slide]
+  (let [cfg (:slides/slide-number (design/master-for-slide deck slide))]
+    (when (:slides/enabled cfg)
+      (assoc cfg
+             :slides/id "master-slide-number"
+             :slides/shape :text
+             :slides/placeholder {:type "sldNum"}
+             :slides/text (str (slide-number deck slide))))))
+
 (defn- slide-shapes [deck slide]
   (let [valid-shapes (when (sequential? (:slides/shapes slide))
                        (filterv map? (:slides/shapes slide)))
@@ -824,7 +883,9 @@
                        :slides/font-size 32}])]
     (vec (concat (guide-shapes deck)
                 own-shapes
-                (when-let [footer (master-footer-shape deck slide)] [footer])))))
+                (when-let [footer (master-footer-shape deck slide)] [footer])
+                (when-let [date (master-date-shape deck slide)] [date])
+                (when-let [n (master-slide-number-shape deck slide)] [n])))))
 
 (defn- transition-xml
   "A slide's own :slides/transition ({:type ... :attrs {...} :speed ...
