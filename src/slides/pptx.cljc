@@ -2432,6 +2432,32 @@
    block
    (map-indexed vector rows)))
 
+(defn- patch-gradient-fill
+  "Replaces whichever fill element the shape's own <p:spPr> already has
+  (<a:gradFill>, <a:solidFill>, or self-closing <a:noFill/>, checked in
+  that order) with a real multi-stop <a:gradFill> built from :slides/
+  gradient -- same fill-element-agnostic replacement shape as patch-
+  solid-fill/patch-line-fill, but a shape can carry ANY of the three
+  going in (a plain shape being given its first gradient is the common
+  edit this enables), not just the fill kind patch-solid-fill assumes.
+  Previously :slides/gradient was write-only through full regen; the
+  source-aware `update` patch path silently ignored it entirely."
+  [block shape]
+  (if (:slides/gradient shape)
+    (let [replacement (replacement-literal (gradient-fill-xml (:slides/gradient shape)))]
+      (cond
+        (re-find #"<a:gradFill\b[\s\S]*?</a:gradFill>" block)
+        (str/replace-first block #"<a:gradFill\b[\s\S]*?</a:gradFill>" replacement)
+
+        (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" block)
+        (str/replace-first block #"<a:solidFill\b[\s\S]*?</a:solidFill>" replacement)
+
+        (re-find #"<a:noFill\s*/>" block)
+        (str/replace-first block #"<a:noFill\s*/>" replacement)
+
+        :else block))
+    block))
+
 (defn- patch-solid-fill [block shape]
   (if (:slides/fill shape)
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" block)
@@ -2457,6 +2483,7 @@
 (defn- patch-shape-block [block shape kind]
   (let [block (-> block
                   (patch-or-insert-xfrm shape kind)
+                  (patch-gradient-fill shape)
                   (patch-solid-fill shape)
                   (patch-line-fill shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
