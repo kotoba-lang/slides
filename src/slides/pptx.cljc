@@ -355,10 +355,17 @@
   only a flat solid color was ever written). Takes the MASTER map directly
   (design/master deck, or design/master-for-slide deck slide for a deck
   using multiple named masters) rather than the deck, so a slide's own
-  master's background is used, not always the deck's single default one."
-  [master-map]
-  (let [bg (master-background master-map)]
-    (if (map? bg)
+  master's background is used, not always the deck's single default one.
+  `slide-override`, when present (a slide's own :slides/slide-background,
+  from presentationml.parse/slide-background on import), takes precedence
+  over the master's -- a common real-deck pattern (a differently-colored
+  title/section-divider slide). Previously there was no such override
+  path at all -- every slide's own <p:bg> always derived from its master,
+  silently losing any per-slide background a source deck actually had."
+  ([master-map] (background-fill-xml master-map nil))
+  ([master-map slide-override]
+   (let [bg (if (some? slide-override) slide-override (master-background master-map))]
+     (if (map? bg)
       (let [stops (or (seq (:stops bg)) [[0 "FFFFFF"] [100 "F0F0F0"]])
             angle (numeric (:angle bg) 90)]
         (str "<a:gradFill rotWithShape=\"1\"><a:gsLst>"
@@ -367,7 +374,7 @@
                                     "<a:srgbClr val=\"" (hex-color hex "FFFFFF") "\"/></a:gs>"))
                              stops))
              "</a:gsLst><a:lin ang=\"" (long (* angle 60000)) "\" scaled=\"1\"/></a:gradFill>"))
-      (str "<a:solidFill><a:srgbClr val=\"" (hex-color bg "FFFFFF") "\"/></a:solidFill>"))))
+       (str "<a:solidFill><a:srgbClr val=\"" (hex-color bg "FFFFFF") "\"/></a:solidFill>")))))
 
 (defn- slide-master
   "A single <p:sldMaster> part for `master-map`, referencing EVERY layout
@@ -1350,7 +1357,7 @@
         "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
         "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
         "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
-        "<p:cSld><p:bg><p:bgPr>" (background-fill-xml (design/master-for-slide deck slide)) "</p:bgPr></p:bg>"
+        "<p:cSld><p:bg><p:bgPr>" (background-fill-xml (design/master-for-slide deck slide) (:slides/slide-background slide)) "</p:bgPr></p:bg>"
         "<p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>"
         "<p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"0\" cy=\"0\"/></a:xfrm></p:grpSpPr>"
         (let [shapes (slide-shapes deck slide)]
