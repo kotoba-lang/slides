@@ -297,6 +297,8 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 | Deck/package parts | Embedded font declarations | ✅ read-only (import passthrough) | no write-side counterpart by design — see `presentationml`'s coverage matrix |
 | Patch/update path | Slide text/shape patching against the original XML | ✅ | preserves group membership, placeholder tags, and unrelated package entries |
 | Patch/update path | New content added post-import (images, charts, notes, hyperlinks) | ✅ | |
+| Patch/update path | Position/size, solid fill, line fill, gradient fill | ✅ | gradient added this session (`patch-gradient-fill`) — replaces whichever fill element (gradFill/solidFill/noFill) a shape already has |
+| Patch/update path | Lock flags, vertical text direction, table style flags/dimensions, per-slide background, effects (shadow/glow/reflection), picture crop/recolor, hyperlinks, hidden flag | ❌ full-regen-only | these features exist in the full-regen writer (see rows above) but `patch-shape-block` doesn't yet mirror them — editing an imported deck via `update` silently drops any change to these, even though a from-scratch `pptx-bytes` build honors them correctly. Prioritize by real-edit frequency: effects/crop/hyperlinks/hidden likely highest value |
 | Patch/update path | Newly-imported comments/notes text edited *in place* | ❌ not implemented | full-regen-only for now; only brand-new comments/notes on previously-comment/notes-less slides get added by patching |
 | Deferred subsystems | SmartArt / OLE / animations (`p:timing`) | ❌ out of scope | large independent subsystems, not started |
 
