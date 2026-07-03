@@ -2024,32 +2024,64 @@
          "<c:val><c:numRef><c:f>Sheet1!$" col "$2:$" col "$" last-row "</c:f>" (num-cache values) "</c:numRef></c:val>"
          "</c:ser>")))
 
-(defn- bar-chart-body-xml [series]
+(defn- chart-data-labels-xml
+  "A chart's own <c:dLbls>, from :slides/chart-data-labels ({:show-value?
+  :show-category-name? :show-series-name? :show-legend-key? :show-percent?
+  :show-bubble-size?}, all booleans, on the chart shape) -- CT_DLbls'
+  own schema order (legendKey, val, catName, secName, percent,
+  bubbleSize -- each always written explicit \"0\"/\"1\" rather than
+  omitted when false, since PowerPoint otherwise falls back to its own
+  per-chart-type default rather than a real \"off\"). Chart-wide (one
+  <c:dLbls> for the whole plot, not per-series) -- the common real-deck
+  ask (\"show value on every bar/slice\") doesn't need per-series
+  control. Schema-ordered right after the last <c:ser>, before
+  gapWidth/marker/holeSize/axId (whichever tail element a given chart
+  type has next) in every *-chart-body-xml caller. nil (no element at
+  all) when the chart has no data-label config -- previously there was
+  no way to show data labels on ANY chart at all, regardless of
+  source."
+  [labels]
+  (when labels
+    (str "<c:dLbls>"
+         "<c:showLegendKey val=\"" (if (:show-legend-key? labels) "1" "0") "\"/>"
+         "<c:showVal val=\"" (if (:show-value? labels) "1" "0") "\"/>"
+         "<c:showCatName val=\"" (if (:show-category-name? labels) "1" "0") "\"/>"
+         "<c:showSerName val=\"" (if (:show-series-name? labels) "1" "0") "\"/>"
+         "<c:showPercent val=\"" (if (:show-percent? labels) "1" "0") "\"/>"
+         "<c:showBubbleSize val=\"" (if (:show-bubble-size? labels) "1" "0") "\"/>"
+         "</c:dLbls>")))
+
+(defn- bar-chart-body-xml [series data-labels]
   (str "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>"
        (apply str (map-indexed chart-series-xml series))
+       (chart-data-labels-xml data-labels)
        "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>"))
 
-(defn- line-chart-body-xml [series]
+(defn- line-chart-body-xml [series data-labels]
   (str "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>"
        (apply str (map-indexed chart-series-xml series))
+       (chart-data-labels-xml data-labels)
        "<c:marker val=\"1\"/><c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:lineChart>"))
 
 (defn- pie-chart-body-xml
   "A pie chart plots exactly one series and has no value/category axes."
-  [series]
-  (str "<c:pieChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series)) "</c:pieChart>"))
+  [series data-labels]
+  (str "<c:pieChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series))
+       (chart-data-labels-xml data-labels) "</c:pieChart>"))
 
-(defn- area-chart-body-xml [series]
+(defn- area-chart-body-xml [series data-labels]
   (str "<c:areaChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>"
        (apply str (map-indexed chart-series-xml series))
+       (chart-data-labels-xml data-labels)
        "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:areaChart>"))
 
 (defn- doughnut-chart-body-xml
   "A doughnut chart plots exactly one series and has no value/category
   axes, same as pie -- its one structural difference is holeSize, the
   ring's inner-hole diameter as a percentage of the outer diameter."
-  [series]
+  [series data-labels]
   (str "<c:doughnutChart><c:varyColors val=\"1\"/>" (chart-series-xml 0 (first series))
+       (chart-data-labels-xml data-labels)
        "<c:holeSize val=\"50\"/></c:doughnutChart>"))
 
 (defn- scatter-series-xml
@@ -2070,9 +2102,10 @@
          "<c:yVal><c:numRef><c:f>Sheet1!$" col "$2:$" col "$" last-row "</c:f>" (num-cache values) "</c:numRef></c:yVal>"
          "</c:ser>")))
 
-(defn- scatter-chart-body-xml [series]
+(defn- scatter-chart-body-xml [series data-labels]
   (str "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:varyColors val=\"0\"/>"
        (apply str (map-indexed scatter-series-xml series))
+       (chart-data-labels-xml data-labels)
        "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:scatterChart>"))
 
 (def ^:private axisless-chart-types
@@ -2132,16 +2165,16 @@
   only: rel-id + resolved chart-part/workbook-part path, never the
   chart's own visual configuration), so these are settable only when
   hand-authoring or programmatically building a deck, not round-tripped."
-  [{:keys [chart-type series legend-position axis-titles]}]
+  [{:keys [chart-type series legend-position axis-titles data-labels]}]
   (let [axisless? (axisless-chart-types chart-type)
         scatter? (= :scatter chart-type)
         body (case chart-type
-               :line (line-chart-body-xml series)
-               :area (area-chart-body-xml series)
-               :pie (pie-chart-body-xml series)
-               :doughnut (doughnut-chart-body-xml series)
-               :scatter (scatter-chart-body-xml series)
-               (bar-chart-body-xml series))]
+               :line (line-chart-body-xml series data-labels)
+               :area (area-chart-body-xml series data-labels)
+               :pie (pie-chart-body-xml series data-labels)
+               :doughnut (doughnut-chart-body-xml series data-labels)
+               :scatter (scatter-chart-body-xml series data-labels)
+               (bar-chart-body-xml series data-labels))]
     (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
          "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
          "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
@@ -2234,7 +2267,8 @@
                  :chart-filename chart-filename
                  :chart-xml (chart-space-xml {:chart-type (:slides/chart-type shape) :series series
                                               :legend-position (:slides/chart-legend-position shape)
-                                              :axis-titles (:slides/chart-axis-titles shape)})
+                                              :axis-titles (:slides/chart-axis-titles shape)
+                                              :data-labels (:slides/chart-data-labels shape)})
                  :chart-rels-path (str "ppt/charts/_rels/chart" n ".xml.rels")
                  :chart-rels-xml (ooxml/relationships-xml
                                   [(ooxml/relationship {:id "rId1" :type rel-package

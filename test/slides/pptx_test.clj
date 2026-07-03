@@ -539,6 +539,41 @@
           chart-xml (entries "ppt/charts/chart1.xml")]
       (is (not (re-find #"<c:title>" chart-xml))))))
 
+(deftest writes-chart-data-labels
+  (testing "an explicit config writes <c:dLbls> right after the last <c:ser>, before <c:axId>"
+    (let [deck (-> (m/deck "deck" {:slides/title "Labeled bars"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data-labels {:show-value? true :show-category-name? true}
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (re-find #"</c:ser><c:dLbls><c:showLegendKey val=\"0\"/><c:showVal val=\"1\"/><c:showCatName val=\"1\"/><c:showSerName val=\"0\"/><c:showPercent val=\"0\"/><c:showBubbleSize val=\"0\"/></c:dLbls><c:axId"
+                    chart-xml))))
+  (testing "a pie chart's own <c:dLbls> is schema-ordered before </c:pieChart>"
+    (let [deck (-> (m/deck "deck" {:slides/title "Labeled pie"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart :slides/chart-type :pie
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data-labels {:show-percent? true}
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120] ["Q2" 180]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (re-find #"<c:showPercent val=\"1\"/><c:showBubbleSize val=\"0\"/></c:dLbls></c:pieChart>" chart-xml))))
+  (testing "no :slides/chart-data-labels -- no <c:dLbls> at all, unchanged from before this feature existed"
+    (let [deck (-> (m/deck "deck" {:slides/title "No labels"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "c1" :slides/shape :chart
+                                      :slides/x 1.0 :slides/y 1.0 :slides/w 4.0 :slides/h 3.0
+                                      :slides/chart-data {:rows [["Quarter" "Revenue"] ["Q1" 120]]}}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          chart-xml (entries "ppt/charts/chart1.xml")]
+      (is (not (re-find #"<c:dLbls>" chart-xml))))))
+
 (deftest chart-shape-with-multiple-series-and-line-type-renders-all-series
   (let [deck (-> (m/deck "deck" {:slides/title "Multi-series"})
                  (m/add-slide
