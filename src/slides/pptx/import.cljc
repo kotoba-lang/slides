@@ -45,6 +45,8 @@
     (:drawingml/rows shape) (assoc :slides/rows (:drawingml/rows shape))
     (:drawingml/cells shape) (assoc :slides/cells (:drawingml/cells shape))
     (:drawingml/table-style-flags shape) (assoc :slides/table-style-flags (:drawingml/table-style-flags shape))
+    (:drawingml/column-widths shape) (assoc :slides/column-widths (:drawingml/column-widths shape))
+    (:drawingml/row-heights shape) (assoc :slides/row-heights (:drawingml/row-heights shape))
     (:drawingml/geometry shape) (assoc :slides/geometry (:drawingml/geometry shape))
     (:drawingml/rotation shape) (assoc :slides/rotation (:drawingml/rotation shape))
     (:drawingml/flip-h shape) (assoc :slides/flip-h (:drawingml/flip-h shape))

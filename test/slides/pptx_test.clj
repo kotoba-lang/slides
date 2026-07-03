@@ -330,6 +330,40 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:graphicFrameLocks noGrp=\"1\"/>" slide-xml)))))
 
+(deftest writes-and-round-trips-table-column-row-dimensions
+  (let [column-widths [3.0 1.0]
+        row-heights [0.3 0.7]
+        deck (-> (m/deck "deck" {:slides/title "Uneven table"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/w 4.0 :slides/h 1.0
+                                    :slides/rows [["Description" "Amount"] ["Q1" "10"]]
+                                    :slides/column-widths column-widths
+                                    :slides/row-heights row-heights}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the captured column widths / row heights are written, replacing even division"
+      (is (re-find #"<a:gridCol w=\"2743200\"/><a:gridCol w=\"914400\"/>" slide-xml))
+      (is (re-find #"<a:tr h=\"274320\">" slide-xml))
+      (is (re-find #"<a:tr h=\"640080\">" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= column-widths (:slides/column-widths table)))
+        (is (= row-heights (:slides/row-heights table))))))
+  (testing "no :slides/column-widths/:slides/row-heights -- the historical even-division default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "t1" :slides/shape :table
+                                      :slides/w 4.0 :slides/h 1.0
+                                      :slides/rows [["A" "B"] ["1" "2"]]}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:gridCol w=\"1828800\"/><a:gridCol w=\"1828800\"/>" slide-xml))
+      (is (= 2 (count (re-seq #"<a:tr h=\"457200\">" slide-xml)))))))
+
 (deftest writes-and-round-trips-picture-crop
   (let [deck (-> (m/deck "deck" {:slides/title "Cropped"})
                  (m/add-slide

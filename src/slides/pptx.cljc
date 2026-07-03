@@ -1219,7 +1219,7 @@
   a merge/span/per-cell-fill, else the plain :slides/rows text grid, from
   either a hand-authored deck or a PPTX import) round-trip through full
   PPTX regeneration, not just the source-aware `update` patch path."
-  [idx {:slides/keys [id rows cells w h] :as shape}]
+  [idx {:slides/keys [id rows cells w h column-widths row-heights] :as shape}]
   (let [rows (or cells rows)
         col-count (max 1 (apply max 1 (map count rows)))
         norm-rows (normalize-rows rows col-count)
@@ -1227,7 +1227,13 @@
         total-w (emu (positive-numeric w 8.4))
         total-h (emu (positive-numeric h 2.0))
         col-w (quot total-w col-count)
-        row-h (quot total-h row-count)]
+        row-h (quot total-h row-count)
+        col-widths-emu (if (= (count column-widths) col-count)
+                          (map emu column-widths)
+                          (repeat col-count col-w))
+        row-heights-emu (if (= (count row-heights) row-count)
+                           (map emu row-heights)
+                           (repeat row-count row-h))]
     (str "<p:graphicFrame>"
          "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Table " idx))) "\"" (hidden-attr shape) "/>"
          "<p:cNvGraphicFramePr><a:graphicFrameLocks" (graphic-frame-locks-xml (:slides/locks shape)) "/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
@@ -1235,8 +1241,8 @@
          "<a:ext cx=\"" total-w "\" cy=\"" total-h "\"/></p:xfrm>"
          "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
          "<a:tbl><a:tblPr" (table-style-flags-xml (:slides/table-style-flags shape)) "><a:tableStyleId>" default-table-style-id "</a:tableStyleId></a:tblPr>"
-         (table-grid-xml (repeat col-count col-w))
-         (apply str (map #(table-row-xml row-h %) norm-rows))
+         (table-grid-xml col-widths-emu)
+         (apply str (map table-row-xml row-heights-emu norm-rows))
          "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>")))
 
 (defn- pic-locks-xml
