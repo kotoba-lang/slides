@@ -270,6 +270,7 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 | Shapes | Text/rect/pic/table/chart/connector writers | ✅ full regen | one writer function per shape kind |
 | Shapes | Hidden flag (`cNvPr hidden="1"`) | ✅ full regen | wired into all 6 shape writers |
 | Fill/line/effects | Gradient fill (shape + master background) | ✅ full regen | real multi-stop `<a:gradFill>`, not a first-stop approximation |
+| Fill/line/effects | Per-slide background override (`:slides/slide-background`) | ✅ full regen | takes precedence over the resolved master background for that one slide; this writer already emits a literal `<p:bg>` on every slide (not only slides with a genuine override), so a re-imported plain slide legitimately carries its own `:slides/slide-background` too, equal to the master's |
 | Fill/line/effects | Line cap/join/dash | ✅ full regen | |
 | Fill/line/effects | Combined `<a:effectLst>` (glow + shadow + reflection) | ✅ full regen | OOXML allows only one `effectLst` per shape, so all three share one write path |
 | Fill/line/effects | Picture crop (`srcRect`) + recolor (grayscale/alpha-mod) | ✅ full regen | `<a:blip>` stays self-closing when neither effect is set, unchanged from before either feature existed |
