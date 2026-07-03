@@ -1109,11 +1109,14 @@
 
 (defn- table-cell-border-side-xml
   "One <a:tcPr> border-side child from a cell's own :borders side map
-  ({:width pt :color hex}, from drawingml.parse/table-cell-borders on
-  import) -- an <a:ln>-shaped element, `tag` one of lnL/lnR/lnT/lnB."
-  [tag {:keys [width color]}]
+  ({:width pt :color hex :dash keyword}, from drawingml.parse/table-
+  cell-borders on import) -- an <a:ln>-shaped element, `tag` one of
+  lnL/lnR/lnT/lnB. :dash writes <a:prstDash>, schema-ordered after the
+  fill (same relative position shape-level line dash uses on <a:ln>)."
+  [tag {:keys [width color dash]}]
   (str "<a:" tag (when width (str " w=\"" (long (Math/round (* (double width) 12700.0))) "\"")) ">"
        "<a:solidFill><a:srgbClr val=\"" (hex-color color "000000") "\"/></a:solidFill>"
+       (when dash (str "<a:prstDash val=\"" (name dash) "\"/>"))
        "</a:" tag ">"))
 
 (defn- table-cell-borders-xml
