@@ -1981,6 +1981,61 @@
     (testing "explicitly nilling the only hyperlink-action key removes an existing <a:hlinkClick> entirely"
       (is (not (re-find #"<a:hlinkClick" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
 
+(deftest update-pptx-patches-lock-flags-onto-existing-shapes
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/_rels/slide1.xml.rels" "<Relationships><Relationship Id=\"rId2\" Type=\"image\" Target=\"../media/image1.png\"/></Relationships>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"Photo\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
+                                                    "<p:blipFill><a:blip r:embed=\"rId2\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Box\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Box</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"4\" name=\"Table\"/>"
+                                                    "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+                                                    "<p:xfrm><a:off x=\"914400\" y=\"2743200\"/><a:ext cx=\"1828800\" cy=\"914400\"/></p:xfrm>"
+                                                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
+                                                    "<a:tbl><a:tblPr/><a:tblGrid><a:gridCol w=\"1828800\"/></a:tblGrid>"
+                                                    "<a:tr h=\"914400\"><a:tc><a:txBody><a:p><a:r><a:t>Cell</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>"
+                                                    "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/media/image1.png" "PNG-BYTES"}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        pic-locks {:no-move? true}
+        sp-locks {:no-grp? true :no-rot? true}
+        table-locks {:no-resize? true}
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Photo" :slides/shape :image :slides/locks pic-locks
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/pic :ooxml/index 0}}
+                                               {:slides/id "Box" :slides/shape :text :slides/locks sp-locks
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "Table" :slides/shape :table :slides/locks table-locks
+                                                :slides/w 2.0 :slides/h 1.0 :slides/rows [["Cell"]]
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/graphicFrame :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "picLocks attributes are replaced in place"
+      (is (re-find #"<a:picLocks noMove=\"1\"/>" slide)))
+    (testing "an spLocks child is added, <p:cNvSpPr>'s own txBox=\"1\" attribute preserved"
+      (is (re-find #"<p:cNvSpPr txBox=\"1\"><a:spLocks noGrp=\"1\" noRot=\"1\"/></p:cNvSpPr>" slide)))
+    (testing "graphicFrameLocks attributes are replaced in place"
+      (is (re-find #"<a:graphicFrameLocks noResize=\"1\"/>" slide)))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
