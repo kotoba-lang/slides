@@ -2188,6 +2188,42 @@
             removed-slide (get (zip-entries (pptx/update-pptx-bytes linked-bytes deck-removed)) "ppt/slides/slide1.xml")]
         (is (not (re-find #"<a:hlinkClick" removed-slide)))))))
 
+(deftest update-pptx-patches-existing-notes-text-in-place
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/_rels/slide1.xml.rels" (str "<Relationships>"
+                                                              "<Relationship Id=\"rId1\" Type=\"" pptx/rel-notes-slide "\" Target=\"../notesSlides/notesSlide1.xml\"/>"
+                                                              "</Relationships>")
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Intro</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/notesSlides/notesSlide1.xml" (str "<p:notes><p:cSld><p:spTree>"
+                                                             "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Notes Placeholder\"/><p:cNvSpPr><a:spLocks noGrp=\"1\"/></p:cNvSpPr>"
+                                                             "<p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr>"
+                                                             "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>"
+                                                             "<a:p><a:r><a:t>Old note</a:t></a:r></a:p>"
+                                                             "</p:txBody></p:sp>"
+                                                             "</p:spTree></p:cSld></p:notes>")
+                      "ppt/notesSlides/_rels/notesSlide1.xml.rels" "<Relationships/>"}
+        base-bytes (zip-bytes base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/notes "Updated note text"
+                               :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Intro"
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        notes-xml (entries "ppt/notesSlides/notesSlide1.xml")]
+    (testing "the existing notesSlide's own text is replaced in place, no new part/relationship created"
+      (is (re-find #"<a:t>Updated note text</a:t>" notes-xml))
+      (is (not (re-find #"Old note" notes-xml)))
+      (is (not (contains? entries "ppt/notesSlides/notesSlide2.xml"))))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
