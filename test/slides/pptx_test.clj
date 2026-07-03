@@ -2071,6 +2071,50 @@
     (testing "explicitly nilling the only highlight key removes an existing <a:highlight> entirely"
       (is (not (re-find #"<a:highlight" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
 
+(deftest update-pptx-patches-italic-underline-strikethrough-and-baseline-onto-an-existing-run
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Plain\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"/><a:t>Plain</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"AlreadyStyled\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\" i=\"1\" u=\"sng\" strike=\"sngStrike\" baseline=\"30000\"/><a:t>Was styled</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Plain" :slides/shape :text
+                                                :slides/italic true :slides/underline true
+                                                :slides/strikethrough true :slides/baseline 30.0
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "AlreadyStyled" :slides/shape :text
+                                                :slides/italic false :slides/underline false
+                                                :slides/strikethrough false :slides/baseline nil
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "a run given italic/underline/strikethrough/baseline with no other change actually gains them -- previously silently dropped since patch-text's gate didn't check these keys at all"
+      (is (re-find #"<a:rPr sz=\"2400\" i=\"1\" u=\"sng\" strike=\"sngStrike\" baseline=\"30000\">" slide)))
+    (testing "explicitly setting all four to false/nil clears an already-styled run back to plain"
+      (let [second-sp (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))]
+        (is (re-find #"\bi=\"0\"" second-sp))
+        (is (re-find #"\bu=\"none\"" second-sp))
+        (is (re-find #"\bstrike=\"noStrike\"" second-sp))
+        (is (re-find #"\bbaseline=\"0\"" second-sp))))))
+
 (deftest update-pptx-patches-lock-flags-onto-existing-shapes
   (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
                       "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
