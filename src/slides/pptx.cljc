@@ -675,7 +675,7 @@
   {:first-slide "firstslide" :last-slide "lastslide" :next-slide "nextslide"
    :previous-slide "previousslide" :last-viewed-slide "lastslideviewed" :end-show "endshow"})
 
-(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline placeholder hyperlink-action] :as shape} text major? ea-font hlink-rel-id]
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline char-spacing highlight placeholder hyperlink-action] :as shape} text major? ea-font hlink-rel-id]
   (let [field-type (field-placeholder-types (:type placeholder))
         open-tag (if field-type (str "<a:fld id=\"" field-id "\" type=\"" field-type "\">") "<a:r>")
         close-tag (if field-type "</a:fld>" "</a:r>")]
@@ -685,7 +685,10 @@
          (when underline " u=\"sng\"")
          (when strikethrough " strike=\"sngStrike\"")
          (when baseline (str " baseline=\"" (long (* baseline 1000)) "\""))
-         "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
+         (when char-spacing (str " spc=\"" (long (* 100 char-spacing)) "\""))
+         ">"
+         (when highlight (str "<a:highlight><a:srgbClr val=\"" (hex-color highlight "FFFF00") "\"/></a:highlight>"))
+         "<a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
          (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
          "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
          (cond
@@ -2628,6 +2631,25 @@
              "<a:solidFill><a:srgbClr val=\"" hex "\"/></a:solidFill>"
              (subs rpr close-idx))))))
 
+(defn- set-rpr-highlight
+  "A run's own <a:highlight> (text-background highlight color, distinct
+  from its <a:solidFill> text color) -- nil removes an existing
+  <a:highlight> entirely, matching patch-effects'/set-hlink-action's
+  \"contains? key with nil value clears it\" convention. Inserted right
+  after the opening <a:rPr...> tag when absent, same insertion point
+  set-rpr-color uses for a first-time <a:solidFill>."
+  [rpr color]
+  (if color
+    (let [hex (hex-color color "FFFF00")]
+      (if (re-find #"<a:highlight\b[\s\S]*?</a:highlight>" rpr)
+        (str/replace-first rpr #"<a:highlight\b[\s\S]*?</a:highlight>"
+                           (replacement-literal (str "<a:highlight><a:srgbClr val=\"" hex "\"/></a:highlight>")))
+        (let [close-idx (inc (str/index-of rpr ">"))]
+          (str (subs rpr 0 close-idx)
+               "<a:highlight><a:srgbClr val=\"" hex "\"/></a:highlight>"
+               (subs rpr close-idx)))))
+    (str/replace rpr #"<a:highlight\b[\s\S]*?</a:highlight>" "")))
+
 (defn- set-hlink-action
   "A run's own <a:hlinkClick action=\"ppaction://...\"/> (built-in Next/
   Previous/First/Last-slide/end-show navigation, from drawingml.parse/
@@ -2667,6 +2689,8 @@
     (:slides/font-size shape) (set-open-tag-attr "sz" (* 100 (long (positive-numeric (:slides/font-size shape) 24))))
     (contains? shape :slides/bold) (set-open-tag-attr "b" (if (:slides/bold shape) "1" "0"))
     (:slides/color shape) (set-rpr-color (:slides/color shape))
+    (contains? shape :slides/char-spacing) (set-open-tag-attr "spc" (long (* 100 (or (:slides/char-spacing shape) 0))))
+    (contains? shape :slides/highlight) (set-rpr-highlight (:slides/highlight shape))
     (contains? shape :slides/hyperlink-action) (set-hlink-action (:slides/hyperlink-action shape))
     (contains? shape :slides/hyperlink-rel-id) (set-hlink-rid (:slides/hyperlink-rel-id shape))))
 
@@ -2723,6 +2747,7 @@
     (patch-paragraphs block (:slides/text shape) shape)
 
     (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold)
+        (contains? shape :slides/char-spacing) (contains? shape :slides/highlight)
         (contains? shape :slides/hyperlink-action) (contains? shape :slides/hyperlink-rel-id))
     (patch-all-rpr block shape)
 

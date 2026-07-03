@@ -909,6 +909,24 @@
       (is (not (re-find #"\bstrike=\"sngStrike\"" slide-xml)))
       (is (not (re-find #"\bbaseline=" slide-xml))))))
 
+(deftest writes-highlight-color-and-char-spacing
+  (let [deck (-> (m/deck "deck" {:slides/title "Highlighted"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "t" "Tracked"
+                                               {:slides/highlight "FFFF00" :slides/char-spacing 1.5})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (is (re-find #"<a:rPr[^>]*\bspc=\"150\"" slide-xml))
+    (is (re-find #"<a:highlight><a:srgbClr val=\"FFFF00\"/></a:highlight>" slide-xml)))
+  (testing "plain text has neither attribute nor element"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"\bspc=" slide-xml)))
+      (is (not (re-find #"<a:highlight>" slide-xml))))))
+
 (deftest writes-hyperlink-as-native-hlinkclick-and-relationship
   (let [deck (-> (m/deck "deck" {:slides/title "Linked"})
                  (m/add-slide
@@ -2015,6 +2033,43 @@
       (is (re-find #"<a:rPr sz=\"2400\"><a:hlinkClick action=\"ppaction://hlinkshowjump\?jump=nextslide\"/></a:rPr>" slide)))
     (testing "explicitly nilling the only hyperlink-action key removes an existing <a:hlinkClick> entirely"
       (is (not (re-find #"<a:hlinkClick" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
+
+(deftest update-pptx-patches-highlight-and-char-spacing-onto-an-existing-run
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Plain\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"/><a:t>Plain</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"AlreadyHighlighted\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"><a:highlight><a:srgbClr val=\"00FF00\"/></a:highlight></a:rPr><a:t>Was green</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Plain" :slides/shape :text
+                                                :slides/highlight "FFFF00" :slides/char-spacing 1.5
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "AlreadyHighlighted" :slides/shape :text :slides/highlight nil
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "a run given a highlight color and character spacing gains both, spc on the opening tag and highlight as a child"
+      (is (re-find #"<a:rPr sz=\"2400\" spc=\"150\"><a:highlight><a:srgbClr val=\"FFFF00\"/></a:highlight></a:rPr>" slide)))
+    (testing "explicitly nilling the only highlight key removes an existing <a:highlight> entirely"
+      (is (not (re-find #"<a:highlight" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
 
 (deftest update-pptx-patches-lock-flags-onto-existing-shapes
   (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
