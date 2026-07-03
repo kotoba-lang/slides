@@ -64,6 +64,8 @@
     (:drawingml/underline shape) (assoc :slides/underline (:drawingml/underline shape))
     (:drawingml/strikethrough shape) (assoc :slides/strikethrough (:drawingml/strikethrough shape))
     (:drawingml/baseline shape) (assoc :slides/baseline (:drawingml/baseline shape))
+    (:drawingml/char-spacing shape) (assoc :slides/char-spacing (:drawingml/char-spacing shape))
+    (:drawingml/highlight shape) (assoc :slides/highlight (:drawingml/highlight shape))
     (:drawingml/hyperlink shape) (assoc :slides/hyperlink (:drawingml/hyperlink shape))
     (:drawingml/hyperlink-slide-part shape) (assoc :slides/hyperlink-slide-part (:drawingml/hyperlink-slide-part shape))
     (:drawingml/hyperlink-action shape) (assoc :slides/hyperlink-action (:drawingml/hyperlink-action shape))

@@ -279,6 +279,7 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 | Text/paragraphs | Bullets incl. numbered-list `startAt`, tab stops, body autofit | ✅ full regen | |
 | Text/paragraphs | Vertical text direction (`vert`) | ✅ full regen | East Asian vertical writing, WordArt-style stacked text, Mongolian vertical layout |
 | Text/paragraphs | Run formatting + CJK-aware `lang` heuristic | ✅ full regen | |
+| Text/paragraphs | Highlight color + character spacing | ✅ full regen + patch | added this session — `set-rpr-highlight` (child-element insert, same shape as `set-rpr-color`) + `spc` via the existing `set-open-tag-attr`; wired into both `paragraph-run-xml` (full regen) and `apply-rpr-overrides` (patch) |
 | Hyperlinks | External URL | ✅ full regen + patch | `TargetMode="External"` |
 | Hyperlinks | Internal same-deck slide jump | ✅ full regen + patch | writes a valid `Internal` relationship (bare sibling filename, no `TargetMode`) — fixes a real bug where every hyperlink, internal or external, was previously written as external |
 | Hyperlinks | Built-in navigation action (`ppaction://...`) | ✅ full regen | self-contained `<a:hlinkClick action="...">`, no relationship at all; takes priority over an r:id-based link on the same run |
