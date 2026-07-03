@@ -302,6 +302,34 @@
       (is (re-find #"<p:cNvSpPr txBox=\"1\"/>" slide-xml))
       (is (re-find #"<p:cNvSpPr/>" slide-xml)))))
 
+(deftest writes-and-round-trips-graphic-frame-locks
+  (let [locks {:no-grp? true :no-resize? true}
+        deck (-> (m/deck "deck" {:slides/title "Locked table"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/w 4.0 :slides/h 1.0
+                                    :slides/rows [["A" "B"] ["1" "2"]]
+                                    :slides/locks locks}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the captured lock flags are written, replacing the default"
+      (is (re-find #"<a:graphicFrameLocks noGrp=\"1\" noResize=\"1\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= locks (:slides/locks table))))))
+  (testing "no :slides/locks -- the historical noGrp=\"1\" default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide
+                    (-> (m/slide "s1")
+                        (m/add-shape {:slides/id "t1" :slides/shape :table
+                                      :slides/w 4.0 :slides/h 1.0
+                                      :slides/rows [["A" "B"] ["1" "2"]]}))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:graphicFrameLocks noGrp=\"1\"/>" slide-xml)))))
+
 (deftest writes-and-round-trips-picture-crop
   (let [deck (-> (m/deck "deck" {:slides/title "Cropped"})
                  (m/add-slide
