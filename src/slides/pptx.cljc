@@ -675,19 +675,40 @@
   {:first-slide "firstslide" :last-slide "lastslide" :next-slide "nextslide"
    :previous-slide "previousslide" :last-viewed-slide "lastslideviewed" :end-show "endshow"})
 
-(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline char-spacing highlight placeholder hyperlink-action] :as shape} text major? ea-font hlink-rel-id]
+(def ^:private underline-style->ooxml
+  "The reverse of drawingml.parse/underline-style-map -- each :slides/
+  underline-style keyword back to its own OOXML `u` attribute value."
+  {:double "dbl" :heavy "heavy" :dotted "dotted" :dotted-heavy "dottedHeavy"
+   :dash "dash" :dash-heavy "dashHeavy" :dash-long "dashLong" :dash-long-heavy "dashLongHeavy"
+   :dot-dash "dotDash" :dot-dash-heavy "dotDashHeavy" :dot-dot-dash "dotDotDash"
+   :dot-dot-dash-heavy "dotDotDashHeavy" :wavy "wavy" :wavy-heavy "wavyHeavy" :wavy-double "wavyDbl"
+   :words "words"})
+
+(defn- underline-attr-value
+  "The run's `u` attribute value: its own non-default style when
+  :slides/underline-style is set (an underlined run's presence is
+  implied by the style itself, no separate :slides/underline true
+  needed), else \"sng\" for a plain underlined run, else \"none\"."
+  [{:slides/keys [underline underline-style]}]
+  (cond
+    underline-style (get underline-style->ooxml underline-style (name underline-style))
+    underline "sng"
+    :else "none"))
+
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline underline-style underline-color strikethrough baseline char-spacing highlight placeholder hyperlink-action] :as shape} text major? ea-font hlink-rel-id]
   (let [field-type (field-placeholder-types (:type placeholder))
         open-tag (if field-type (str "<a:fld id=\"" field-id "\" type=\"" field-type "\">") "<a:r>")
         close-tag (if field-type "</a:fld>" "</a:r>")]
     (str open-tag "<a:rPr lang=\"" (cjk-lang text) "\" sz=\"" (* 100 (long (positive-numeric font-size 24))) "\""
          (when bold " b=\"1\"")
          (when italic " i=\"1\"")
-         (when underline " u=\"sng\"")
+         (when (or underline underline-style) (str " u=\"" (underline-attr-value shape) "\""))
          (when strikethrough " strike=\"sngStrike\"")
          (when baseline (str " baseline=\"" (long (* baseline 1000)) "\""))
          (when char-spacing (str " spc=\"" (long (* 100 char-spacing)) "\""))
          ">"
          (when highlight (str "<a:highlight><a:srgbClr val=\"" (hex-color highlight "FFFF00") "\"/></a:highlight>"))
+         (when underline-color (str "<a:uFill><a:srgbClr val=\"" (hex-color underline-color "000000") "\"/></a:uFill>"))
          "<a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
          (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
          "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
@@ -2650,6 +2671,22 @@
                (subs rpr close-idx)))))
     (str/replace rpr #"<a:highlight\b[\s\S]*?</a:highlight>" "")))
 
+(defn- set-rpr-underline-color
+  "A run's own <a:uFill> (the underline's own color, distinct from its
+  <a:solidFill> text color) -- same insert/replace/remove-when-nil
+  shape as set-rpr-highlight, its sibling."
+  [rpr color]
+  (if color
+    (let [hex (hex-color color "000000")]
+      (if (re-find #"<a:uFill\b[\s\S]*?</a:uFill>" rpr)
+        (str/replace-first rpr #"<a:uFill\b[\s\S]*?</a:uFill>"
+                           (replacement-literal (str "<a:uFill><a:srgbClr val=\"" hex "\"/></a:uFill>")))
+        (let [close-idx (inc (str/index-of rpr ">"))]
+          (str (subs rpr 0 close-idx)
+               "<a:uFill><a:srgbClr val=\"" hex "\"/></a:uFill>"
+               (subs rpr close-idx)))))
+    (str/replace rpr #"<a:uFill\b[\s\S]*?</a:uFill>" "")))
+
 (defn- set-hlink-action
   "A run's own <a:hlinkClick action=\"ppaction://...\"/> (built-in Next/
   Previous/First/Last-slide/end-show navigation, from drawingml.parse/
@@ -2689,12 +2726,14 @@
     (:slides/font-size shape) (set-open-tag-attr "sz" (* 100 (long (positive-numeric (:slides/font-size shape) 24))))
     (contains? shape :slides/bold) (set-open-tag-attr "b" (if (:slides/bold shape) "1" "0"))
     (contains? shape :slides/italic) (set-open-tag-attr "i" (if (:slides/italic shape) "1" "0"))
-    (contains? shape :slides/underline) (set-open-tag-attr "u" (if (:slides/underline shape) "sng" "none"))
+    (or (contains? shape :slides/underline) (contains? shape :slides/underline-style))
+    (set-open-tag-attr "u" (underline-attr-value shape))
     (contains? shape :slides/strikethrough) (set-open-tag-attr "strike" (if (:slides/strikethrough shape) "sngStrike" "noStrike"))
     (contains? shape :slides/baseline) (set-open-tag-attr "baseline" (long (* (or (:slides/baseline shape) 0) 1000)))
     (:slides/color shape) (set-rpr-color (:slides/color shape))
     (contains? shape :slides/char-spacing) (set-open-tag-attr "spc" (long (* 100 (or (:slides/char-spacing shape) 0))))
     (contains? shape :slides/highlight) (set-rpr-highlight (:slides/highlight shape))
+    (contains? shape :slides/underline-color) (set-rpr-underline-color (:slides/underline-color shape))
     (contains? shape :slides/hyperlink-action) (set-hlink-action (:slides/hyperlink-action shape))
     (contains? shape :slides/hyperlink-rel-id) (set-hlink-rid (:slides/hyperlink-rel-id shape))))
 
@@ -2752,6 +2791,7 @@
 
     (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold)
         (contains? shape :slides/italic) (contains? shape :slides/underline)
+        (contains? shape :slides/underline-style) (contains? shape :slides/underline-color)
         (contains? shape :slides/strikethrough) (contains? shape :slides/baseline)
         (contains? shape :slides/char-spacing) (contains? shape :slides/highlight)
         (contains? shape :slides/hyperlink-action) (contains? shape :slides/hyperlink-rel-id))
