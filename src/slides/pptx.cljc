@@ -2502,6 +2502,34 @@
         :else block))
     block))
 
+(defn- patch-body-props
+  "A shape's own <a:bodyPr> (wrap/anchor/margins/autofit/vertical text
+  direction) through the source-aware update path. Regenerates the
+  WHOLE <a:bodyPr> from :slides/body-props via the same body-pr-xml
+  full regen uses -- these attributes/the one autofit child all live on
+  one element, so patching a piece independently risks losing another
+  piece the shape already had (same rationale as patch-effects
+  regenerating the whole effectLst). Only when :slides/body-props is
+  present on the incoming shape map. Replaces an existing <a:bodyPr>
+  (self-closing or paired, whichever the source has) in place --
+  <p:txBody> always has exactly one bodyPr in this writer's own output
+  and in real PowerPoint XML, so no insert-when-absent branch is
+  needed. Previously write-only through full regen; changing a shape's
+  wrap/anchor/margins/autofit/vertical-text-direction via `update`
+  silently did nothing."
+  [block shape]
+  (if (contains? shape :slides/body-props)
+    (let [replacement (body-pr-xml (:slides/body-props shape))]
+      (cond
+        (re-find #"<a:bodyPr\b[^>]*/>" block)
+        (str/replace-first block #"<a:bodyPr\b[^>]*/>" (replacement-literal replacement))
+
+        (re-find #"<a:bodyPr\b[^>]*>[\s\S]*?</a:bodyPr>" block)
+        (str/replace-first block #"<a:bodyPr\b[^>]*>[\s\S]*?</a:bodyPr>" (replacement-literal replacement))
+
+        :else block))
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2683,7 +2711,8 @@
                   (patch-effects shape)
                   (patch-pic-locks shape)
                   (patch-graphic-frame-locks shape)
-                  (patch-sp-locks shape))
+                  (patch-sp-locks shape)
+                  (patch-body-props shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
     (cond
       ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;
