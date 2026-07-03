@@ -275,7 +275,9 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 | Fill/line/effects | Combined `<a:effectLst>` (glow + shadow + reflection) | ✅ full regen | OOXML allows only one `effectLst` per shape, so all three share one write path |
 | Fill/line/effects | Picture crop (`srcRect`) + recolor (grayscale/alpha-mod) | ✅ full regen | `<a:blip>` stays self-closing when neither effect is set, unchanged from before either feature existed |
 | Fill/line/effects | Picture lock flags (`picLocks`) | ✅ full regen | fixed a real bug this session — the writer previously hardcoded `noChangeAspect="1"` regardless of the source picture's actual lock state; falls back to that same historical default only when the shape carries no `:slides/locks` at all |
+| Fill/line/effects | Text/rect shape lock flags (`spLocks`) | ✅ full regen | fixed a real bug this session — the writer previously emitted a bare, self-closing `<p:cNvSpPr/>` for every shape with no lock element at all, silently discarding any lock flags a source shape had; sibling of the `picLocks` fix above |
 | Text/paragraphs | Bullets incl. numbered-list `startAt`, tab stops, body autofit | ✅ full regen | |
+| Text/paragraphs | Vertical text direction (`vert`) | ✅ full regen | East Asian vertical writing, WordArt-style stacked text, Mongolian vertical layout |
 | Text/paragraphs | Run formatting + CJK-aware `lang` heuristic | ✅ full regen | |
 | Hyperlinks | External URL | ✅ full regen + patch | `TargetMode="External"` |
 | Hyperlinks | Internal same-deck slide jump | ✅ full regen + patch | writes a valid `Internal` relationship (bare sibling filename, no `TargetMode`) — fixes a real bug where every hyperlink, internal or external, was previously written as external |
