@@ -1830,6 +1830,44 @@
       (is (re-find #"<a:gradFill><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"336699\"/></a:gs><a:gs pos=\"100000\"><a:srgbClr val=\"AABBCC\"/></a:gs></a:gsLst><a:lin ang=\"5400000\" scaled=\"1\"/></a:gradFill>" slide))
       (is (not (re-find #"<a:solidFill" slide))))))
 
+(deftest update-pptx-patches-hidden-flag-onto-an-existing-shape
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Box\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Box</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"AlreadyHidden\" hidden=\"1\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Hidden</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Box" :slides/shape :rect :slides/hidden true
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "AlreadyHidden" :slides/shape :rect :slides/hidden false
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "a plain shape given :slides/hidden true gains hidden=\"1\""
+      (is (re-find #"<p:cNvPr id=\"2\" name=\"Box\" hidden=\"1\"/>" slide)))
+    (testing "an already-hidden shape given :slides/hidden false loses hidden=\"1\""
+      (is (re-find #"<p:cNvPr id=\"3\" name=\"AlreadyHidden\"/>" slide)))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"

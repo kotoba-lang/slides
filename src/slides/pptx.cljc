@@ -2332,6 +2332,43 @@
            (str open " " attr "=\"" value "\""))
          rest)))
 
+(defn- remove-tag-attr [xml attr]
+  (str/replace xml (re-pattern (str "\\s*\\b" attr "=\"[^\"]*\"")) ""))
+
+(defn- set-self-closing-tag-attr
+  "Like set-open-tag-attr, but for a self-closing tag string (e.g.
+  <p:cNvPr id=\"2\" name=\"Box\"/>) -- set-open-tag-attr's own
+  close-idx/subs split would land INSIDE the trailing \"/>\" here
+  (there being no separate opening-tag-then-children shape to split on)
+  and corrupt the tag, so this inserts before the closing \"/>\"
+  directly instead."
+  [xml attr value]
+  (let [attr-pattern (re-pattern (str "\\b" attr "=\"[^\"]*\""))]
+    (if (re-find attr-pattern xml)
+      (str/replace-first xml attr-pattern (str attr "=\"" value "\""))
+      (str/replace-first xml #"/>$" (str " " attr "=\"" value "\"/>")))))
+
+(defn- patch-hidden-flag
+  "A shape's own :slides/hidden through the source-aware update path,
+  toggling <p:cNvPr>'s own hidden=\"1\" attribute in place. Only touches
+  the attribute when :slides/hidden is explicitly present on the
+  incoming shape map (true to hide, false to un-hide) -- absent leaves
+  whatever the source already had untouched, matching every other patch
+  function's \"only edit what's explicitly given\" convention.
+  Previously :slides/hidden was write-only through full PPTX
+  regeneration; toggling a shape's visibility via `update` silently did
+  nothing."
+  [block shape]
+  (if (contains? shape :slides/hidden)
+    (if-let [cnvpr (re-find #"<p:cNvPr\b[^>]*/>" block)]
+      (str/replace-first block cnvpr
+                         (replacement-literal
+                          (if (:slides/hidden shape)
+                            (set-self-closing-tag-attr cnvpr "hidden" "1")
+                            (remove-tag-attr cnvpr "hidden"))))
+      block)
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2483,6 +2520,7 @@
 (defn- patch-shape-block [block shape kind]
   (let [block (-> block
                   (patch-or-insert-xfrm shape kind)
+                  (patch-hidden-flag shape)
                   (patch-gradient-fill shape)
                   (patch-solid-fill shape)
                   (patch-line-fill shape))
