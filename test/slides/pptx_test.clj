@@ -586,6 +586,28 @@
         (is (= {:type :auto-num :scheme "arabicPeriod" :start-at 5} (:bullet (first (:slides/paragraphs body)))))
         (is (= {:type :auto-num :scheme "arabicPeriod"} (:bullet (second (:slides/paragraphs body)))))))))
 
+(deftest writes-and-round-trips-paragraph-tab-stops
+  (let [tab-stops [{:position 1.0} {:position 2.0 :align :right} {:position 3.0 :align :decimal}]
+        deck (-> (m/deck "deck" {:slides/title "Tabbed"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "List"})
+                      (m/add-shape {:slides/id "body" :slides/shape :text
+                                    :slides/x 0.8 :slides/y 1.0 :slides/w 8.0 :slides/h 2.0
+                                    :slides/font-size 18
+                                    :slides/paragraphs
+                                    [{:text "Item\tValue\t1.5" :tab-stops tab-stops}
+                                     {:text "Plain line"}]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing ":left (the schema default) is omitted from algn; the other alignments are written"
+      (is (re-find #"<a:tabLst><a:tab pos=\"914400\"/><a:tab pos=\"1828800\" algn=\"r\"/><a:tab pos=\"2743200\" algn=\"dec\"/></a:tabLst>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            body (some #(when (= "body" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= tab-stops (:tab-stops (first (:slides/paragraphs body)))))
+        (is (not (contains? (second (:slides/paragraphs body)) :tab-stops)))))))
+
 (deftest text-shape-with-fill-writes-a-styled-non-rect-autoshape
   (let [deck (-> (m/deck "deck" {:slides/title "Callout"})
                  (m/add-slide

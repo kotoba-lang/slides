@@ -597,8 +597,28 @@
     (re-find #"[一-鿿㐀-䶿]" (str text)) "zh-CN"
     :else "en-US"))
 
-(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing level margin-left]}]
-  (when (or align bullet line-spacing level margin-left)
+(defn- tab-stop-xml
+  "One <a:tab> from a paragraph's own :tab-stops entry ({:position inches
+  :align :left/:center/:right/:decimal}, from drawingml.parse/paragraph-
+  tab-stops on import) -- :left (the schema default) isn't written as
+  algn=\"l\" at all, matching how it was captured as absent on import."
+  [{:keys [position align]}]
+  (str "<a:tab pos=\"" (emu position) "\""
+       (when align (str " algn=\"" (case align :center "ctr" :right "r" :decimal "dec") "\""))
+       "/>"))
+
+(defn- tab-stops-xml
+  "A paragraph's own :tab-stops into <a:pPr>'s own <a:tabLst>, schema-
+  ordered after the bullet and before <a:defRPr> (this writer never emits
+  defRPr, so tabLst is simply the last child). \"\" (no element at all)
+  when the paragraph has no explicit tab stops, unchanged from before
+  this feature existed."
+  [tab-stops]
+  (when (seq tab-stops)
+    (str "<a:tabLst>" (apply str (map tab-stop-xml tab-stops)) "</a:tabLst>")))
+
+(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing level margin-left tab-stops]}]
+  (when (or align bullet line-spacing level margin-left tab-stops)
     (str "<a:pPr"
          (when level (str " lvl=\"" (long level) "\""))
          (when margin-left (str " marL=\"" (emu margin-left) "\""))
@@ -613,6 +633,7 @@
                           "/>")
            :none "<a:buNone/>"
            nil nil)
+         (tab-stops-xml tab-stops)
          "</a:pPr>")))
 
 (def field-placeholder-types
