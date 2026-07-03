@@ -1107,17 +1107,20 @@
        (when-let [b (:diagonal-up borders)] (table-cell-border-side-xml "lnBlToRt" b))))
 
 (defn- table-cell-tcpr-attrs-xml
-  "A cell's own margin/anchor attributes (from drawingml.parse/table-cell-
-  margins-and-anchor on import) into <a:tcPr>'s own OPENING tag -- these
-  live as attributes on <a:tcPr> itself, not child elements, unlike
-  borders/fill. \"\" (no attrs at all) when the cell has none; PowerPoint's
-  own default margins and top anchor then apply, unchanged."
-  [{:keys [margin-left margin-right margin-top margin-bottom anchor]}]
+  "A cell's own margin/anchor/vert attributes (from drawingml.parse/table-
+  cell-margins-and-anchor on import) into <a:tcPr>'s own OPENING tag --
+  these live as attributes on <a:tcPr> itself, not child elements, unlike
+  borders/fill. vert (rotated cell text) reuses the same text-vertical-
+  attrs reverse map already built for <a:bodyPr>'s own vert. \"\" (no
+  attrs at all) when the cell has none; PowerPoint's own default margins,
+  top anchor, and horizontal text then apply, unchanged."
+  [{:keys [margin-left margin-right margin-top margin-bottom anchor vertical]}]
   (str (when margin-left (str " marL=\"" (emu margin-left) "\""))
        (when margin-right (str " marR=\"" (emu margin-right) "\""))
        (when margin-top (str " marT=\"" (emu margin-top) "\""))
        (when margin-bottom (str " marB=\"" (emu margin-bottom) "\""))
-       (when anchor (str " anchor=\"" (case anchor :top "t" :center "ctr" :bottom "b") "\""))))
+       (when anchor (str " anchor=\"" (case anchor :top "t" :center "ctr" :bottom "b") "\""))
+       (when-let [v (get text-vertical-attrs vertical)] (str " vert=\"" v "\""))))
 
 (defn- table-cell-xml
   "A single <a:tc>, dispatching on the cell's shape:
