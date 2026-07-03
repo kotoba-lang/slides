@@ -253,6 +253,29 @@
     (testing "[Content_Types].xml declares the png extension"
       (is (re-find #"Extension=\"png\"" (entries "[Content_Types].xml"))))))
 
+(deftest writes-and-round-trips-picture-locks
+  (let [locks {:no-change-aspect? true :no-move? true}
+        deck (-> (m/deck "deck" {:slides/title "Locked"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "Photo"})
+                      (m/add-shape (m/image "logo" one-pixel-png-base64
+                                            {:slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 2.0
+                                             :slides/locks locks})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the captured lock flags are written, replacing the default"
+      (is (re-find #"<a:picLocks noChangeAspect=\"1\" noMove=\"1\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "logo" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= locks (:slides/locks shape))))))
+  (testing "no :slides/locks -- the historical noChangeAspect=\"1\" default, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/image "logo" one-pixel-png-base64)))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:picLocks noChangeAspect=\"1\"/>" slide-xml)))))
+
 (deftest writes-and-round-trips-picture-crop
   (let [deck (-> (m/deck "deck" {:slides/title "Cropped"})
                  (m/add-slide
