@@ -164,6 +164,25 @@
             table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
         (is (= borders (:borders (first (first (:slides/cells table))))))))))
 
+(deftest writes-and-round-trips-table-cell-border-dash
+  (let [borders {:left {:width 1.0 :color "112233" :dash :sysDash}}
+        deck (-> (m/deck "deck" {:slides/title "Dashed border"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/x 0.5 :slides/y 0.5 :slides/w 6.0 :slides/h 2.0
+                                    :slides/cells [[{:text "Header" :borders borders} "Plain"]
+                                                  ["Q1" "10"]]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing ":dash writes <a:prstDash>, schema-ordered after the fill"
+      (is (re-find #"<a:lnL w=\"12700\"><a:solidFill><a:srgbClr val=\"112233\"/></a:solidFill><a:prstDash val=\"sysDash\"/></a:lnL>"
+                    slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))]
+        (is (= borders (:borders (first (first (:slides/cells table))))))))))
+
 (deftest writes-and-round-trips-table-cell-diagonal-borders-margins-and-anchor
   (let [borders {:diagonal-down {:width 1.0 :color "112233"} :diagonal-up {:width 2.0 :color "445566"}}
         deck (-> (m/deck "deck" {:slides/title "Diagonal + centered"})
