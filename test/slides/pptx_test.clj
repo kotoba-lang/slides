@@ -191,6 +191,24 @@
         (is (= 0.05 (:margin-top cell)))
         (is (= :center (:anchor cell)))))))
 
+(deftest writes-and-round-trips-table-cell-vertical-text
+  (let [deck (-> (m/deck "deck" {:slides/title "Rotated header"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape {:slides/id "t1" :slides/shape :table
+                                    :slides/w 4.0 :slides/h 2.0
+                                    :slides/cells [[{:text "Qty" :vertical :vert270} "Description"]
+                                                   ["1" "Widget"]]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "vert is written as <a:tcPr>'s own attribute"
+      (is (re-find #"<a:tcPr vert=\"vert270\">" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            table (first (filter #(= :table (:slides/shape %)) (-> reimported :slides/slides first :slides/shapes)))
+            cell (first (first (:slides/cells table)))]
+        (is (= :vert270 (:vertical cell)))))))
+
 (deftest table-shape-with-ragged-or-empty-rows-still-produces-a-valid-grid
   (let [deck (-> (m/deck "deck" {:slides/title "Ragged"})
                  (m/add-slide
