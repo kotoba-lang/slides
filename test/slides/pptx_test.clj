@@ -1944,6 +1944,43 @@
     (testing "explicitly nilling the only effect key removes the existing <a:effectLst> entirely"
       (is (not (re-find #"<a:effectLst" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
 
+(deftest update-pptx-patches-hyperlink-action-onto-an-existing-run
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Nav\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"/><a:t>Next</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"AlreadyLinked\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"><a:hlinkClick action=\"ppaction://hlinkshowjump?jump=firstslide\"/></a:rPr><a:t>First</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Nav" :slides/shape :text :slides/text "Next"
+                                                :slides/hyperlink-action :next-slide
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "AlreadyLinked" :slides/shape :text :slides/hyperlink-action nil
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "a run given a built-in hyperlink action gains <a:hlinkClick>, inserted right before </a:rPr>"
+      (is (re-find #"<a:rPr sz=\"2400\"><a:hlinkClick action=\"ppaction://hlinkshowjump\?jump=nextslide\"/></a:rPr>" slide)))
+    (testing "explicitly nilling the only hyperlink-action key removes an existing <a:hlinkClick> entirely"
+      (is (not (re-find #"<a:hlinkClick" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"

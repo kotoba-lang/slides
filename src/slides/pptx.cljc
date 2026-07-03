@@ -2452,11 +2452,31 @@
              "<a:solidFill><a:srgbClr val=\"" hex "\"/></a:solidFill>"
              (subs rpr close-idx))))))
 
+(defn- set-hlink-action
+  "A run's own <a:hlinkClick action=\"ppaction://...\"/> (built-in Next/
+  Previous/First/Last-slide/end-show navigation, from drawingml.parse/
+  hyperlink-action on import) inserted right before </a:rPr> -- schema
+  order in this writer always puts hlinkClick last, after latin/ea/
+  solidFill (see paragraph-run-xml). `action` nil removes an existing
+  hlinkClick entirely rather than leaving it stale, matching patch-
+  effects' \"contains? key with nil value clears it\" convention. Only
+  the ppaction case -- an external-URL or internal-slide-jump
+  hyperlink needs its own new package relationship, out of scope for a
+  same-run in-place edit."
+  [rpr action]
+  (if action
+    (let [xml (str "<a:hlinkClick action=\"ppaction://hlinkshowjump?jump=" (get ppaction-jump-queries action) "\"/>")]
+      (if (re-find #"<a:hlinkClick\b[^>]*/>" rpr)
+        (str/replace-first rpr #"<a:hlinkClick\b[^>]*/>" (replacement-literal xml))
+        (str/replace-first rpr #"</a:rPr>$" (replacement-literal (str xml "</a:rPr>")))))
+    (str/replace rpr #"<a:hlinkClick\b[^>]*/>" "")))
+
 (defn- apply-rpr-overrides [rpr shape]
   (cond-> (normalize-rpr rpr)
     (:slides/font-size shape) (set-open-tag-attr "sz" (* 100 (long (positive-numeric (:slides/font-size shape) 24))))
     (contains? shape :slides/bold) (set-open-tag-attr "b" (if (:slides/bold shape) "1" "0"))
-    (:slides/color shape) (set-rpr-color (:slides/color shape))))
+    (:slides/color shape) (set-rpr-color (:slides/color shape))
+    (contains? shape :slides/hyperlink-action) (set-hlink-action (:slides/hyperlink-action shape))))
 
 (defn- patch-all-rpr
   "Style-only edit (no text change): apply font-size/color/bold overrides to
@@ -2510,7 +2530,8 @@
     (contains? shape :slides/text)
     (patch-paragraphs block (:slides/text shape) shape)
 
-    (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold))
+    (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold)
+        (contains? shape :slides/hyperlink-action))
     (patch-all-rpr block shape)
 
     :else block))
