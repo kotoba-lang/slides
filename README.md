@@ -256,6 +256,43 @@ These package files are currently `:draft-unpublished`: repo RID, tree CID,
 manifest CID, and signatures are placeholders until the Kotoba package publish
 flow replaces them with real signed CIDs.
 
+## Coverage matrix
+
+This repo is the *writer*: `slides.pptx` regenerates a full PPTX package from
+the EDN deck model, `slides.pptx/update` source-aware-patches an existing one,
+and `slides.pptx/import` normalizes `kotoba-lang/presentationml`'s
+`:presentationml/*` shape/deck maps into this package's own `:slides/*` keys.
+For the *reader* side of each row (`kotoba-lang/drawingml`/
+`kotoba-lang/presentationml`), see those repos' own coverage matrices.
+
+| Area | Feature | Status | Notes |
+|---|---|---|---|
+| Shapes | Text/rect/pic/table/chart/connector writers | ✅ full regen | one writer function per shape kind |
+| Shapes | Hidden flag (`cNvPr hidden="1"`) | ✅ full regen | wired into all 6 shape writers |
+| Fill/line/effects | Gradient fill (shape + master background) | ✅ full regen | real multi-stop `<a:gradFill>`, not a first-stop approximation |
+| Fill/line/effects | Line cap/join/dash | ✅ full regen | |
+| Fill/line/effects | Combined `<a:effectLst>` (glow + shadow + reflection) | ✅ full regen | OOXML allows only one `effectLst` per shape, so all three share one write path |
+| Fill/line/effects | Picture crop (`srcRect`) + recolor (grayscale/alpha-mod) | ✅ full regen | `<a:blip>` stays self-closing when neither effect is set, unchanged from before either feature existed |
+| Text/paragraphs | Bullets incl. numbered-list `startAt`, tab stops, body autofit | ✅ full regen | |
+| Text/paragraphs | Run formatting + CJK-aware `lang` heuristic | ✅ full regen | |
+| Hyperlinks | External URL | ✅ full regen + patch | `TargetMode="External"` |
+| Hyperlinks | Internal same-deck slide jump | ✅ full regen + patch | writes a valid `Internal` relationship (bare sibling filename, no `TargetMode`) — fixes a real bug where every hyperlink, internal or external, was previously written as external |
+| Hyperlinks | Built-in navigation action (`ppaction://...`) | ✅ full regen | self-contained `<a:hlinkClick action="...">`, no relationship at all; takes priority over an r:id-based link on the same run |
+| Table | Cell borders (straight + diagonal), margins, vertical anchor | ✅ full regen | |
+| Table | Table style flags (firstRow/lastRow/firstCol/lastCol/bandRow/bandCol) | ✅ full regen | fixed a real bug this session: the writer used to hardcode `firstRow`+`bandRow` regardless of the source table's actual flags; now respects them, falling back to that same historical default only when the deck carries none at all |
+| Chart | Bar/line/pie/area/doughnut/scatter chart bodies | ✅ full regen + patch | scatter uses two value axes (X is itself plotted, not a category label), unlike the other types' one category + one value axis |
+| Chart | Embedded SpreadsheetML workbook (the chart's own editable `.xlsx`) | ✅ full regen + patch | a minimal, real, independently-openable `xl/workbook.xml` + `xl/worksheets/sheet1.xml` OPC package, generated fresh on full regen and cell-patched in place on `update` |
+| Chart | Legend position + axis titles | ✅ write-only | no chart-XML *reader* exists anywhere in this pipeline (chart import is reference-metadata only — rel-id + resolved chart-part/workbook-part path, never the chart's own visual configuration), so these are settable only when hand-authoring/programmatically building a deck |
+| Deck/package parts | Layout refs, slide sections | ✅ full regen | |
+| Deck/package parts | Legacy PowerPoint comments | ✅ full regen | includes the deck-wide author-collection pass (comment `authorId` is a shared index into one package-wide `commentAuthors.xml`, not per-slide) |
+| Deck/package parts | Handout master | ✅ full regen | presence flag only, gated on `:slides/handout-master?` |
+| Deck/package parts | Custom XML parts | ✅ full regen | content + optional `itemProps` preserved as opaque raw XML, never reinterpreted |
+| Deck/package parts | Embedded font declarations | ✅ read-only (import passthrough) | no write-side counterpart by design — see `presentationml`'s coverage matrix |
+| Patch/update path | Slide text/shape patching against the original XML | ✅ | preserves group membership, placeholder tags, and unrelated package entries |
+| Patch/update path | New content added post-import (images, charts, notes, hyperlinks) | ✅ | |
+| Patch/update path | Newly-imported comments/notes text edited *in place* | ❌ not implemented | full-regen-only for now; only brand-new comments/notes on previously-comment/notes-less slides get added by patching |
+| Deferred subsystems | SmartArt / OLE / animations (`p:timing`) | ❌ out of scope | large independent subsystems, not started |
+
 ## Test
 
 ```bash
