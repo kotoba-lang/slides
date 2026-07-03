@@ -742,6 +742,27 @@
             entries2 (zip-entries (pptx/pptx-bytes deck2))]
         (is (not (re-find #"hlinkClick" (entries2 "ppt/slides/slide1.xml"))))))))
 
+(deftest writes-and-round-trips-internal-slide-jump-hyperlink
+  (let [deck (-> (m/deck "deck" {:slides/title "Jump"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "link" "Next slide" {:slides/hyperlink-slide-part "ppt/slides/slide2.xml"}))))
+                 (m/add-slide (-> (m/slide "s2") (m/add-shape (m/text-box "t" "Second slide")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "the run's rPr carries an hlinkClick, same as an external link"
+      (is (re-find #"<a:hlinkClick r:id=\"(rId\d+)\"/>" slide-xml)))
+    (testing "that relationship's Target is the bare sibling filename, with NO TargetMode attribute at all (Internal is the schema default)"
+      (let [rel-id (second (re-find #"<a:hlinkClick r:id=\"(rId\d+)\"/>" slide-xml))]
+        (is (re-find (re-pattern (str "Id=\"" rel-id "\"[^>]*Type=\"[^\"]*hyperlink\"[^>]*Target=\"slide2.xml\"[^>]*/>")) rels-xml))
+        (is (not (re-find #"TargetMode" rels-xml)))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "link" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= "ppt/slides/slide2.xml" (:slides/hyperlink-slide-part shape)))
+        (is (not (contains? shape :slides/hyperlink)))))))
+
 (deftest writes-line-dash-pattern
   (let [deck (-> (m/deck "deck" {:slides/title "Dashed"})
                  (m/add-slide
