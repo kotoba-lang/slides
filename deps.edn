@@ -9,7 +9,7 @@
          :git/sha "4b87825e63ecc78bf97f26d98ff87c8bac7a26cd"}
         io.github.kotoba-lang/transit
         {:git/url "https://github.com/kotoba-lang/transit.git"
-         :git/sha "77e3ce7d1b5271440f56aa77cea0fd6e77b88eac"}
+         :git/sha "0d45c3020071cdedffe504d8fc0d9884938e4120"}
         io.github.kotoba-lang/drawingml
         {:git/url "https://github.com/kotoba-lang/drawingml.git"
          :git/sha "3fd219933a6fea4a164b27c59f0725eb64a4e0c1"}
