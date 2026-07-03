@@ -1197,6 +1197,22 @@
          (when (:band-col? flags) " bandCol=\"1\""))
     " firstRow=\"1\" bandRow=\"1\""))
 
+(defn- graphic-frame-locks-xml
+  "A table/chart's own :slides/locks ({:no-grp? true ...}, from
+  drawingml.parse/graphic-frame-locks on import) into
+  <a:graphicFrameLocks>'s own attributes. Falls back to this writer's
+  own historical default (noGrp=\"1\") only when :slides/locks is absent
+  -- unchanged output for every deck built before this feature existed."
+  [locks]
+  (if locks
+    (str (when (:no-grp? locks) " noGrp=\"1\"")
+         (when (:no-drilldown? locks) " noDrilldown=\"1\"")
+         (when (:no-select? locks) " noSelect=\"1\"")
+         (when (:no-change-aspect? locks) " noChangeAspect=\"1\"")
+         (when (:no-move? locks) " noMove=\"1\"")
+         (when (:no-resize? locks) " noResize=\"1\""))
+    " noGrp=\"1\""))
+
 (defn- table-shape
   "Writes a :table shape as a native <p:graphicFrame><a:tbl> instead of
   degrading to plain text -- table cells (:slides/cells when the table has
@@ -1214,7 +1230,7 @@
         row-h (quot total-h row-count)]
     (str "<p:graphicFrame>"
          "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Table " idx))) "\"" (hidden-attr shape) "/>"
-         "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+         "<p:cNvGraphicFramePr><a:graphicFrameLocks" (graphic-frame-locks-xml (:slides/locks shape)) "/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
          "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
          "<a:ext cx=\"" total-w "\" cy=\"" total-h "\"/></p:xfrm>"
          "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
@@ -1258,7 +1274,7 @@
   [idx {:slides/keys [id] :as shape} rel-id]
   (str "<p:graphicFrame>"
        "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Chart " idx))) "\"" (hidden-attr shape) "/>"
-       "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+       "<p:cNvGraphicFramePr><a:graphicFrameLocks" (graphic-frame-locks-xml (:slides/locks shape)) "/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
        "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
        "<a:ext cx=\"" (emu (positive-numeric (:slides/w shape) 4)) "\" cy=\"" (emu (positive-numeric (:slides/h shape) 3)) "\"/></p:xfrm>"
        "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
