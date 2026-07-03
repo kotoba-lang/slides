@@ -2530,6 +2530,60 @@
         :else block))
     block))
 
+(defn- patch-table-style-flags
+  "A table's own :slides/table-style-flags through the source-aware
+  update path. Replaces <a:tblPr>'s own attributes in place via the
+  same table-style-flags-xml full regen uses (which already falls back
+  to the historical firstRow+bandRow default when the value is nil) --
+  <a:tbl> always has exactly one <a:tblPr> in this writer's own output.
+  Previously write-only through full regen; changing a table's style
+  flags via `update` silently did nothing."
+  [block shape]
+  (if (contains? shape :slides/table-style-flags)
+    (if (re-find #"<a:tblPr\b[^>]*>" block)
+      (str/replace-first block #"<a:tblPr\b[^>]*>"
+                         (replacement-literal (str "<a:tblPr" (table-style-flags-xml (:slides/table-style-flags shape)) ">")))
+      block)
+    block))
+
+(defn- patch-table-column-widths
+  "A table's own :slides/column-widths through the source-aware update
+  path. Replaces each <a:gridCol>'s own w=\"...\" in document-order
+  sequence via str/replace's function-replacement form -- Matcher-based,
+  so it walks each occurrence exactly once left-to-right even when
+  several columns happen to share the same width (a substring-search
+  approach would incorrectly keep hitting the FIRST match instead).
+  Only when the widths list's length matches the table's actual column
+  count; a mismatch (the table grew/shrank since import) is left
+  untouched rather than risk misaligning widths to the wrong columns.
+  Previously write-only through full regen; changing a table's column
+  widths via `update` silently did nothing."
+  [block shape]
+  (if-let [widths (:slides/column-widths shape)]
+    (let [cols (re-seq #"<a:gridCol\b[^>]*/>" block)]
+      (if (= (count cols) (count widths))
+        (let [i (atom -1)]
+          (str/replace block #"<a:gridCol\b[^>]*/>"
+                      (fn [_] (swap! i inc) (str "<a:gridCol w=\"" (emu (nth widths @i)) "\"/>"))))
+        block))
+    block))
+
+(defn- patch-table-row-heights
+  "A table's own :slides/row-heights through the source-aware update
+  path. Same shape as patch-table-column-widths, sibling attribute on
+  <a:tr> instead of <a:gridCol>. Previously write-only through full
+  regen; changing a table's row heights via `update` silently did
+  nothing."
+  [block shape]
+  (if-let [heights (:slides/row-heights shape)]
+    (let [rows (re-seq #"<a:tr\b[^>]*>" block)]
+      (if (= (count rows) (count heights))
+        (let [i (atom -1)]
+          (str/replace block #"<a:tr\b[^>]*>"
+                      (fn [_] (swap! i inc) (str "<a:tr h=\"" (emu (nth heights @i)) "\">"))))
+        block))
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2712,7 +2766,10 @@
                   (patch-pic-locks shape)
                   (patch-graphic-frame-locks shape)
                   (patch-sp-locks shape)
-                  (patch-body-props shape))
+                  (patch-body-props shape)
+                  (patch-table-style-flags shape)
+                  (patch-table-column-widths shape)
+                  (patch-table-row-heights shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
     (cond
       ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;

@@ -2065,6 +2065,50 @@
     (testing "a plain self-closing <a:bodyPr/> is replaced with the full regenerated element"
       (is (re-find #"<a:bodyPr anchor=\"ctr\" vert=\"vert270\">" slide)))))
 
+(deftest update-pptx-patches-table-style-flags-and-dimensions
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"2\" name=\"Table\"/>"
+                                                    "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
+                                                    "<p:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"3657600\" cy=\"1828800\"/></p:xfrm>"
+                                                    "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">"
+                                                    "<a:tbl><a:tblPr firstRow=\"1\" bandRow=\"1\"><a:tableStyleId>abc</a:tableStyleId></a:tblPr>"
+                                                    "<a:tblGrid><a:gridCol w=\"1828800\"/><a:gridCol w=\"1828800\"/></a:tblGrid>"
+                                                    "<a:tr h=\"914400\"><a:tc><a:txBody><a:p><a:r><a:t>A</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>"
+                                                    "<a:tc><a:txBody><a:p><a:r><a:t>B</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>"
+                                                    "<a:tr h=\"914400\"><a:tc><a:txBody><a:p><a:r><a:t>1</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc>"
+                                                    "<a:tc><a:txBody><a:p><a:r><a:t>2</a:t></a:r></a:p></a:txBody><a:tcPr/></a:tc></a:tr>"
+                                                    "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Table" :slides/shape :table
+                                                :slides/table-style-flags {:band-col? true}
+                                                :slides/column-widths [3.0 1.0]
+                                                :slides/row-heights [0.3 0.7]
+                                                :slides/w 4.0 :slides/h 1.0 :slides/rows [["A" "B"] ["1" "2"]]
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/graphicFrame :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "tblPr attributes are replaced in place"
+      (is (re-find #"<a:tblPr bandCol=\"1\">" slide))
+      (is (not (re-find #"firstRow" slide))))
+    (testing "each gridCol's own width is replaced in document order"
+      (is (re-find #"<a:gridCol w=\"2743200\"/><a:gridCol w=\"914400\"/>" slide)))
+    (testing "each tr's own height is replaced in document order"
+      (is (re-find #"<a:tr h=\"274320\">" slide))
+      (is (re-find #"<a:tr h=\"640080\">" slide)))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
