@@ -2861,6 +2861,42 @@
   [xml slide]
   (remove-shapes-xml xml slide))
 
+(defn- patch-slide-background
+  "A slide's own per-slide background override through the source-aware
+  update path. Unlike a shape-level patch, <p:bg> lives on the SLIDE's
+  own <p:cSld>, not inside any one shape's fragment, so this operates
+  on the whole slide xml (like patch-slide-deletions) rather than going
+  through patch-shape-block. Only when :slides/slide-background is
+  present on the incoming slide map: a truthy value replaces an
+  existing <p:bg> in place, or inserts a fresh one right after <p:cSld>
+  when the source has none (the common real-deck case -- a plain slide
+  inherits its layout/master's background with no <p:bg> of its own);
+  an explicit nil REMOVES an existing <p:bg> entirely rather than
+  resolving to the master's color, since deleting the override is what
+  actually reverts the slide to layout/master inheritance (this
+  writer's own full-regen output always has some <p:bg>, but real
+  PowerPoint XML commonly has none at all, and that absence IS the
+  correct \"no override\" state -- reconstructing the master's resolved
+  color here would need design/master-for-slide, not available to this
+  slide-xml-only patch step, and would produce a REDUNDANT explicit
+  <p:bg> where a plain absence is both simpler and matches real decks).
+  Previously write-only through full regen; changing a slide's own
+  background via `update` silently did nothing."
+  [xml slide]
+  (if (contains? slide :slides/slide-background)
+    (if-let [override (:slides/slide-background slide)]
+      (let [replacement (str "<p:bg><p:bgPr>" (background-fill-xml nil override) "</p:bgPr></p:bg>")]
+        (cond
+          (re-find #"<p:bg>[\s\S]*?</p:bg>" xml)
+          (str/replace-first xml #"<p:bg>[\s\S]*?</p:bg>" (fn [_] replacement))
+
+          (re-find #"<p:cSld\b[^>]*>" xml)
+          (str/replace-first xml #"<p:cSld\b[^>]*>" (fn [m] (str m replacement)))
+
+          :else xml))
+      (str/replace xml #"<p:bg>[\s\S]*?</p:bg>" ""))
+    xml))
+
 (defn- patch-base-entries [entries deck]
   (let [by-part (group-by #(get-in % [:ooxml/source :ooxml/part])
                           (patchable-shapes deck))
@@ -2874,7 +2910,9 @@
     (reduce (fn [acc slide]
               (let [part (:slides/source slide)]
                 (if-let [bytes (and part (get acc part))]
-                  (assoc acc part (text-entry-bytes (patch-slide-deletions (bytes->text bytes) slide)))
+                  (assoc acc part (text-entry-bytes (-> (bytes->text bytes)
+                                                        (patch-slide-deletions slide)
+                                                        (patch-slide-background slide))))
                   acc)))
             entries
             (deck-slides deck))))

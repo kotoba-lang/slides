@@ -2109,6 +2109,42 @@
       (is (re-find #"<a:tr h=\"274320\">" slide))
       (is (re-find #"<a:tr h=\"640080\">" slide)))))
 
+(deftest update-pptx-patches-per-slide-background
+  (let [plain-entries {"[Content_Types].xml" "<Types/>"
+                       "_rels/.rels" "<Relationships/>"
+                       "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                       "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                     "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                     "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                     "<p:txBody><a:p><a:r><a:t>Divider</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                     "</p:spTree></p:cSld></p:sld>")}
+        plain-bytes (zip-bytes plain-entries)
+        title-shape {:slides/id "Title" :slides/shape :text :slides/text "Divider"
+                    :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                    :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}
+        deck-with-override {:slides/id "imported"
+                            :slides/slides [{:slides/id "slide-1"
+                                             :slides/source "ppt/slides/slide1.xml"
+                                             :slides/slide-background "9B1C2E"
+                                             :slides/shapes [title-shape]}]}
+        no-bg-slide (get (zip-entries (pptx/update-pptx-bytes plain-bytes deck-with-override)) "ppt/slides/slide1.xml")
+        existing-entries (assoc plain-entries "ppt/slides/slide1.xml"
+                                (str "<p:sld><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"336699\"/></a:solidFill></p:bgPr></p:bg><p:spTree>"
+                                     "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                     "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                     "<p:txBody><a:p><a:r><a:t>Divider</a:t></a:r></a:p></p:txBody></p:sp>"
+                                     "</p:spTree></p:cSld></p:sld>"))
+        existing-bytes (zip-bytes existing-entries)
+        replaced-slide (get (zip-entries (pptx/update-pptx-bytes existing-bytes deck-with-override)) "ppt/slides/slide1.xml")
+        deck-removed (assoc-in deck-with-override [:slides/slides 0 :slides/slide-background] nil)
+        removed-slide (get (zip-entries (pptx/update-pptx-bytes existing-bytes deck-removed)) "ppt/slides/slide1.xml")]
+    (testing "a slide with no <p:bg> at all gains a fresh one, inserted right after <p:cSld>"
+      (is (re-find #"<p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"9B1C2E\"/></a:solidFill></p:bgPr></p:bg><p:spTree>" no-bg-slide)))
+    (testing "an existing <p:bg> is replaced in place"
+      (is (re-find #"<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"9B1C2E\"/></a:solidFill></p:bgPr></p:bg>" replaced-slide)))
+    (testing "an explicit nil override removes an existing <p:bg> entirely, reverting to layout/master inheritance"
+      (is (not (re-find #"<p:bg>" removed-slide))))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
