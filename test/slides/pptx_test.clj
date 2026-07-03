@@ -1419,6 +1419,27 @@
           entries (zip-entries (pptx/pptx-bytes deck))]
       (is (re-find #"<a:solidFill><a:srgbClr val=\"336699\"/></a:solidFill>" (entries "ppt/slides/slide1.xml"))))))
 
+(deftest writes-and-round-trips-per-slide-background-override
+  (let [deck (-> (m/deck "deck" {:slides/title "Divider" :slides/master {:slides/background "336699"}})
+                 (m/add-slide (-> (m/slide "s1" {:slides/slide-background "9B1C2E"})
+                                  (m/add-shape (m/text-box "t" "Section"))))
+                 (m/add-slide (-> (m/slide "s2") (m/add-shape (m/text-box "t" "Plain")))))
+        entries (zip-entries (pptx/pptx-bytes deck))]
+    (testing "the overriding slide's own <p:bg> uses its own color, not the master's"
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"9B1C2E\"/></a:solidFill>" (entries "ppt/slides/slide1.xml"))))
+    (testing "a slide with no override still derives its <p:bg> from the master, unchanged"
+      (is (re-find #"<a:solidFill><a:srgbClr val=\"336699\"/></a:solidFill>" (entries "ppt/slides/slide2.xml"))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            [s1 s2] (:slides/slides reimported)]
+        (is (= "9B1C2E" (:slides/slide-background s1)))
+        ;; this writer emits a literal <p:bg> on EVERY slide (matching the
+        ;; resolved master background), not just slides with a genuine
+        ;; override, so a re-imported plain slide legitimately shows its
+        ;; own :slides/slide-background too -- equal to the master's own,
+        ;; not distinguishable from a real override by XML shape alone.
+        (is (= "336699" (:slides/slide-background s2)))))))
+
 (deftest applies-slides-theme-overrides-when-exporting
   (let [deck (-> (m/deck "deck" {:slides/title "Theme test"
                                  :slides/theme {:slides/colors {:office-style.color/accent1 "ABCDEF"
