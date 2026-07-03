@@ -2145,6 +2145,49 @@
     (testing "an explicit nil override removes an existing <p:bg> entirely, reverting to layout/master inheritance"
       (is (not (re-find #"<p:bg>" removed-slide))))))
 
+(deftest update-pptx-patches-hyperlink-onto-an-existing-run
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/_rels/slide1.xml.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/></Relationships>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Link\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"1800\"/><a:t>Visit</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (zip-bytes base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/shapes [{:slides/id "Link" :slides/shape :text :slides/text "Visit"
+                                                :slides/hyperlink "https://example.com"
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")
+        rels (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "a fresh rId continuing past the existing max is allocated, and the run gains <a:hlinkClick>"
+      (is (re-find #"<a:hlinkClick r:id=\"rId2\"/>" slide)))
+    (testing "the slide's own .rels gains a matching External relationship, existing rel preserved"
+      (is (re-find #"Id=\"rId1\"[^>]*slideLayout" rels))
+      (is (re-find #"Id=\"rId2\"[^>]*Target=\"https://example.com\"[^>]*TargetMode=\"External\"" rels)))
+    (testing "an internal same-deck slide-jump link writes an Internal relationship (bare filename, no TargetMode)"
+      (let [deck-internal (assoc-in deck [:slides/slides 0 :slides/shapes 0]
+                                    (-> (get-in deck [:slides/slides 0 :slides/shapes 0])
+                                        (dissoc :slides/hyperlink)
+                                        (assoc :slides/hyperlink-slide-part "ppt/slides/slide3.xml")))
+            entries2 (zip-entries (pptx/update-pptx-bytes base-bytes deck-internal))
+            rels2 (entries2 "ppt/slides/_rels/slide1.xml.rels")]
+        (is (re-find #"Id=\"rId2\"[^>]*Target=\"slide3.xml\"" rels2))
+        (is (not (re-find #"Id=\"rId2\"[^>]*TargetMode" rels2)))))
+    (testing "explicitly nilling the only hyperlink key removes an existing <a:hlinkClick> entirely"
+      (let [linked-entries (assoc base-entries "ppt/slides/slide1.xml" slide)
+            linked-bytes (zip-bytes linked-entries)
+            deck-removed (assoc-in deck [:slides/slides 0 :slides/shapes 0 :slides/hyperlink] nil)
+            removed-slide (get (zip-entries (pptx/update-pptx-bytes linked-bytes deck-removed)) "ppt/slides/slide1.xml")]
+        (is (not (re-find #"<a:hlinkClick" removed-slide)))))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"

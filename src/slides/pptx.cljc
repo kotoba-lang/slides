@@ -2613,12 +2613,28 @@
         (str/replace-first rpr #"</a:rPr>$" (replacement-literal (str xml "</a:rPr>")))))
     (str/replace rpr #"<a:hlinkClick\b[^>]*/>" "")))
 
+(defn- set-hlink-rid
+  "A run's own <a:hlinkClick r:id=\"...\"/> (an external URL or internal
+  same-deck slide-jump link, from :slides/hyperlink/:slides/hyperlink-
+  slide-part on import), pointing at a relationship rId already resolved
+  by patch-hyperlink-relationships (which owns allocating/reusing the rId
+  and writing the slide's own .rels entry -- this function only edits the
+  run's own <a:rPr>). Same insert-right-before-</a:rPr>/remove-when-nil
+  shape as set-hlink-action, its sibling."
+  [rpr rid]
+  (if rid
+    (if (re-find #"<a:hlinkClick\b[^>]*/>" rpr)
+      (str/replace-first rpr #"<a:hlinkClick\b[^>]*/>" (replacement-literal (str "<a:hlinkClick r:id=\"" rid "\"/>")))
+      (str/replace-first rpr #"</a:rPr>$" (replacement-literal (str "<a:hlinkClick r:id=\"" rid "\"/></a:rPr>"))))
+    (str/replace rpr #"<a:hlinkClick\b[^>]*/>" "")))
+
 (defn- apply-rpr-overrides [rpr shape]
   (cond-> (normalize-rpr rpr)
     (:slides/font-size shape) (set-open-tag-attr "sz" (* 100 (long (positive-numeric (:slides/font-size shape) 24))))
     (contains? shape :slides/bold) (set-open-tag-attr "b" (if (:slides/bold shape) "1" "0"))
     (:slides/color shape) (set-rpr-color (:slides/color shape))
-    (contains? shape :slides/hyperlink-action) (set-hlink-action (:slides/hyperlink-action shape))))
+    (contains? shape :slides/hyperlink-action) (set-hlink-action (:slides/hyperlink-action shape))
+    (contains? shape :slides/hyperlink-rel-id) (set-hlink-rid (:slides/hyperlink-rel-id shape))))
 
 (defn- patch-all-rpr
   "Style-only edit (no text change): apply font-size/color/bold overrides to
@@ -2673,7 +2689,7 @@
     (patch-paragraphs block (:slides/text shape) shape)
 
     (or (:slides/font-size shape) (:slides/color shape) (contains? shape :slides/bold)
-        (contains? shape :slides/hyperlink-action))
+        (contains? shape :slides/hyperlink-action) (contains? shape :slides/hyperlink-rel-id))
     (patch-all-rpr block shape)
 
     :else block))
@@ -2897,12 +2913,62 @@
       (str/replace xml #"<p:bg>[\s\S]*?</p:bg>" ""))
     xml))
 
+(defn- patch-hyperlink-relationships
+  "For `shapes` (each already carrying :ooxml/source) whose :slides/
+  hyperlink or :slides/hyperlink-slide-part is explicitly present on
+  this edit, allocates each a package relationship id (continuing past
+  the slide's own .rels existing max rId, the same convention patch-
+  new-content uses for brand-new images/charts/notes/hyperlinks) and
+  writes the slide's own .rels accordingly. Returns
+  [entries shapes-with-resolved-rel-id], the latter merging :slides/
+  hyperlink-rel-id (nil removes) into each affected shape so patch-
+  shape-block's own apply-rpr-overrides (via set-hlink-rid) can use it
+  with no wider plumbing -- shapes untouched by this edit pass through
+  unchanged, without the new key. Doesn't try to reuse/rewrite an
+  existing relationship when only the shape's own hyperlink TARGET
+  changed (a fresh rId is always allocated, leaving any prior
+  relationship entry for that shape orphaned but harmless -- simpler
+  and still schema-valid, matching this patch path's existing
+  additive-only convention elsewhere).
+
+  Previously :slides/hyperlink/:slides/hyperlink-slide-part were write-
+  only through full PPTX regeneration for shapes ALREADY carrying an
+  :ooxml/source locator (a brand-new shape with no locator was already
+  handled by patch-new-content); changing an existing shape's hyperlink
+  via `update` silently did nothing."
+  [entries part shapes]
+  (let [affected? #(or (contains? % :slides/hyperlink) (contains? % :slides/hyperlink-slide-part))]
+    (if-not (some affected? shapes)
+      [entries shapes]
+      (let [rels-part (rels-path part)
+            rels-xml (some-> (get entries rels-part) bytes->text)
+            resolved (reduce
+                      (fn [{:keys [next-rid rel-entries shapes]} shape]
+                        (if (affected? shape)
+                          (let [url (:slides/hyperlink shape)
+                                slide-part (:slides/hyperlink-slide-part shape)]
+                            (if (or url slide-part)
+                              (let [rid (str "rId" next-rid)]
+                                {:next-rid (inc next-rid)
+                                 :rel-entries (conj rel-entries {:rel-id rid :url url :slide-part slide-part})
+                                 :shapes (conj shapes (assoc shape :slides/hyperlink-rel-id rid))})
+                              {:next-rid next-rid :rel-entries rel-entries
+                               :shapes (conj shapes (assoc shape :slides/hyperlink-rel-id nil))}))
+                          {:next-rid next-rid :rel-entries rel-entries :shapes (conj shapes shape)}))
+                      {:next-rid (inc (existing-rels-max-rid rels-xml)) :rel-entries [] :shapes []}
+                      shapes)
+            new-rels (map hyperlink-relationship-xml (:rel-entries resolved))
+            updated-rels-xml (append-relationships-into-rels-xml rels-xml new-rels)]
+        [(if (seq new-rels) (assoc entries rels-part (text-entry-bytes updated-rels-xml)) entries)
+         (:shapes resolved)]))))
+
 (defn- patch-base-entries [entries deck]
   (let [by-part (group-by #(get-in % [:ooxml/source :ooxml/part])
                           (patchable-shapes deck))
         entries (reduce (fn [acc [part shapes]]
-                          (if-let [bytes (get acc part)]
-                            (let [patched (patch-slide-xml (bytes->text bytes) shapes)]
+                          (if (get acc part)
+                            (let [[acc shapes] (patch-hyperlink-relationships acc part shapes)
+                                  patched (patch-slide-xml (bytes->text (get acc part)) shapes)]
                               (assoc acc part (text-entry-bytes patched)))
                             acc))
                         entries
