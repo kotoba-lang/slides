@@ -2442,6 +2442,66 @@
         :else block))
     block))
 
+(defn- patch-pic-locks
+  "A picture's own :slides/locks through the source-aware update path.
+  Replaces <a:picLocks>'s own attributes in place via the same pic-
+  locks-xml full regen uses (which already falls back to the historical
+  noChangeAspect=\"1\" default when :slides/locks is nil) -- <p:cNvPicPr>
+  always has exactly one <a:picLocks/> child in this writer's own
+  output, so no insert-when-absent branch is needed. Previously write-
+  only through full regen; changing a picture's lock flags via `update`
+  silently did nothing."
+  [block shape]
+  (if (contains? shape :slides/locks)
+    (if (re-find #"<a:picLocks\b[^>]*/>" block)
+      (str/replace-first block #"<a:picLocks\b[^>]*/>"
+                         (replacement-literal (str "<a:picLocks" (pic-locks-xml (:slides/locks shape)) "/>")))
+      block)
+    block))
+
+(defn- patch-graphic-frame-locks
+  "A table/chart's own :slides/locks through the source-aware update
+  path. Same shape as patch-pic-locks, sibling attribute on
+  <a:graphicFrameLocks> instead of <a:picLocks> -- <p:cNvGraphicFramePr>
+  always has exactly one <a:graphicFrameLocks/> child in this writer's
+  own output. Previously write-only through full regen; changing a
+  table/chart's lock flags via `update` silently did nothing."
+  [block shape]
+  (if (contains? shape :slides/locks)
+    (if (re-find #"<a:graphicFrameLocks\b[^>]*/>" block)
+      (str/replace-first block #"<a:graphicFrameLocks\b[^>]*/>"
+                         (replacement-literal (str "<a:graphicFrameLocks" (graphic-frame-locks-xml (:slides/locks shape)) "/>")))
+      block)
+    block))
+
+(defn- patch-sp-locks
+  "A text/rect shape's own :slides/locks through the source-aware update
+  path. Unlike picLocks/graphicFrameLocks, <p:cNvSpPr> can legitimately
+  be self-closing with NO <a:spLocks> child at all (this writer's own
+  \"no lock overrides\" default) -- so this rebuilds the WHOLE <p:cNvSpPr>
+  element (self-closing or paired, whichever the source already has),
+  preserving its own attributes (e.g. txBox=\"1\") via a captured regex
+  group, and choosing self-closing vs paired based on whether sp-locks-
+  xml returns anything for the shape's current :slides/locks. Previously
+  write-only through full regen; changing a shape's lock flags via
+  `update` silently did nothing."
+  [block shape]
+  (if (contains? shape :slides/locks)
+    (let [locks-xml (sp-locks-xml (:slides/locks shape))
+          rebuild (fn [[_ attrs]]
+                    (if locks-xml
+                      (str "<p:cNvSpPr" attrs ">" locks-xml "</p:cNvSpPr>")
+                      (str "<p:cNvSpPr" attrs "/>")))]
+      (cond
+        (re-find #"<p:cNvSpPr([^>]*)>[\s\S]*?</p:cNvSpPr>" block)
+        (str/replace-first block #"<p:cNvSpPr([^>]*)>[\s\S]*?</p:cNvSpPr>" rebuild)
+
+        (re-find #"<p:cNvSpPr([^>]*)/>" block)
+        (str/replace-first block #"<p:cNvSpPr([^>]*)/>" rebuild)
+
+        :else block))
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2620,7 +2680,10 @@
                   (patch-line-fill shape)
                   (patch-picture-recolor shape)
                   (patch-picture-crop shape)
-                  (patch-effects shape))
+                  (patch-effects shape)
+                  (patch-pic-locks shape)
+                  (patch-graphic-frame-locks shape)
+                  (patch-sp-locks shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
     (cond
       ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;
