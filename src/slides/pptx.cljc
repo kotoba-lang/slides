@@ -944,6 +944,23 @@
        (when orient (str " orient=\"" (esc orient) "\""))
        "/>"))
 
+(defn- sp-locks-xml
+  "A text/rect shape's own :slides/locks ({:no-grp? true ...}, from
+  drawingml.parse/shape-locks on import) as a full <a:spLocks .../>
+  element, or nil when :slides/locks is absent -- the historical case,
+  where <p:cNvSpPr> stays self-closing with no lock child at all
+  (semantically \"no restrictions\", the OOXML default)."
+  [locks]
+  (when locks
+    (str "<a:spLocks"
+         (when (:no-grp? locks) " noGrp=\"1\"")
+         (when (:no-rot? locks) " noRot=\"1\"")
+         (when (:no-change-aspect? locks) " noChangeAspect=\"1\"")
+         (when (:no-move? locks) " noMove=\"1\"")
+         (when (:no-resize? locks) " noResize=\"1\"")
+         (when (:no-select? locks) " noSelect=\"1\"")
+         "/>")))
+
 (def ^:private text-vertical-attrs
   "The reverse of drawingml.parse/text-vertical-values -- each :vertical
   keyword back to its own vert=\"...\" attribute value."
@@ -991,11 +1008,12 @@
          major? (>= (positive-numeric font-size 24) 30)
          ea-font (font-face-ea deck major?)
          hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])
-         fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
+         fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))
+         locks-xml (sp-locks-xml (:slides/locks shape))]
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"" (hidden-attr shape) "/>"
-          (if placeholder
-            (str "<p:cNvSpPr/><p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>")
-            "<p:cNvSpPr txBox=\"1\"/><p:nvPr/>")
+          "<p:cNvSpPr" (when-not placeholder " txBox=\"1\"")
+          (if locks-xml (str ">" locks-xml "</p:cNvSpPr>") "/>")
+          (if placeholder (str "<p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>") "<p:nvPr/>")
           "</p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape) (geometry-xml shape)
           (cond
@@ -1015,9 +1033,10 @@
 (defn- rect-shape
   ([idx shape] (rect-shape idx shape {}))
   ([idx {:slides/keys [id fill line] :as shape} opts]
-   (let [fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
+   (let [fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))
+         locks-xml (sp-locks-xml (:slides/locks shape))]
      (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"" (hidden-attr shape) "/>"
-          "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+          "<p:cNvSpPr" (if locks-xml (str ">" locks-xml "</p:cNvSpPr>") "/>") "<p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape)
           (geometry-xml shape)
           (cond
