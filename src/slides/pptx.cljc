@@ -1196,6 +1196,20 @@
          (apply str (map #(table-row-xml row-h %) norm-rows))
          "</a:tbl></a:graphicData></a:graphic></p:graphicFrame>")))
 
+(defn- pic-locks-xml
+  "A picture's own :slides/locks ({:no-change-aspect? true ...}, from
+  drawingml.parse/picture-locks on import) into <a:picLocks>'s own
+  attributes. Falls back to this writer's own historical default
+  (noChangeAspect=\"1\") only when :slides/locks is absent -- unchanged
+  output for every deck built before this feature existed."
+  [locks]
+  (if locks
+    (str (when (:no-change-aspect? locks) " noChangeAspect=\"1\"")
+         (when (:no-move? locks) " noMove=\"1\"")
+         (when (:no-resize? locks) " noResize=\"1\"")
+         (when (:no-rot? locks) " noRot=\"1\""))
+    " noChangeAspect=\"1\""))
+
 (defn- pic-shape
   "Writes an :image shape as a native <p:pic> referencing an already-embedded
   media part via `rel-id` (see `slide-image-rels`/`pptx-files`). Callers must
@@ -1204,7 +1218,7 @@
   dangling r:embed that would corrupt the package."
   [idx {:slides/keys [id] :as shape} rel-id]
   (str "<p:pic><p:nvPicPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Picture " idx))) "\"" (hidden-attr shape) "/>"
-       "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
+       "<p:cNvPicPr><a:picLocks" (pic-locks-xml (:slides/locks shape)) "/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
        "<p:blipFill>" (blip-xml rel-id (:slides/recolor shape)) (src-rect-xml (:slides/crop shape)) "<a:stretch><a:fillRect/></a:stretch></p:blipFill>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
        "</p:pic>"))
