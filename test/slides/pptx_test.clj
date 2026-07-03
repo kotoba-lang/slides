@@ -1903,6 +1903,47 @@
     (testing "crop is inserted right before <a:stretch>"
       (is (re-find #"<a:srcRect l=\"10000\" t=\"5000\"/><a:stretch>" slide)))))
 
+(deftest update-pptx-patches-effects-onto-an-existing-shape
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Box\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Box</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Glowing\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"
+                                                    "<a:effectLst><a:glow rad=\"63500\"><a:srgbClr val=\"00B0F0\"/></a:glow></a:effectLst></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Glowing</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Box" :slides/shape :rect
+                                                :slides/shadow {:blur 4.0 :distance 2.0 :angle 45.0 :color "000000"}
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "Glowing" :slides/shape :rect
+                                                :slides/glow nil
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "a plain shape given a shadow gains a fresh <a:effectLst> right before </p:spPr>"
+      (is (re-find #"<a:effectLst><a:outerShdw blurRad=\"50800\" dist=\"25400\" dir=\"2700000\" rotWithShape=\"0\"><a:srgbClr val=\"000000\"></a:srgbClr></a:outerShdw></a:effectLst></p:spPr>" slide)))
+    (testing "explicitly nilling the only effect key removes the existing <a:effectLst> entirely"
+      (is (not (re-find #"<a:effectLst" (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))))))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"

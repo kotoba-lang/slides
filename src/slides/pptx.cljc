@@ -2411,6 +2411,37 @@
         :else block))
     block))
 
+(defn- patch-effects
+  "A shape's own glow/shadow/reflection through the source-aware update
+  path. Regenerates the WHOLE <a:effectLst> from the shape's current
+  :slides/glow/:slides/shadow/:slides/reflection via the same effect-
+  lst-xml full regen uses (OOXML allows only one effectLst per shape, so
+  patching each effect independently would risk producing two) -- only
+  when at least one of the three keys is present on the incoming shape
+  map, matching patch-hidden-flag's \"only touch what's explicitly
+  given\" convention; contains?, not truthiness, so explicitly nilling
+  out every effect (all three keys present but nil) removes an existing
+  <a:effectLst> entirely rather than leaving it stale. Replaces an
+  existing effectLst (self-closing or paired) in place, or inserts a
+  fresh one right before </p:spPr> when the source has none yet.
+  Previously write-only through full regen; adding/changing/removing a
+  shape's effects via `update` silently did nothing."
+  [block shape]
+  (if (or (contains? shape :slides/glow) (contains? shape :slides/shadow) (contains? shape :slides/reflection))
+    (let [replacement (or (effect-lst-xml shape) "")]
+      (cond
+        (re-find #"<a:effectLst\b[^>]*/>" block)
+        (str/replace-first block #"<a:effectLst\b[^>]*/>" (replacement-literal replacement))
+
+        (re-find #"<a:effectLst\b[^>]*>[\s\S]*?</a:effectLst>" block)
+        (str/replace-first block #"<a:effectLst\b[^>]*>[\s\S]*?</a:effectLst>" (replacement-literal replacement))
+
+        (re-find #"</p:spPr>" block)
+        (str/replace-first block #"</p:spPr>" (replacement-literal (str replacement "</p:spPr>")))
+
+        :else block))
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2567,7 +2598,8 @@
                   (patch-solid-fill shape)
                   (patch-line-fill shape)
                   (patch-picture-recolor shape)
-                  (patch-picture-crop shape))
+                  (patch-picture-crop shape)
+                  (patch-effects shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
     (cond
       ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;
