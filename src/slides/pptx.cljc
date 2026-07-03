@@ -3165,61 +3165,122 @@
                                      :type rel-notes-master
                                      :target "notesMasters/notesMaster1.xml"})]))))))
 
+(defn- ensure-presentation-comment-authors-rel
+  "Wires ppt/_rels/presentation.xml.rels to the commentAuthors part, the
+  one piece of global (not per-slide) wiring a brand-new comments part
+  needs when the source deck previously had NO comments anywhere."
+  [entries]
+  (let [path "ppt/_rels/presentation.xml.rels"
+        rels-xml (some-> (get entries path) bytes->text)]
+    (if (or (nil? rels-xml) (str/includes? rels-xml rel-comment-authors))
+      entries
+      (assoc entries path
+             (text-entry-bytes
+              (append-relationships-into-rels-xml
+               rels-xml
+               [(ooxml/relationship {:id (str "rId" (inc (existing-rels-max-rid rels-xml)))
+                                     :type rel-comment-authors
+                                     :target "commentAuthors.xml"})]))))))
+
 (defn- patch-new-content
   "Adds brand-new (no :ooxml/source) images/charts/notes/hyperlinks that a
   patch-path edit introduced -- previously these silently fell back to a
   plain text box (images/charts, via render-shape's opts-less call) or were
   dropped entirely (notes/hyperlinks with no rId ever assigned), since
   append-shapes-xml only ever emitted the shape's own fragment with no
-  accompanying relationship/media/chart-part/notesSlide-part wiring."
+  accompanying relationship/media/chart-part/notesSlide-part wiring.
+
+  ALSO adds a brand-new comments part for a slide that had NONE before
+  this edit (patch-existing-comments, this file's OTHER comments patch
+  function, only ever edits an ALREADY-existing comments part -- a
+  slide with no comments relationship yet needed this separate new-
+  part+relationship+content-type wiring, previously entirely
+  unhandled). New comment author names get a fresh id appended to the
+  shared, package-wide commentAuthors.xml (assign-comment-author-ids),
+  computed ONCE up front across every slide needing new comments this
+  edit, since author ids are shared package-wide, not per-slide.
+
+  A slide needing ONLY a first-time :slides/notes or :slides/comments,
+  with NO brand-new (locator-less) shapes at all, still reaches this
+  function's per-slide branch -- gating on new-shapes alone would skip
+  it entirely (a real gap this fixes: previously a notes/comments-only
+  edit with no accompanying new shape silently did nothing)."
   [entries deck]
   (let [start-media (max-numbered-entry-index entries #"ppt/media/image(\d+)\.")
         start-chart (max-numbered-entry-index entries #"ppt/charts/chart(\d+)\.xml")
         start-notes (max-numbered-entry-index entries #"ppt/notesSlides/notesSlide(\d+)\.xml")
+        start-comments (max-numbered-entry-index entries #"ppt/comments/comment(\d+)\.xml")
+        slide-rels-xml (fn [slide] (some-> (get entries (rels-path (:slides/source slide))) bytes->text))
+        slide-needs-comments? (fn [slide]
+                                (and (seq (:slides/comments slide))
+                                     (not (str/includes? (or (slide-rels-xml slide) "") rel-comments))))
+        authors-path "ppt/commentAuthors.xml"
+        existing-authors (existing-comment-authors (some-> (get entries authors-path) bytes->text))
+        new-comment-authors (->> (deck-slides deck) (filter slide-needs-comments?) (mapcat :slides/comments))
+        merged-authors (assign-comment-author-ids existing-authors new-comment-authors)
+        entries (if (not= existing-authors merged-authors)
+                  (assoc entries authors-path (text-entry-bytes (comment-authors-xml-from-map merged-authors)))
+                  entries)
         result
         (reduce
-         (fn [{:keys [entries media-idx chart-idx notes-idx] :as acc} slide]
-           (let [part (:slides/source slide)
-                 new-shapes (new-shapes-for-slide slide)]
-             (if (or (nil? part) (not (contains? entries part)) (empty? new-shapes))
+         (fn [{:keys [entries media-idx chart-idx notes-idx comments-idx] :as acc} slide]
+           (let [part (:slides/source slide)]
+             (if (or (nil? part) (not (contains? entries part)))
                acc
-               (let [rels-part (rels-path part)
+               (let [new-shapes (new-shapes-for-slide slide)
+                     rels-part (rels-path part)
                      rels-xml (some-> (get entries rels-part) bytes->text)
-                     rid-start (inc (existing-rels-max-rid rels-xml))
                      already-has-notes-rel? (str/includes? (or rels-xml "") rel-notes-slide)
-                     synthetic-slide {:slides/shapes new-shapes
-                                      :slides/notes (when-not already-has-notes-rel? (:slides/notes slide))}
-                     images (slide-image-entries deck synthetic-slide (inc media-idx) rid-start)
-                     charts (slide-chart-entries deck synthetic-slide (inc chart-idx)
-                                                 (+ rid-start (count images)))
-                     notes (slide-notes-entry synthetic-slide (inc notes-idx)
-                                              (+ rid-start (count images) (count charts)))
-                     hyperlinks (slide-hyperlink-entries deck synthetic-slide
-                                                         (+ rid-start (count images) (count charts) (if notes 1 0)))
-                     opts {:image-rels (image-rels-map images)
-                           :chart-rels (chart-rels-map charts)
-                           :hyperlink-rels (hyperlink-rels-map hyperlinks)}
-                     patched-slide-xml (-> (bytes->text (get entries part))
-                                           (append-shapes-xml deck new-shapes opts))
-                     new-rels (new-content-relationships images charts notes hyperlinks)
-                     updated-rels-xml (when (seq new-rels)
-                                       (append-relationships-into-rels-xml rels-xml new-rels))]
-                 {:entries (into (cond-> (assoc entries part (text-entry-bytes patched-slide-xml))
-                                   updated-rels-xml (assoc rels-part (text-entry-bytes updated-rels-xml)))
-                                 (new-content-parts images charts notes))
-                  :media-idx (+ media-idx (count images))
-                  :chart-idx (+ chart-idx (count charts))
-                  :notes-idx (+ notes-idx (if notes 1 0))
-                  :media-types (into (:media-types acc) (map :media-type images))
-                  :chart-paths (into (:chart-paths acc) (map :chart-path charts))
-                  :notes-paths (into (:notes-paths acc) (when notes [(:notes-path notes)]))}))))
-         {:entries entries :media-idx start-media :chart-idx start-chart :notes-idx start-notes
-          :media-types [] :chart-paths [] :notes-paths []}
+                     needs-notes? (and (:slides/notes slide) (not already-has-notes-rel?))
+                     needs-comments? (slide-needs-comments? slide)]
+                 (if (and (empty? new-shapes) (not needs-notes?) (not needs-comments?))
+                   acc
+                   (let [rid-start (inc (existing-rels-max-rid rels-xml))
+                         synthetic-slide {:slides/shapes new-shapes
+                                          :slides/notes (when needs-notes? (:slides/notes slide))}
+                         images (slide-image-entries deck synthetic-slide (inc media-idx) rid-start)
+                         charts (slide-chart-entries deck synthetic-slide (inc chart-idx)
+                                                     (+ rid-start (count images)))
+                         notes (slide-notes-entry synthetic-slide (inc notes-idx)
+                                                  (+ rid-start (count images) (count charts)))
+                         hyperlinks (slide-hyperlink-entries deck synthetic-slide
+                                                             (+ rid-start (count images) (count charts) (if notes 1 0)))
+                         comments (when needs-comments?
+                                    (slide-comments-entry slide (inc comments-idx)
+                                                          (+ rid-start (count images) (count charts) (if notes 1 0) (count hyperlinks))
+                                                          merged-authors))
+                         opts {:image-rels (image-rels-map images)
+                               :chart-rels (chart-rels-map charts)
+                               :hyperlink-rels (hyperlink-rels-map hyperlinks)}
+                         patched-slide-xml (-> (bytes->text (get entries part))
+                                               (append-shapes-xml deck new-shapes opts))
+                         new-rels (concat (new-content-relationships images charts notes hyperlinks)
+                                          (when comments
+                                            [(ooxml/relationship {:id (:rel-id comments) :type rel-comments
+                                                                  :target (str "../comments/" (:comments-filename comments))})]))
+                         updated-rels-xml (when (seq new-rels)
+                                           (append-relationships-into-rels-xml rels-xml new-rels))]
+                     {:entries (into (cond-> (assoc entries part (text-entry-bytes patched-slide-xml))
+                                       updated-rels-xml (assoc rels-part (text-entry-bytes updated-rels-xml))
+                                       comments (assoc (:comments-path comments) (text-entry-bytes (:comments-xml comments))))
+                                     (new-content-parts images charts notes))
+                      :media-idx (+ media-idx (count images))
+                      :chart-idx (+ chart-idx (count charts))
+                      :notes-idx (+ notes-idx (if notes 1 0))
+                      :comments-idx (+ comments-idx (if comments 1 0))
+                      :media-types (into (:media-types acc) (map :media-type images))
+                      :chart-paths (into (:chart-paths acc) (map :chart-path charts))
+                      :notes-paths (into (:notes-paths acc) (when notes [(:notes-path notes)]))
+                      :comments-paths (into (:comments-paths acc) (when comments [(:comments-path comments)]))}))))))
+         {:entries entries :media-idx start-media :chart-idx start-chart :notes-idx start-notes :comments-idx start-comments
+          :media-types [] :chart-paths [] :notes-paths [] :comments-paths []}
          (deck-slides deck))
         any-notes? (boolean (seq (:notes-paths result)))
+        any-comments? (boolean (seq (:comments-paths result)))
         entries' (cond-> (:entries result)
                    any-notes? ensure-notes-master-entries
-                   any-notes? ensure-presentation-notes-master-rel)
+                   any-notes? ensure-presentation-notes-master-rel
+                   any-comments? ensure-presentation-comment-authors-rel)
         ct-path "[Content_Types].xml"
         ct-xml (some-> (get entries' ct-path) bytes->text)]
     (if (str/blank? ct-xml)
@@ -3241,7 +3302,14 @@
                              (for [path (:notes-paths result)
                                    :when (not (str/includes? ct-xml path))]
                                (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml")))
-            ct-xml (append-content-type-overrides ct-xml (concat chart-overrides notes-overrides))]
+            comments-overrides (concat
+                                (when (and any-comments? (not (str/includes? ct-xml "commentAuthors.xml")))
+                                  [(ooxml/override-content-type "/ppt/commentAuthors.xml"
+                                                                "application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml")])
+                                (for [path (:comments-paths result)
+                                      :when (not (str/includes? ct-xml path))]
+                                  (ooxml/override-content-type (str "/" path) "application/vnd.openxmlformats-officedocument.presentationml.comments+xml")))
+            ct-xml (append-content-type-overrides ct-xml (concat chart-overrides notes-overrides comments-overrides))]
         (assoc entries' ct-path (text-entry-bytes ct-xml))))))
 
 (defn- chart-data-shapes [deck]

@@ -2612,17 +2612,56 @@
                                :slides/notes "New speaker notes, deck previously had none"
                                :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Existing"
                                                 :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
-                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}
-                                               {:slides/id "trigger" :slides/shape :text :slides/text "trigger new-shape pass"
-                                                :slides/x 1 :slides/y 3 :slides/w 3 :slides/h 1}]}]}
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}]}]}
         entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))]
-    (testing "a notesSlide part was added and wired from the slide's own .rels"
+    (testing "a notesSlide part was added and wired from the slide's own .rels, with NO new (locator-less) shape needed to trigger it"
       (is (contains? entries "ppt/notesSlides/notesSlide1.xml"))
       (is (re-find #"New speaker notes" (entries "ppt/notesSlides/notesSlide1.xml")))
       (is (re-find #"Type=\"[^\"]*notesSlide\"" (entries "ppt/slides/_rels/slide1.xml.rels"))))
     (testing "the notesMaster + presentation.xml.rels wiring were added even though the deck had NO notes before"
       (is (contains? entries "ppt/notesMasters/notesMaster1.xml"))
       (is (re-find #"notesMaster" (entries "ppt/_rels/presentation.xml.rels"))))))
+
+(deftest update-pptx-adds-new-comments-with-comment-authors-wiring-when-deck-had-none
+  (let [base-bytes (zip-bytes
+                    {"[Content_Types].xml"
+                     (str "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                          "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                          "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                          "<Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>"
+                          "</Types>")
+                     "_rels/.rels" "<Relationships/>"
+                     "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\"/></p:presentation>"
+                     "ppt/_rels/presentation.xml.rels"
+                     "<Relationships><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide\" Target=\"slides/slide1.xml\"/></Relationships>"
+                     "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                   "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                   "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                   "<p:txBody><a:p><a:r><a:t>Existing</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                   "</p:spTree></p:cSld></p:sld>")
+                     "ppt/slides/_rels/slide1.xml.rels"
+                     (str "<Relationships>"
+                          "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>"
+                          "</Relationships>")})
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/comments [{:author "Alice" :text "First comment, deck previously had none"}]
+                               :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Existing"
+                                                :slides/x 1 :slides/y 1 :slides/w 2 :slides/h 1
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml" :ooxml/kind :p/sp :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))]
+    (testing "a comments part was added and wired from the slide's own .rels, with NO new (locator-less) shape needed to trigger it"
+      (is (contains? entries "ppt/comments/comment1.xml"))
+      (is (re-find #"First comment, deck previously had none" (entries "ppt/comments/comment1.xml")))
+      (is (re-find #"Type=\"[^\"]*comments\"" (entries "ppt/slides/_rels/slide1.xml.rels"))))
+    (testing "commentAuthors.xml + presentation.xml.rels wiring were added even though the deck had NO comments before"
+      (is (contains? entries "ppt/commentAuthors.xml"))
+      (is (re-find #"<p:cmAuthor id=\"0\" name=\"Alice\"" (entries "ppt/commentAuthors.xml")))
+      (is (re-find #"commentAuthors" (entries "ppt/_rels/presentation.xml.rels"))))
+    (testing "[Content_Types].xml declares both the comments part and commentAuthors.xml"
+      (is (re-find #"PartName=\"/ppt/comments/comment1.xml\"" (entries "[Content_Types].xml")))
+      (is (re-find #"PartName=\"/ppt/commentAuthors.xml\"" (entries "[Content_Types].xml"))))))
 
 (deftest update-pptx-removes-shapes-deleted-from-the-deck
   (let [base-bytes (zip-bytes {"[Content_Types].xml" "<Types/>"
