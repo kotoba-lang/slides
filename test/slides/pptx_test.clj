@@ -2224,6 +2224,46 @@
       (is (not (re-find #"Old note" notes-xml)))
       (is (not (contains? entries "ppt/notesSlides/notesSlide2.xml"))))))
 
+(deftest update-pptx-patches-existing-comments-in-place
+  (let [base-entries {"[Content_Types].xml" "<Types/>"
+                      "_rels/.rels" "<Relationships/>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/commentAuthors.xml" (str "<p:cmAuthorLst>"
+                                                    "<p:cmAuthor id=\"0\" name=\"Alice\" initials=\"A\" lastIdx=\"1\" clrIdx=\"0\"/>"
+                                                    "</p:cmAuthorLst>")
+                      "ppt/slides/_rels/slide1.xml.rels" (str "<Relationships>"
+                                                              "<Relationship Id=\"rId1\" Type=\"" pptx/rel-comments "\" Target=\"../comments/comment1.xml\"/>"
+                                                              "</Relationships>")
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:t>Intro</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/comments/comment1.xml" (str "<p:cmLst>"
+                                                       "<p:cm authorId=\"0\" idx=\"1\"><p:text>Old comment</p:text></p:cm>"
+                                                       "</p:cmLst>")}
+        base-bytes (zip-bytes base-entries)
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/source "ppt/slides/slide1.xml"
+                               :slides/comments [{:author "Alice" :text "Updated comment"}
+                                                 {:author "Bob" :text "A new comment"}]
+                               :slides/shapes [{:slides/id "Title" :slides/shape :text :slides/text "Intro"
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        comments-xml (entries "ppt/comments/comment1.xml")
+        authors-xml (entries "ppt/commentAuthors.xml")]
+    (testing "the existing comment's own text is replaced, a new comment is appended, no new part/relationship created"
+      (is (re-find #"<p:cm authorId=\"0\" idx=\"1\"><p:text>Updated comment</p:text></p:cm>" comments-xml))
+      (is (re-find #"<p:cm authorId=\"1\" idx=\"2\"><p:text>A new comment</p:text></p:cm>" comments-xml))
+      (is (not (re-find #"Old comment" comments-xml)))
+      (is (not (contains? entries "ppt/comments/comment2.xml"))))
+    (testing "Alice keeps her existing id 0, Bob is appended as a new author with the next id"
+      (is (re-find #"<p:cmAuthor id=\"0\" name=\"Alice\"" authors-xml))
+      (is (re-find #"<p:cmAuthor id=\"1\" name=\"Bob\"" authors-xml)))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"

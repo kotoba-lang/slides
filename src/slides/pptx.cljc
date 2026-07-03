@@ -2913,30 +2913,19 @@
       (str/replace xml #"<p:bg>[\s\S]*?</p:bg>" ""))
     xml))
 
-(defn- resolve-rel-target
-  "A .rels Target's own package path, resolved relative to `part`'s own
-  directory (NOT the _rels subdirectory itself -- a schema quirk: OOXML
-  relative rel targets are relative to the referring PART's directory,
-  treating _rels as invisible), normalizing any \"..\" segments."
-  [part target]
-  (let [dir (if-let [idx (str/last-index-of part "/")] (subs part 0 idx) "")]
-    (->> (str/split (str dir "/" target) #"/")
-         (reduce (fn [acc seg]
-                   (cond
-                     (or (str/blank? seg) (= "." seg)) acc
-                     (= ".." seg) (vec (butlast acc))
-                     :else (conj acc seg)))
-                 [])
-         (str/join "/"))))
-
-(defn- notes-part-path
-  "The notesSlide part path a slide's own .rels already points at, or nil
-  when the slide has no notesSlide relationship at all."
-  [part rels-xml]
-  (when-let [rel (some #(when (str/includes? % rel-notes-slide) %)
+(defn- part-via-relationship
+  "The package path a slide's own .rels points at for a relationship of
+  the given `rel-type`, or nil when no such relationship exists. Reuses
+  resolve-part-target (already used for resolving image/chart .rels
+  targets on import) rather than a bespoke resolver, so the schema
+  quirk it handles (relative targets resolve against the referring
+  PART's own directory, not the _rels subdirectory) has exactly one
+  implementation."
+  [part rels-xml rel-type]
+  (when-let [rel (some #(when (str/includes? % rel-type) %)
                        (re-seq #"<Relationship\b[^>]*/>" (or rels-xml "")))]
-    (when-let [target (second (re-find #"\bTarget=\"([^\"]*)\"" rel))]
-      (resolve-rel-target part target))))
+    (when-let [target (xml-attr rel "Target")]
+      (resolve-part-target part target))))
 
 (defn- patch-existing-notes
   "A slide's own ALREADY-imported speaker notes text (:slides/notes),
@@ -2962,10 +2951,95 @@
   (let [part (:slides/source slide)]
     (if (and part (contains? slide :slides/notes))
       (let [rels-xml (some-> (get entries (rels-path part)) bytes->text)
-            notes-part (notes-part-path part rels-xml)]
+            notes-part (part-via-relationship part rels-xml rel-notes-slide)]
         (if-let [notes-bytes (and notes-part (get entries notes-part))]
           (assoc entries notes-part
                  (text-entry-bytes (patch-paragraphs (bytes->text notes-bytes) (:slides/notes slide) {})))
+          entries))
+      entries)))
+
+(defn- existing-comment-authors
+  "ppt/commentAuthors.xml's own <p:cmAuthor id=\"...\" name=\"...\"/>
+  entries as {name id}, or {} when the part doesn't exist yet."
+  [authors-xml]
+  (into {} (map (fn [tag] [(xml-attr tag "name") (parse-long-safe (xml-attr tag "id"))])
+               (re-seq #"<p:cmAuthor\b[^>]*/>" (or authors-xml "")))))
+
+(defn- assign-comment-author-ids
+  "`existing-authors` ({name id}) plus a fresh id (continuing past the
+  highest existing one) for each of `comments`' own author names not
+  already in it -- new authors get new ids, existing ones keep theirs
+  (unlike full-regen's own deck-comment-authors/comment-authors-xml,
+  which always renumbers 0,1,2... from scratch, fine for a first
+  write but wrong for a patch: it would silently reassign ids other,
+  untouched slides' comments still reference)."
+  [existing-authors comments]
+  (let [names (->> comments (keep :author) distinct)
+        next-id (atom (inc (apply max -1 (vals existing-authors))))]
+    (reduce (fn [acc author-name]
+              (if (contains? acc author-name)
+                acc
+                (let [id @next-id]
+                  (swap! next-id inc)
+                  (assoc acc author-name id))))
+            existing-authors
+            names)))
+
+(defn- comment-authors-xml-from-map
+  "Like comment-authors-xml, but from an explicit {name id} map (each
+  author's OWN existing id preserved) instead of assigning 0,1,2... from
+  a bare ordered name list -- the patch path's own author-id source of
+  truth, see assign-comment-author-ids."
+  [author-id-by-name]
+  (str "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+       "<p:cmAuthorLst xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">"
+       (apply str (map (fn [[author-name id]]
+                         (str "<p:cmAuthor id=\"" id "\" name=\"" (esc author-name) "\" initials=\""
+                              (esc (author-initials author-name)) "\" lastIdx=\"1\" clrIdx=\"" id "\"/>"))
+                       (sort-by val author-id-by-name)))
+       "</p:cmAuthorLst>"))
+
+(defn- patch-existing-comments
+  "A slide's own ALREADY-imported comments (:slides/comments), edited in
+  place, through the source-aware update path. Resolves the comments
+  part via the slide's own .rels (same pattern as patch-existing-
+  notes), then regenerates that ONE part's content in full via
+  comments-part-xml -- a comment list is one coherent collection (not
+  independently-addressable pieces like table cells), so replacing the
+  whole part handles added/removed/reordered/edited comments alike with
+  one code path, same rationale as patch-effects regenerating the
+  whole effectLst. New author names get a fresh id appended to the
+  shared, package-wide commentAuthors.xml (assign-comment-author-ids);
+  existing authors -- including ones only OTHER, untouched slides'
+  comments reference -- keep their existing id.
+
+  A brand-new comments part (a slide with NO comments before this edit)
+  is a different, larger operation (new part + new relationship +
+  content-type overrides + possibly a brand-new commentAuthors.xml of
+  its own) -- out of scope here, left for later; only edits an
+  EXISTING comments part's content. Only when :slides/comments is
+  explicitly present on the incoming slide map and the slide already
+  has a comments relationship -- otherwise entries pass through
+  unchanged.
+
+  Previously editing an ALREADY-imported slide's comments via `update`
+  silently did nothing at all (not even a brand-new comments part on a
+  previously-comment-less slide, unlike notes/images/charts/
+  hyperlinks -- patch-new-content never handled comments)."
+  [entries slide]
+  (let [part (:slides/source slide)]
+    (if (and part (contains? slide :slides/comments))
+      (let [rels-xml (some-> (get entries (rels-path part)) bytes->text)
+            comments-part (part-via-relationship part rels-xml rel-comments)]
+        (if comments-part
+          (let [comments (:slides/comments slide)
+                authors-path "ppt/commentAuthors.xml"
+                existing-authors (existing-comment-authors (some-> (get entries authors-path) bytes->text))
+                merged-authors (assign-comment-author-ids existing-authors comments)
+                entries (if (not= existing-authors merged-authors)
+                          (assoc entries authors-path (text-entry-bytes (comment-authors-xml-from-map merged-authors)))
+                          entries)]
+            (assoc entries comments-part (text-entry-bytes (comments-part-xml comments merged-authors))))
           entries))
       entries)))
 
@@ -3036,7 +3110,8 @@
                       (assoc part (text-entry-bytes (-> (bytes->text bytes)
                                                         (patch-slide-deletions slide)
                                                         (patch-slide-background slide))))
-                      (patch-existing-notes slide))
+                      (patch-existing-notes slide)
+                      (patch-existing-comments slide))
                   acc)))
             entries
             (deck-slides deck))))
