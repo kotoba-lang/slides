@@ -772,6 +772,28 @@
         (is (= tab-stops (:tab-stops (first (:slides/paragraphs body)))))
         (is (not (contains? (second (:slides/paragraphs body)) :tab-stops)))))))
 
+(deftest writes-and-round-trips-paragraph-rtl
+  (let [deck (-> (m/deck "deck" {:slides/title "RTL"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "List"})
+                      (m/add-shape {:slides/id "body" :slides/shape :text
+                                    :slides/x 0.8 :slides/y 1.0 :slides/w 8.0 :slides/h 2.0
+                                    :slides/font-size 18
+                                    :slides/paragraphs
+                                    [{:text "مرحبا" :rtl true}
+                                     {:text "Plain LTR line"}]}))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "an rtl paragraph writes <a:pPr rtl=\"1\"> even with no other paragraph-level property set"
+      (is (re-find #"<a:pPr rtl=\"1\">" slide-xml)))
+    (testing "the plain LTR paragraph gets no <a:pPr> at all -- exactly one <a:pPr> in the whole slide, unchanged for the common case"
+      (is (= 1 (count (re-seq #"<a:pPr\b" slide-xml)))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            body (some #(when (= "body" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (true? (:rtl (first (:slides/paragraphs body)))))
+        (is (not (contains? (second (:slides/paragraphs body)) :rtl)))))))
+
 (deftest text-shape-with-fill-writes-a-styled-non-rect-autoshape
   (let [deck (-> (m/deck "deck" {:slides/title "Callout"})
                  (m/add-slide

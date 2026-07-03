@@ -632,12 +632,13 @@
   (when (seq tab-stops)
     (str "<a:tabLst>" (apply str (map tab-stop-xml tab-stops)) "</a:tabLst>")))
 
-(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing level margin-left tab-stops]}]
-  (when (or align bullet line-spacing level margin-left tab-stops)
+(defn- paragraph-ppr-xml [{:keys [align bullet line-spacing level margin-left tab-stops rtl]}]
+  (when (or align bullet line-spacing level margin-left tab-stops rtl)
     (str "<a:pPr"
          (when level (str " lvl=\"" (long level) "\""))
          (when margin-left (str " marL=\"" (emu margin-left) "\""))
          (when align (str " algn=\"" (case align :center "ctr" :right "r" :justify "just" "l") "\""))
+         (when rtl " rtl=\"1\"")
          ">"
          (when line-spacing
            (str "<a:lnSpc><a:spcPct val=\"" (long (* line-spacing 100000)) "\"/></a:lnSpc>"))
