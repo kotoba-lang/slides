@@ -290,6 +290,7 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 | Chart | Bar/line/pie/area/doughnut/scatter chart bodies | ✅ full regen + patch | scatter uses two value axes (X is itself plotted, not a category label), unlike the other types' one category + one value axis |
 | Chart | Embedded SpreadsheetML workbook (the chart's own editable `.xlsx`) | ✅ full regen + patch | a minimal, real, independently-openable `xl/workbook.xml` + `xl/worksheets/sheet1.xml` OPC package, generated fresh on full regen and cell-patched in place on `update` |
 | Chart | Legend position + axis titles | ✅ write-only | no chart-XML *reader* exists anywhere in this pipeline (chart import is reference-metadata only — rel-id + resolved chart-part/workbook-part path, never the chart's own visual configuration), so these are settable only when hand-authoring/programmatically building a deck |
+| Chart | Data labels (show value/category name/series name/legend key/percent/bubble size) | ✅ write-only | added this session — chart-wide `<c:dLbls>`, wired into every chart type at its own schema position; same write-only rationale as legend/axis titles above |
 | Deck/package parts | Layout refs, slide sections | ✅ full regen | |
 | Deck/package parts | Legacy PowerPoint comments | ✅ full regen | includes the deck-wide author-collection pass (comment `authorId` is a shared index into one package-wide `commentAuthors.xml`, not per-slide) |
 | Deck/package parts | Handout master | ✅ full regen | presence flag only, gated on `:slides/handout-master?` |
