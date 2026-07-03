@@ -62,6 +62,8 @@
     (:drawingml/bold shape) (assoc :slides/bold (:drawingml/bold shape))
     (:drawingml/italic shape) (assoc :slides/italic (:drawingml/italic shape))
     (:drawingml/underline shape) (assoc :slides/underline (:drawingml/underline shape))
+    (:drawingml/underline-style shape) (assoc :slides/underline-style (:drawingml/underline-style shape))
+    (:drawingml/underline-color shape) (assoc :slides/underline-color (:drawingml/underline-color shape))
     (:drawingml/strikethrough shape) (assoc :slides/strikethrough (:drawingml/strikethrough shape))
     (:drawingml/baseline shape) (assoc :slides/baseline (:drawingml/baseline shape))
     (:drawingml/char-spacing shape) (assoc :slides/char-spacing (:drawingml/char-spacing shape))

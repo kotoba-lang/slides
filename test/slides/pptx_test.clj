@@ -927,6 +927,33 @@
       (is (not (re-find #"\bspc=" slide-xml)))
       (is (not (re-find #"<a:highlight>" slide-xml))))))
 
+(deftest writes-underline-style-and-color
+  (let [deck (-> (m/deck "deck" {:slides/title "Double underline"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "t" "Emphasis"
+                                               {:slides/underline-style :double :slides/underline-color "FF0000"})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "underline-style alone implies the underline is on, writing its own u value (not the plain sng default)"
+      (is (re-find #"<a:rPr[^>]*\bu=\"dbl\"" slide-xml)))
+    (testing "underline-color writes <a:uFill>"
+      (is (re-find #"<a:uFill><a:srgbClr val=\"FF0000\"/></a:uFill>" slide-xml))))
+  (testing "plain :slides/underline true (no style/color) still writes the historical u=\"sng\", unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain underline"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain" {:slides/underline true})))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (re-find #"<a:rPr[^>]*\bu=\"sng\"" slide-xml))
+      (is (not (re-find #"<a:uFill>" slide-xml)))))
+  (testing "no underline at all has neither the attribute nor <a:uFill>"
+    (let [deck (-> (m/deck "deck" {:slides/title "No underline"})
+                   (m/add-slide (-> (m/slide "s1") (m/add-shape (m/text-box "t" "Plain")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"\bu=\"" slide-xml)))
+      (is (not (re-find #"<a:uFill>" slide-xml))))))
+
 (deftest writes-hyperlink-as-native-hlinkclick-and-relationship
   (let [deck (-> (m/deck "deck" {:slides/title "Linked"})
                  (m/add-slide
@@ -2114,6 +2141,46 @@
         (is (re-find #"\bu=\"none\"" second-sp))
         (is (re-find #"\bstrike=\"noStrike\"" second-sp))
         (is (re-find #"\bbaseline=\"0\"" second-sp))))))
+
+(deftest update-pptx-patches-underline-style-and-color-onto-an-existing-run
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Plain\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\"/><a:t>Plain</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"AlreadyDouble\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"1828800\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm></p:spPr>"
+                                                    "<p:txBody><a:p><a:r><a:rPr sz=\"2400\" u=\"dbl\"><a:uFill><a:srgbClr val=\"00FF00\"/></a:uFill></a:rPr><a:t>Was double green</a:t></a:r></a:p></p:txBody></p:sp>"
+                                                    "</p:spTree></p:cSld></p:sld>")}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Plain" :slides/shape :text
+                                                :slides/underline-style :wavy :slides/underline-color "FF0000"
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 0}}
+                                               {:slides/id "AlreadyDouble" :slides/shape :text
+                                                :slides/underline true :slides/underline-style nil :slides/underline-color nil
+                                                :slides/x 1.0 :slides/y 2.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/sp :ooxml/index 1}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "underline-style alone (no separate :slides/underline key) still turns the underline on with its own u value"
+      (is (re-find #"<a:rPr sz=\"2400\" u=\"wavy\"><a:uFill><a:srgbClr val=\"FF0000\"/></a:uFill></a:rPr>" slide)))
+    (testing "reverting to plain single underline clears both the non-default style and the uFill color"
+      (let [second-sp (second (re-seq #"<p:sp>[\s\S]*?</p:sp>" slide))]
+        (is (re-find #"\bu=\"sng\"" second-sp))
+        (is (not (re-find #"<a:uFill" second-sp)))))))
 
 (deftest update-pptx-patches-lock-flags-onto-existing-shapes
   (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
