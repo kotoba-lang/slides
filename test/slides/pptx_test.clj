@@ -276,6 +276,32 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<a:picLocks noChangeAspect=\"1\"/>" slide-xml)))))
 
+(deftest writes-and-round-trips-shape-locks
+  (let [locks {:no-grp? true :no-rot? true}
+        deck (-> (m/deck "deck" {:slides/title "Locked shapes"})
+                 (m/add-slide (-> (m/slide "s1")
+                                  (m/add-shape (m/text-box "t" "Locked text" {:slides/locks locks}))
+                                  (m/add-shape (m/rect "r" {:slides/locks locks})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "the captured lock flags are written on both the text and rect shape"
+      (is (= 2 (count (re-seq #"<a:spLocks noGrp=\"1\" noRot=\"1\"/>" slide-xml)))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shapes (-> reimported :slides/slides first :slides/shapes)]
+        (is (= locks (:slides/locks (some #(when (= "t" (:slides/id %)) %) shapes))))
+        (is (= locks (:slides/locks (some #(when (= "r" (:slides/id %)) %) shapes)))))))
+  (testing "no :slides/locks -- no <a:spLocks> at all, <p:cNvSpPr> stays self-closing, unchanged"
+    (let [deck (-> (m/deck "deck" {:slides/title "Plain"})
+                   (m/add-slide (-> (m/slide "s1")
+                                    (m/add-shape (m/text-box "t" "Plain"))
+                                    (m/add-shape (m/rect "r")))))
+          entries (zip-entries (pptx/pptx-bytes deck))
+          slide-xml (entries "ppt/slides/slide1.xml")]
+      (is (not (re-find #"<a:spLocks" slide-xml)))
+      (is (re-find #"<p:cNvSpPr txBox=\"1\"/>" slide-xml))
+      (is (re-find #"<p:cNvSpPr/>" slide-xml)))))
+
 (deftest writes-and-round-trips-picture-crop
   (let [deck (-> (m/deck "deck" {:slides/title "Cropped"})
                  (m/add-slide
