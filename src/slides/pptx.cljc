@@ -2369,6 +2369,48 @@
       block)
     block))
 
+(defn- patch-picture-recolor
+  "A picture's own :slides/recolor through the source-aware update path.
+  Rebuilds the WHOLE <a:blip> element (self-closing or paired, whichever
+  the source already has) via the same blip-xml used by full regen,
+  preserving its existing r:embed rel-id -- simpler and more correct than
+  trying to insert/replace <a:alphaModFix>/<a:grayscl> children
+  independently, since blip-xml already owns the self-closing-vs-paired
+  decision in exactly one place. Shared by both <p:pic> and a picture-
+  filled <p:sp>'s own <a:blipFill> (blip-xml/blip-recolor-children-xml
+  don't care which shape kind they're embedded in). Previously write-
+  only through full regen; recoloring an already-imported picture via
+  `update` silently did nothing."
+  [block shape]
+  (if (:slides/recolor shape)
+    (if-let [rel-id (some-> (re-find #"<a:blip\b[^>]*\br:embed=\"([^\"]*)\"" block) second)]
+      (if-let [blip (re-find #"<a:blip\b[^>]*(?:/>|>[\s\S]*?</a:blip>)" block)]
+        (str/replace-first block blip (replacement-literal (blip-xml rel-id (:slides/recolor shape))))
+        block)
+      block)
+    block))
+
+(defn- patch-picture-crop
+  "A picture's own :slides/crop through the source-aware update path.
+  Replaces an existing <a:srcRect .../> in place, or inserts a fresh one
+  right before <a:stretch> (the schema position src-rect-xml/blip-fill-
+  xml already use in full regen) when the source has none yet -- same
+  insert-or-replace shape as patch-or-insert-xfrm. Previously write-only
+  through full regen; cropping an already-imported picture via `update`
+  silently did nothing."
+  [block shape]
+  (if (:slides/crop shape)
+    (let [replacement (src-rect-xml (:slides/crop shape))]
+      (cond
+        (re-find #"<a:srcRect\b[^>]*/>" block)
+        (str/replace-first block #"<a:srcRect\b[^>]*/>" (replacement-literal replacement))
+
+        (re-find #"<a:stretch\b" block)
+        (str/replace-first block #"<a:stretch\b" (replacement-literal (str replacement "<a:stretch")))
+
+        :else block))
+    block))
+
 (defn- set-rpr-color [rpr color]
   (let [hex (hex-color color "17202A")]
     (if (re-find #"<a:solidFill\b[\s\S]*?</a:solidFill>" rpr)
@@ -2523,7 +2565,9 @@
                   (patch-hidden-flag shape)
                   (patch-gradient-fill shape)
                   (patch-solid-fill shape)
-                  (patch-line-fill shape))
+                  (patch-line-fill shape)
+                  (patch-picture-recolor shape)
+                  (patch-picture-crop shape))
         table-like? (#{:p/graphicFrame :a/tbl} kind)]
     (cond
       ;; A table's <a:p> elements are separated by <a:tc>/<a:tr> boundaries;

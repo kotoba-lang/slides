@@ -1868,6 +1868,41 @@
     (testing "an already-hidden shape given :slides/hidden false loses hidden=\"1\""
       (is (re-find #"<p:cNvPr id=\"3\" name=\"AlreadyHidden\"/>" slide)))))
 
+(deftest update-pptx-patches-picture-crop-and-recolor-onto-an-existing-picture
+  (let [base-entries {"[Content_Types].xml" "<Types><Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/></Types>"
+                      "_rels/.rels" "<Relationships><Relationship Id=\"rId1\" Type=\"officeDocument\" Target=\"ppt/presentation.xml\"/></Relationships>"
+                      "ppt/presentation.xml" "<p:presentation><p:sldSz cx=\"9144000\" cy=\"5143500\" type=\"wide\"/></p:presentation>"
+                      "ppt/slides/_rels/slide1.xml.rels" "<Relationships><Relationship Id=\"rId2\" Type=\"image\" Target=\"../media/image1.png\"/></Relationships>"
+                      "ppt/slides/slide1.xml" (str "<p:sld><p:cSld><p:spTree>"
+                                                    "<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"Photo\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
+                                                    "<p:blipFill><a:blip r:embed=\"rId2\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>"
+                                                    "<p:spPr><a:xfrm><a:off x=\"914400\" y=\"914400\"/><a:ext cx=\"1828800\" cy=\"914400\"/></a:xfrm>"
+                                                    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+                                                    "</p:spTree></p:cSld></p:sld>")
+                      "ppt/media/image1.png" "PNG-BYTES"}
+        base-bytes (let [out (java.io.ByteArrayOutputStream.)]
+                     (with-open [zip (java.util.zip.ZipOutputStream. out)]
+                       (doseq [[path text] base-entries]
+                         (.putNextEntry zip (java.util.zip.ZipEntry. path))
+                         (.write zip (.getBytes text "UTF-8"))
+                         (.closeEntry zip)))
+                     (.toByteArray out))
+        crop {:left 10.0 :top 5.0}
+        recolor {:grayscale? true}
+        deck {:slides/id "imported"
+              :slides/slides [{:slides/id "slide-1"
+                               :slides/shapes [{:slides/id "Photo" :slides/shape :image
+                                                :slides/crop crop :slides/recolor recolor
+                                                :slides/x 1.0 :slides/y 1.0 :slides/w 2.0 :slides/h 1.0
+                                                :ooxml/source {:ooxml/part "ppt/slides/slide1.xml"
+                                                               :ooxml/kind :p/pic :ooxml/index 0}}]}]}
+        entries (zip-entries (pptx/update-pptx-bytes base-bytes deck))
+        slide (entries "ppt/slides/slide1.xml")]
+    (testing "recolor children are added, embed rel-id preserved"
+      (is (re-find #"<a:blip r:embed=\"rId2\"><a:grayscl/></a:blip>" slide)))
+    (testing "crop is inserted right before <a:stretch>"
+      (is (re-find #"<a:srcRect l=\"10000\" t=\"5000\"/><a:stretch>" slide)))))
+
 (deftest update-pptx-patches-literal-dollar-text
   (let [base-entries {"[Content_Types].xml" "<Types/>"
                       "_rels/.rels" "<Relationships/>"
