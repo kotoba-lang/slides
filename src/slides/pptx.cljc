@@ -2913,6 +2913,62 @@
       (str/replace xml #"<p:bg>[\s\S]*?</p:bg>" ""))
     xml))
 
+(defn- resolve-rel-target
+  "A .rels Target's own package path, resolved relative to `part`'s own
+  directory (NOT the _rels subdirectory itself -- a schema quirk: OOXML
+  relative rel targets are relative to the referring PART's directory,
+  treating _rels as invisible), normalizing any \"..\" segments."
+  [part target]
+  (let [dir (if-let [idx (str/last-index-of part "/")] (subs part 0 idx) "")]
+    (->> (str/split (str dir "/" target) #"/")
+         (reduce (fn [acc seg]
+                   (cond
+                     (or (str/blank? seg) (= "." seg)) acc
+                     (= ".." seg) (vec (butlast acc))
+                     :else (conj acc seg)))
+                 [])
+         (str/join "/"))))
+
+(defn- notes-part-path
+  "The notesSlide part path a slide's own .rels already points at, or nil
+  when the slide has no notesSlide relationship at all."
+  [part rels-xml]
+  (when-let [rel (some #(when (str/includes? % rel-notes-slide) %)
+                       (re-seq #"<Relationship\b[^>]*/>" (or rels-xml "")))]
+    (when-let [target (second (re-find #"\bTarget=\"([^\"]*)\"" rel))]
+      (resolve-rel-target part target))))
+
+(defn- patch-existing-notes
+  "A slide's own ALREADY-imported speaker notes text (:slides/notes),
+  edited in place, through the source-aware update path. Resolves the
+  notesSlide part via the slide's own .rels (the deck model carries no
+  direct locator for it, unlike a shape's :ooxml/source), then reuses
+  patch-paragraphs -- the SAME text-editing logic used for a shape's own
+  <p:txBody> -- against the notesSlide's own <p:txBody>, since both are
+  just <a:p> sequences and patch-paragraphs already operates generically
+  on whatever <a:p> elements a block contains. A brand-new notesSlide
+  (a slide that had NO notes before this edit) is a different, larger
+  operation (new part + new relationship) already handled separately by
+  patch-new-content; this function only edits text in an EXISTING
+  notesSlide part. Only when :slides/notes is explicitly present on the
+  incoming slide map and the slide already has a notesSlide relationship
+  -- otherwise the entries pass through unchanged, deferring to
+  patch-new-content for the add-new-notes case.
+
+  Previously editing an ALREADY-imported slide's notes text via `update`
+  silently did nothing -- only a brand-new notesSlide on a previously-
+  notes-less slide got added."
+  [entries slide]
+  (let [part (:slides/source slide)]
+    (if (and part (contains? slide :slides/notes))
+      (let [rels-xml (some-> (get entries (rels-path part)) bytes->text)
+            notes-part (notes-part-path part rels-xml)]
+        (if-let [notes-bytes (and notes-part (get entries notes-part))]
+          (assoc entries notes-part
+                 (text-entry-bytes (patch-paragraphs (bytes->text notes-bytes) (:slides/notes slide) {})))
+          entries))
+      entries)))
+
 (defn- patch-hyperlink-relationships
   "For `shapes` (each already carrying :ooxml/source) whose :slides/
   hyperlink or :slides/hyperlink-slide-part is explicitly present on
@@ -2976,9 +3032,11 @@
     (reduce (fn [acc slide]
               (let [part (:slides/source slide)]
                 (if-let [bytes (and part (get acc part))]
-                  (assoc acc part (text-entry-bytes (-> (bytes->text bytes)
+                  (-> acc
+                      (assoc part (text-entry-bytes (-> (bytes->text bytes)
                                                         (patch-slide-deletions slide)
                                                         (patch-slide-background slide))))
+                      (patch-existing-notes slide))
                   acc)))
             entries
             (deck-slides deck))))
