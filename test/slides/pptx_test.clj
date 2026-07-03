@@ -785,6 +785,22 @@
         (is (= "ppt/slides/slide2.xml" (:slides/hyperlink-slide-part shape)))
         (is (not (contains? shape :slides/hyperlink)))))))
 
+(deftest writes-and-round-trips-hyperlink-navigation-action
+  (let [deck (-> (m/deck "deck" {:slides/title "Nav"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "next" "Next" {:slides/hyperlink-action :next-slide})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")
+        rels-xml (entries "ppt/slides/_rels/slide1.xml.rels")]
+    (testing "the run's rPr carries a self-contained hlinkClick action, no r:id and no relationship at all"
+      (is (re-find #"<a:hlinkClick action=\"ppaction://hlinkshowjump\?jump=nextslide\"/>" slide-xml))
+      (is (not (re-find #"hyperlink" rels-xml))))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (some #(when (= "next" (:slides/id %)) %) (-> reimported :slides/slides first :slides/shapes))]
+        (is (= :next-slide (:slides/hyperlink-action shape)))))))
+
 (deftest writes-line-dash-pattern
   (let [deck (-> (m/deck "deck" {:slides/title "Dashed"})
                  (m/add-slide

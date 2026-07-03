@@ -64,6 +64,7 @@
     (:drawingml/baseline shape) (assoc :slides/baseline (:drawingml/baseline shape))
     (:drawingml/hyperlink shape) (assoc :slides/hyperlink (:drawingml/hyperlink shape))
     (:drawingml/hyperlink-slide-part shape) (assoc :slides/hyperlink-slide-part (:drawingml/hyperlink-slide-part shape))
+    (:drawingml/hyperlink-action shape) (assoc :slides/hyperlink-action (:drawingml/hyperlink-action shape))
     (:drawingml/fill-image-rel-id shape) (assoc :slides/fill-image-rel-id (:drawingml/fill-image-rel-id shape))
     (:drawingml/fill-image-part shape) (assoc :slides/fill-image-part (:drawingml/fill-image-part shape))
     (:drawingml/adjustments shape) (assoc :slides/adjustments (:drawingml/adjustments shape))

@@ -661,7 +661,14 @@
   default-table-style-id)."
   "{5C7C1F09-0F5C-4B8A-9C1E-8A5F5D7B3E11}")
 
-(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline placeholder] :as shape} text major? ea-font hlink-rel-id]
+(def ^:private ppaction-jump-queries
+  "The reverse of drawingml.parse/ppaction-jumps -- each :drawingml/
+  hyperlink-action keyword back to its own ppaction://hlinkshowjump
+  query value."
+  {:first-slide "firstslide" :last-slide "lastslide" :next-slide "nextslide"
+   :previous-slide "previousslide" :last-viewed-slide "lastslideviewed" :end-show "endshow"})
+
+(defn- paragraph-run-xml [deck {:slides/keys [font-size color bold italic underline strikethrough baseline placeholder hyperlink-action] :as shape} text major? ea-font hlink-rel-id]
   (let [field-type (field-placeholder-types (:type placeholder))
         open-tag (if field-type (str "<a:fld id=\"" field-id "\" type=\"" field-type "\">") "<a:r>")
         close-tag (if field-type "</a:fld>" "</a:r>")]
@@ -674,7 +681,10 @@
          "><a:latin typeface=\"" (esc (font-face deck major?)) "\"/>"
          (when ea-font (str "<a:ea typeface=\"" (esc ea-font) "\"/>"))
          "<a:solidFill><a:srgbClr val=\"" (hex-color color "17202A") "\"/></a:solidFill>"
-         (when hlink-rel-id (str "<a:hlinkClick r:id=\"" hlink-rel-id "\"/>"))
+         (cond
+           hyperlink-action (str "<a:hlinkClick action=\"ppaction://hlinkshowjump?jump="
+                                 (get ppaction-jump-queries hyperlink-action) "\"/>")
+           hlink-rel-id (str "<a:hlinkClick r:id=\"" hlink-rel-id "\"/>"))
          "</a:rPr><a:t>" (esc text) "</a:t>" close-tag)))
 
 (defn- paragraph-xml [deck shape major? ea-font hlink-rel-id {:keys [text] :as para}]
