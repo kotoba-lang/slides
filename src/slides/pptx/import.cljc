@@ -82,6 +82,7 @@
     (:drawingml/crop shape) (assoc :slides/crop (:drawingml/crop shape))
     (:drawingml/recolor shape) (assoc :slides/recolor (:drawingml/recolor shape))
     (:drawingml/connections shape) (assoc :slides/connections (:drawingml/connections shape))
+    (:drawingml/hidden shape) (assoc :slides/hidden (:drawingml/hidden shape))
     (:drawingml/source-kind shape) (assoc :slides/source-kind (:drawingml/source-kind shape))
     (:drawingml/group shape) (assoc :slides/group (:drawingml/group shape))
     (:drawingml/placeholder shape) (assoc :slides/placeholder (:drawingml/placeholder shape))

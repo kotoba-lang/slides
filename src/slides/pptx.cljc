@@ -61,6 +61,14 @@
       (str/replace "\"" "&quot;")
       (str/replace "'" "&apos;")))
 
+(defn- hidden-attr
+  "A shape's own :slides/hidden (from drawingml.parse/shape-hidden? on
+  import) into <p:cNvPr>'s own hidden=\"1\" attribute -- \"\" (no
+  attribute at all) when absent, unchanged from before this feature
+  existed."
+  [shape]
+  (when (:slides/hidden shape) " hidden=\"1\""))
+
 (defn- replacement-literal [s]
   #?(:clj (Matcher/quoteReplacement (str s))
      :cljs (str s)))
@@ -959,7 +967,7 @@
          ea-font (font-face-ea deck major?)
          hlink-rel-id (get-in opts [:hyperlink-rels (:slides/id shape)])
          fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
-     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"/>"
+     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Text " idx))) "\"" (hidden-attr shape) "/>"
           (if placeholder
             (str "<p:cNvSpPr/><p:nvPr>" (placeholder-xml placeholder) "</p:nvPr>")
             "<p:cNvSpPr txBox=\"1\"/><p:nvPr/>")
@@ -983,7 +991,7 @@
   ([idx shape] (rect-shape idx shape {}))
   ([idx {:slides/keys [id fill line] :as shape} opts]
    (let [fill-image-rel-id (when (:slides/fill-image-data shape) (get-in opts [:image-rels (:slides/id shape)]))]
-     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"/>"
+     (str "<p:sp><p:nvSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Rect " idx))) "\"" (hidden-attr shape) "/>"
           "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>"
           "<p:spPr>" (shape-xfrm shape)
           (geometry-xml shape)
@@ -1015,7 +1023,7 @@
     "<p:cNvCxnSpPr/>"))
 
 (defn- connector-shape [idx {:slides/keys [id line] :as shape}]
-  (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"/>"
+  (str "<p:cxnSp><p:nvCxnSpPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Connector " idx))) "\"" (hidden-attr shape) "/>"
        (connector-cnv-cxn-sp-pr-xml (:slides/connections shape)) "<p:nvPr/></p:nvCxnSpPr>"
        "<p:spPr>" (connector-xfrm shape)
        "<a:prstGeom prst=\"" (geometry-preset (assoc shape :slides/geometry (or (:slides/geometry shape) :straightConnector1))) "\">" (avlst-xml shape) "</a:prstGeom>"
@@ -1161,7 +1169,7 @@
         col-w (quot total-w col-count)
         row-h (quot total-h row-count)]
     (str "<p:graphicFrame>"
-         "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Table " idx))) "\"/>"
+         "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Table " idx))) "\"" (hidden-attr shape) "/>"
          "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
          "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
          "<a:ext cx=\"" total-w "\" cy=\"" total-h "\"/></p:xfrm>"
@@ -1178,7 +1186,7 @@
   rel-id, `render-shape` falls back to a plain text box instead of emitting a
   dangling r:embed that would corrupt the package."
   [idx {:slides/keys [id] :as shape} rel-id]
-  (str "<p:pic><p:nvPicPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Picture " idx))) "\"/>"
+  (str "<p:pic><p:nvPicPr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Picture " idx))) "\"" (hidden-attr shape) "/>"
        "<p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>"
        "<p:blipFill>" (blip-xml rel-id (:slides/recolor shape)) (src-rect-xml (:slides/crop shape)) "<a:stretch><a:fillRect/></a:stretch></p:blipFill>"
        "<p:spPr>" (shape-xfrm shape) "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
@@ -1191,7 +1199,7 @@
   actually exists -- otherwise render-shape falls back to plain text."
   [idx {:slides/keys [id] :as shape} rel-id]
   (str "<p:graphicFrame>"
-       "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Chart " idx))) "\"/>"
+       "<p:nvGraphicFramePr><p:cNvPr id=\"" (+ 10 idx) "\" name=\"" (esc (or id (str "Chart " idx))) "\"" (hidden-attr shape) "/>"
        "<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp=\"1\"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>"
        "<p:xfrm><a:off x=\"" (emu (numeric (:slides/x shape) 0)) "\" y=\"" (emu (numeric (:slides/y shape) 0)) "\"/>"
        "<a:ext cx=\"" (emu (positive-numeric (:slides/w shape) 4)) "\" cy=\"" (emu (positive-numeric (:slides/h shape) 3)) "\"/></p:xfrm>"
