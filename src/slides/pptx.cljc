@@ -944,18 +944,25 @@
        (when orient (str " orient=\"" (esc orient) "\""))
        "/>"))
 
+(def ^:private text-vertical-attrs
+  "The reverse of drawingml.parse/text-vertical-values -- each :vertical
+  keyword back to its own vert=\"...\" attribute value."
+  {:vert "vert" :vert270 "vert270" :word-art-vert "wordArtVert"
+   :ea-vert "eaVert" :mongolian-vert "mongolianVert" :word-art-vert-rtl "wordArtVertRtl"})
+
 (defn- body-pr-xml
   "A shape's <a:bodyPr> from its :slides/body-props (carried through
   unchanged from import's drawingml/body-props -- see
   drawingml.parse/text-body-props). wrap/lIns/tIns/rIns/rIns/anchor/
-  anchorCtr are all attributes on the tag itself (CT_TextBodyProperties);
-  the autofit choice (spAutoFit/noAutofit/normAutofit) is its one child
-  element. nil :slides/body-props (the common case) still emits a bare
-  <a:bodyPr></a:bodyPr> -- semantically identical to the historical
-  hardcoded wrap=\"square\" (PowerPoint's own default when wrap is
-  omitted), just without redundantly spelling out the default."
+  anchorCtr/vert are all attributes on the tag itself
+  (CT_TextBodyProperties); the autofit choice (spAutoFit/noAutofit/
+  normAutofit) is its one child element. nil :slides/body-props (the
+  common case) still emits a bare <a:bodyPr></a:bodyPr> -- semantically
+  identical to the historical hardcoded wrap=\"square\" (PowerPoint's own
+  default when wrap is omitted), just without redundantly spelling out
+  the default."
   [{:keys [wrap anchor anchor-center margin-left margin-top margin-right margin-bottom
-           autofit font-scale line-spacing-reduction]}]
+           autofit font-scale line-spacing-reduction vertical]}]
   (str "<a:bodyPr"
        (when (= wrap :none) " wrap=\"none\"")
        (when margin-left (str " lIns=\"" (emu margin-left) "\""))
@@ -965,6 +972,7 @@
        (when (= anchor :center) " anchor=\"ctr\"")
        (when (= anchor :bottom) " anchor=\"b\"")
        (when anchor-center " anchorCtr=\"1\"")
+       (when-let [v (get text-vertical-attrs vertical)] (str " vert=\"" v "\""))
        ">"
        (case autofit
          :resize-shape "<a:spAutoFit/>"

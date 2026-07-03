@@ -2234,6 +2234,19 @@
       (is (re-find #"<a:bodyPr></a:bodyPr>" slide-xml))
       (is (not (re-find #"<a:bodyPr [^>]" slide-xml))))))
 
+(deftest writes-and-round-trips-text-vertical-direction
+  (let [deck (-> (m/deck "deck" {:slides/title "Vertical text"})
+                 (m/add-slide (-> (m/slide "s1")
+                                  (m/add-shape (m/text-box "t" "Vertical" {:slides/body-props {:vertical :vert270}})))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "vert=\"vert270\" is written on <a:bodyPr>'s own opening tag"
+      (is (re-find #"<a:bodyPr vert=\"vert270\">" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shape (first (-> reimported :slides/slides first :slides/shapes))]
+        (is (= :vert270 (:vertical (:slides/body-props shape))))))))
+
 (deftest writes-and-round-trips-gradient-fill
   (let [gradient {:stops [{:position 0.0 :color "336699"}
                           {:position 50.0 :color "88AACC"}
