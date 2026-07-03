@@ -1411,19 +1411,41 @@
        :comments-path (str "ppt/comments/" filename)
        :comments-xml (comments-part-xml comments author-id-by-name)})))
 
+(defn- hyperlink-relationship-xml
+  "One hyperlink relationship entry, dispatching on whether it carries
+  :url (external, TargetMode=\"External\") or :slide-part (an internal
+  same-deck \"jump to slide\" link, from :slides/hyperlink-slide-part --
+  Target relative to the CURRENT slide's own .rels directory; since both
+  live under ppt/slides/ as siblings, that's just the target's bare
+  filename, no TargetMode attribute at all, Internal being the schema
+  default). Previously ALL hyperlinks were written as external
+  regardless of shape -- an internal slide-jump link's raw package path
+  (e.g. \"ppt/slides/slide3.xml\") would have been written back as an
+  invalid external relationship pointing at that same bare internal
+  path, a broken link in the output file."
+  [{:keys [rel-id url slide-part]}]
+  (if slide-part
+    (ooxml/relationship {:id rel-id :type rel-hyperlink :target (last (str/split slide-part #"/"))})
+    (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"})))
+
 (defn- slide-hyperlink-entries
-  "Every :slides/hyperlink-bearing shape on `slide`, assigned a rel-id local
-  to the slide's own .rels, continuing on from wherever image/chart/notes
-  rIds left off (2 + images + charts + (if notes 1 0))."
+  "Every hyperlink-bearing shape on `slide`, assigned a rel-id local to the
+  slide's own .rels, continuing on from wherever image/chart/notes rIds
+  left off (2 + images + charts + (if notes 1 0)). Covers both
+  :slides/hyperlink (an external URL) and :slides/hyperlink-slide-part (an
+  internal same-deck \"jump to slide\" link, from drawingml.parse/
+  hyperlink-slide-part on import) -- a shape carries at most one of the
+  two, mirroring how the source XML's hlinkClick has exactly one relationship."
   [deck slide rid-start]
   (let [shapes (->> (slide-shapes deck slide)
-                    (filterv #(and (:slides/id %) (:slides/hyperlink %))))]
+                    (filterv #(and (:slides/id %) (or (:slides/hyperlink %) (:slides/hyperlink-slide-part %)))))]
     (vec
      (map-indexed
       (fn [i shape]
-        {:shape-id (:slides/id shape)
-         :rel-id (str "rId" (+ rid-start i))
-         :url (:slides/hyperlink shape)})
+        (cond-> {:shape-id (:slides/id shape)
+                 :rel-id (str "rId" (+ rid-start i))}
+          (:slides/hyperlink shape) (assoc :url (:slides/hyperlink shape))
+          (:slides/hyperlink-slide-part shape) (assoc :slide-part (:slides/hyperlink-slide-part shape))))
       shapes))))
 
 (defn- hyperlink-rels-map [hyperlink-entries]
@@ -1443,9 +1465,7 @@
             (when notes-entry
               [(ooxml/relationship {:id (:rel-id notes-entry) :type rel-notes-slide
                                     :target (str "../notesSlides/" (:notes-filename notes-entry))})])
-            (map (fn [{:keys [rel-id url]}]
-                   (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
-                 hyperlink-entries)
+            (map hyperlink-relationship-xml hyperlink-entries)
             (when comments-entry
               [(ooxml/relationship {:id (:rel-id comments-entry) :type rel-comments
                                     :target (str "../comments/" (:comments-filename comments-entry))})]))))
@@ -2468,9 +2488,7 @@
    (when notes
      [(ooxml/relationship {:id (:rel-id notes) :type rel-notes-slide
                            :target (str "../notesSlides/" (:notes-filename notes))})])
-   (map (fn [{:keys [rel-id url]}]
-          (ooxml/relationship {:id rel-id :type rel-hyperlink :target url :target-mode "External"}))
-        hyperlinks)))
+   (map hyperlink-relationship-xml hyperlinks)))
 
 (defn- new-content-parts [images charts notes]
   (concat
