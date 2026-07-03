@@ -683,6 +683,28 @@
           slide-xml (entries "ppt/slides/slide1.xml")]
       (is (re-find #"<p:cNvCxnSpPr/>" slide-xml)))))
 
+(deftest writes-and-round-trips-shape-hidden-flag
+  (let [deck (-> (m/deck "deck" {:slides/title "Hidden shapes"})
+                 (m/add-slide
+                  (-> (m/slide "s1")
+                      (m/add-shape (m/text-box "hidden-text" "Backup note" {:slides/hidden true}))
+                      (m/add-shape (m/rect "hidden-rect" {:slides/hidden true}))
+                      (m/add-shape (m/text-box "visible-text" "Plain")))))
+        entries (zip-entries (pptx/pptx-bytes deck))
+        slide-xml (entries "ppt/slides/slide1.xml")]
+    (testing "hidden shapes get hidden=\"1\" on their own <p:cNvPr>"
+      (is (re-find #"<p:cNvPr id=\"\d+\" name=\"hidden-text\" hidden=\"1\"/>" slide-xml))
+      (is (re-find #"<p:cNvPr id=\"\d+\" name=\"hidden-rect\" hidden=\"1\"/>" slide-xml)))
+    (testing "a plain shape's own <p:cNvPr> carries no hidden attribute at all"
+      (is (re-find #"<p:cNvPr id=\"\d+\" name=\"visible-text\"/>" slide-xml)))
+    (testing "round-trips through import"
+      (let [reimported (office/deck-from-office-bytes (pptx/pptx-bytes deck) {})
+            shapes (-> reimported :slides/slides first :slides/shapes)
+            hidden-text (some #(when (= "hidden-text" (:slides/id %)) %) shapes)
+            visible-text (some #(when (= "visible-text" (:slides/id %)) %) shapes)]
+        (is (true? (:slides/hidden hidden-text)))
+        (is (not (contains? visible-text :slides/hidden)))))))
+
 (deftest writes-rotation-and-flip-attributes-on-xfrm
   (let [deck (-> (m/deck "deck" {:slides/title "Rotated"})
                  (m/add-slide
