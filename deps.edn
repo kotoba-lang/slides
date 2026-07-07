@@ -24,6 +24,12 @@
         io.github.kotoba-lang/shitsuke
         {:git/url "https://github.com/kotoba-lang/shitsuke.git"
          :git/sha "d7988c24f5cb37074b6bfc1f0c2e223f4e218f84"}
+        ;; canvaskit: canvas/viewport interaction math, Apple HIG/UIKit
+        ;; vocabulary (ADR-2607071130). slides.web.events uses the zoom-scale
+        ;; clamp for the editor canvas zoom.
+        io.github.kotoba-lang/canvaskit
+        {:git/url "https://github.com/kotoba-lang/canvaskit.git"
+         :git/sha "fba5b558710faa1414f1e42573aa211645a864e1"}
         ;; kotoba-lang/html: standalone hiccup->HTML renderer (the extracted
         ;; substrate shitsuke.hiccup itself is built on). Used for the docs/
         ;; Pages shell (site.clj) per 90-docs/adr/2607022800.

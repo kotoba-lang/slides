@@ -10,6 +10,7 @@
   (:require #?(:cljs [re-frame.core :as rf]
                :clj [shitsuke.re-frame.core :as rf])
             [kotoba.editor :as editor]
+            [canvaskit.scroll-view :as cksv]
             [slides.design :as design]
             [slides.model :as model]
             [slides.web.sample :as sample]))
@@ -28,9 +29,6 @@
 
 (defn- next-id [prefix xs]
   (str prefix "-" (inc (count xs))))
-
-(defn- clamp [lo hi x]
-  (min hi (max lo x)))
 
 (defn- replace-slide [db idx f]
   (update-in db [:deck :slides/slides]
@@ -252,8 +250,13 @@
   (assoc db :deck deck :selected-slide 0 :selected-shape nil :selected-shapes #{} :error nil :mode :visual
          :edn-text (pr-str deck) :edn-key (inc (or (:edn-key db) 0))))
 
+;; canvas zoom limits — canvaskit (UIScrollView) vocabulary, ADR-2607071130.
+;; The editor canvas is a CSS-scaled shell (no pan/offset); if pan / fit-to-rect
+;; are added later they should come from canvaskit.scroll-view too.
+(def ^:private zoom-limits {:minimum-zoom-scale 0.5 :maximum-zoom-scale 1.5})
+
 (defn set-zoom-handler [db [_ zoom]]
-  (assoc db :zoom (clamp 0.5 1.5 zoom)))
+  (assoc db :zoom (cksv/clamp-zoom-scale zoom-limits zoom)))
 
 (defn set-error-handler [db [_ msg]]
   (assoc db :error msg))
