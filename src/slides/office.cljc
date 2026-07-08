@@ -119,7 +119,7 @@
     (some-> (embed/read-payload pkg)
             :office/graph
             :slides-causal/deck)
-    (catch Exception _
+    (catch #?(:clj Exception :cljs js/Error) _
       nil)))
 
 (defn- package-deck [pkg file-name preferred-title style-ir]
@@ -140,7 +140,7 @@
     (let [pkg (opc/open-package bytes)]
       (when (= :pptx (:office/kind pkg))
         (package-deck pkg (:source options) preferred-title style-ir)))
-    (catch Exception _
+    (catch #?(:clj Exception :cljs js/Error) _
       nil)))
 
 (defn deck-from-office-bytes
@@ -149,7 +149,7 @@
    (deck-from-office-bytes bytes {}))
   ([bytes options]
    (let [style-ir (try (office-style/extract-bytes bytes)
-                       (catch Exception _ {}))
+                       (catch #?(:clj Exception :cljs js/Error) _ {}))
          preferred-title (preferred-title options)
          style-title (or preferred-title "Imported deck")]
      (or (try-package-deck bytes options preferred-title style-ir)
