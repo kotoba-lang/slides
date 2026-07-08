@@ -1,5 +1,6 @@
 (ns slides.hiccup
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str])
+  #?(:cljs (:import (goog.string StringBuffer))))
 
 (def void-tags
   #{:area :base :br :col :embed :hr :img :input :link :meta :param :source :track :wbr})
@@ -67,4 +68,4 @@
   sb)
 
 (defn ->html [node]
-  (str (emit-node! (StringBuilder.) node)))
+  (str (emit-node! #?(:clj (StringBuilder.) :cljs (StringBuffer.)) node)))

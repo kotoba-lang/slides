@@ -187,6 +187,13 @@
        "<Slides>" slide-count "</Slides>"
        "</Properties>"))
 
+(defn- zero-pad12
+  "`n` left-padded with zeros to 12 digits (portable stand-in for
+  `(format \"%012d\" n)`, which has no cljs equivalent)."
+  [n]
+  (let [s (str n)]
+    (str (apply str (repeat (max 0 (- 12 (count s))) "0")) s)))
+
 (defn- section-xml
   "One <p14:section> from a deck's own :slides/sections entry ({:name ...
   :slide-indices [...]}, the same shape presentationml.parse/sections
@@ -197,7 +204,7 @@
   sldId formula presentation's own <p:sldIdLst> uses."
   [idx {:keys [name slide-indices]}]
   (str "<p14:section name=\"" (esc (or name (str "Section " (inc idx))))
-       "\" id=\"{00000000-0000-0000-0000-" (format "%012d" (inc idx)) "}\">"
+       "\" id=\"{00000000-0000-0000-0000-" (zero-pad12 (inc idx)) "}\">"
        "<p14:sldIdLst>"
        (apply str (for [slide-idx slide-indices] (str "<p14:sldId id=\"" (+ 256 slide-idx) "\"/>")))
        "</p14:sldIdLst></p14:section>"))

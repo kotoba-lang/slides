@@ -24,6 +24,8 @@ jobs:
           cli: latest
       - name: Test CLJC
         run: clojure -M:test
+      - name: Lint
+        run: clojure -M:lint
       - name: Coverage gate
         run: clojure -M:coverage && clojure -M:coverage-thresholds
       - name: Build GitHub Pages
