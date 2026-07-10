@@ -24,8 +24,29 @@
 (def allowed-kinds
   #{:library :adapter :schema-contract :tool :component})
 
+;; package-manifest.edn / adapters/office/package-manifest.edn / kotoba.lock.edn
+;; were converted to Datomic/Datascript tx-data ([{:db/id -1 ...}]) by
+;; scripts/edn-datomize.bb (wrap-generic mode). That transform keeps each
+;; key's own namespace unchanged when it already has one (true for almost
+;; every key in these files -- e.g. :kotoba.package/name, :dep/name -- the
+;; one exception is kotoba.lock.edn's bare top-level :deps, promoted to
+;; :kotoba.lock/deps) and pr-str's non-scalar values (nested maps / vectors
+;; of maps, e.g. :kotoba.package/source, :kotoba.lock/deps) into blob
+;; strings. reconstitute-entity below undoes both: drops :db/id and unblobs
+;; values, WITHOUT renaming keys, so read-edn still returns the same shape
+;; these tests have always asserted against (module the :deps rename below).
+(defn- unblob [v]
+  (if (string? v)
+    (try (let [parsed (edn/read-string v)] (if (coll? parsed) parsed v))
+         (catch Exception _ v))
+    v))
+
+(defn- reconstitute-entity [tx-data]
+  (into {} (map (fn [[k v]] [k (unblob v)]))
+        (dissoc (first tx-data) :db/id)))
+
 (defn read-edn [path]
-  (edn/read-string (slurp path)))
+  (reconstitute-entity (edn/read-string (slurp path))))
 
 (defn cid? [x]
   (and (string? x) (str/starts-with? x "bafy")))
@@ -87,7 +108,7 @@
 
 (deftest lockfile-pins-workspace-surface-dependencies
   (let [lock (read-edn "kotoba.lock.edn")
-        deps (:deps lock)
+        deps (:kotoba.lock/deps lock)
         by-name (into {} (map (juxt :dep/name identity) deps))]
     (is (= 1 (:kotoba.lock/version lock)))
     (is (= :draft-unpublished (:kotoba.lock/status lock)))
