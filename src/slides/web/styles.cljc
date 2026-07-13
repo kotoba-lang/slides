@@ -16,10 +16,9 @@
     domain, not chrome (see its docstring);
   - no raw px font-size: text sizes reference `--hig-text-*-font-size` vars
     (the `.hig-*` classes are used in markup where a whole text style fits);
-  - the single font-family below (`#deck-edn`, the EDN source pane) is a
-    documented opt-out: the stack exposes no monospace token/class yet
-    (kotoba-ui gap — same stack as shitsuke.hig/font-family-mono's code/pre
-    rule), and an EDN editor surface is legitimately monospace.
+  - no hand-written font stacks: the one monospace surface (`#deck-edn`, the
+    EDN source pane) uses the stack's `--hig-font-mono` token (shitsuke.hig,
+    same stack as its code/pre rule).
 
   `rules` stays css.core EDN data (a vector of [selector decls] pairs so rule
   order is preserved), same pipeline shape as before the migration."
@@ -225,9 +224,7 @@
    ["#deck-edn"
     {:min-height "620px"
      :font-size "var(--hig-text-footnote-font-size)" :line-height "1.5"
-     ;; documented opt-out (ns docstring): no monospace token/class exists in
-     ;; the stack yet; same stack shitsuke.hig uses for code/pre.
-     :font-family "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace"}]
+     :font-family "var(--hig-font-mono)"}]
    [".edn-actions" {:display "flex" :gap "var(--hig-spacing-2)"
                     :margin-top "var(--hig-spacing-3)"}]
    ["#error" {:min-height "18px" :color "var(--hig-palette-red)"
