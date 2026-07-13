@@ -88,6 +88,9 @@
      :text-transform "uppercase" :letter-spacing ".06em"
      :color "var(--hig-color-secondary-label)"
      :margin "0 0 var(--hig-spacing-3)"}]
+   ;; the rail panel packs dense thumbs — tighter padding than the glass
+   ;; panel default (own class hook on appkit/panel, unlayered so it wins)
+   [".rail" {:padding "var(--hig-spacing-3)"}]
    [".rail-actions" {:display "grid" :grid-template-columns "1fr 1fr"
                      :gap "var(--hig-spacing-2)"
                      :margin-bottom "var(--hig-spacing-3)"}]
@@ -150,6 +153,10 @@
    [".stage" {:min-height "620px" :display "grid" :place-items "center"
               :padding "var(--hig-spacing-7) var(--hig-spacing-5)"
               :overflow "auto"}]
+   ;; the mode panes toggle via the `hidden` attribute; an author `display`
+   ;; (like .stage's grid) beats the UA [hidden] rule, so restate it — the
+   ;; visual pane must actually hide in EDN mode.
+   [".stage[hidden],#edn-pane[hidden]" {:display "none"}]
    [".canvas-shell" {:width "min(100%,1040px)" :transform-origin "center top"
                      :transition "transform .12s ease"}]
    [".canvas" {:position "relative" :width "100%" :background deck-paper
@@ -227,6 +234,15 @@
               :font-size "var(--hig-text-footnote-font-size)"
               :margin "var(--hig-spacing-3) auto 0" :max-width "1100px"}]])
 
+(def media-desktop
+  "Desktop-only layout override on the app's own `.editor` class hook (the
+  shell :class passthrough — see kotoba-ui.shell's root-opts contract; layout
+  overrides belong in app CSS): the slide rail needs ~300px so thumb titles
+  don't truncate. Scoped to min-width so the shell's own <=768px sidebar
+  collapse (inside @layer kotoba.hig) still applies unbeaten."
+  {".editor .kotoba-shell__app-body" {:grid-template-columns "320px minmax(0,1fr)"}
+   ".editor .kotoba-shell__app-sidebar" {:padding "var(--hig-spacing-3)"}})
+
 (def media-1180
   {".editor-toolbar > nav" {:grid-template-columns "1fr"
                             :align-items "flex-start"}
@@ -244,7 +260,8 @@
 
 (def sheet
   {:rules rules
-   :media [["(max-width:1180px)" media-1180]
+   :media [["(min-width:769px)" media-desktop]
+           ["(max-width:1180px)" media-1180]
            ["(max-width:940px)" media-940]]})
 
 (defn static-css

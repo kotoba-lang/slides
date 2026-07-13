@@ -334,7 +334,8 @@
        [:strong (str n)]
        [:span "slides"]
        [:strong (str shape-count)]
-       [:span "shapes"]]))))
+       [:span "shapes"]])
+     {:class "rail"})))
 
 (defn toolbar [db]
   (let [deck (:deck db)
