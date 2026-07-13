@@ -8,8 +8,12 @@
             [slides.web.ssr :as ssr]))
 
 ;; Shell-level class. The page body is rendered from the same CLJC view tree
-;; consumed by browser hosts, keeping the checked-in Pages artifact free of
-;; generated JavaScript authority.
+;; consumed by browser hosts. The page ships BOTH renders of the dual-render
+;; contract: the SSR HTML (readable without JS) plus the browser hydration
+;; bundle docs/js/main.js (slides.web.client via shadow-cljs), which mounts
+;; the SAME views over reagent + re-frame from the SAME initial db and flips
+;; data-kotoba-render "ssr" → "live". (This deliberately reverses the earlier
+;; SSR-only/no-JS design, per the owner-approved ADR-2607122200 follow-up.)
 (def page-class "slides-page")
 
 (defn index-page []
@@ -18,7 +22,8 @@
     [:meta {:charset "utf-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1"}]
     [:title "kotoba-lang/slides"]
-    [:link {:rel "stylesheet" :href "./main.css"}]]
+    [:link {:rel "stylesheet" :href "./main.css"}]
+    [:script {:src "./js/main.js" :defer true}]]
    [:body {:class page-class}
     [:div#app {:data-kotoba-render "ssr"}
      [:hiccup/raw (ssr/root-html)]]]])

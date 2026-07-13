@@ -16,7 +16,11 @@
     (is (re-find #"<body class=\"slides-page\">" html))
     (is (re-find #"<div id=\"app\" data-kotoba-render=\"ssr\">" html))
     (is (re-find #"Web generated deck" html))
-    (is (not (re-find #"src=\"\./main\.js\"" html)))))
+    ;; The hydration bundle IS shipped (this deliberately reverses the old
+    ;; SSR-only/no-JS assertion, on owner instruction — ADR-2607122200
+    ;; follow-up): the page still SSRs the full editor, and docs/js/main.js
+    ;; mounts the same views live.
+    (is (re-find #"<script src=\"\./js/main\.js\" defer" html))))
 
 (deftest write-persists-index-html
   (let [dir (java.nio.file.Files/createTempDirectory "slides-site-test" (make-array java.nio.file.attribute.FileAttribute 0))

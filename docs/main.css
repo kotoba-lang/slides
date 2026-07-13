@@ -12,6 +12,11 @@
   --hig-text-subheadline-line-height: 20px;
   --hig-text-subheadline-font-weight: 400;
   --hig-text-subheadline-font-family: var(--hig-font-text);
+  --hig-text-display2-font-size: clamp(30px, 3.75vw + 6px, 48px);
+  --hig-text-display2-line-height: calc(1em + 4px);
+  --hig-text-display2-font-weight: 700;
+  --hig-text-display2-letter-spacing: -0.015em;
+  --hig-text-display2-font-family: var(--hig-font-display);
   --hig-text-title2-font-size: 22px;
   --hig-text-title2-line-height: 28px;
   --hig-text-title2-font-weight: 400;
@@ -24,6 +29,11 @@
   --hig-text-title3-line-height: 25px;
   --hig-text-title3-font-weight: 400;
   --hig-text-title3-font-family: var(--hig-font-display);
+  --hig-text-display3-font-size: clamp(40px, 5vw + 8px, 64px);
+  --hig-text-display3-line-height: calc(1em + 4px);
+  --hig-text-display3-font-weight: 700;
+  --hig-text-display3-letter-spacing: -0.02em;
+  --hig-text-display3-font-family: var(--hig-font-display);
   --hig-text-footnote-font-size: 13px;
   --hig-text-footnote-line-height: 18px;
   --hig-text-footnote-font-weight: 400;
@@ -48,6 +58,11 @@
   --hig-text-caption1-line-height: 16px;
   --hig-text-caption1-font-weight: 400;
   --hig-text-caption1-font-family: var(--hig-font-text);
+  --hig-text-display1-font-size: clamp(25px, 3.125vw + 5px, 40px);
+  --hig-text-display1-line-height: calc(1em + 4px);
+  --hig-text-display1-font-weight: 700;
+  --hig-text-display1-letter-spacing: -0.01em;
+  --hig-text-display1-font-family: var(--hig-font-display);
   --hig-color-secondary-label: rgba(60,60,67,0.6);
   --hig-color-tertiary-system-background: #FFFFFF;
   --hig-color-tertiary-label: rgba(60,60,67,0.3);
@@ -308,6 +323,27 @@ hr {
 }
 }
 @layer kotoba.hig {
+.hig-display3 {
+  font-family: var(--hig-text-display3-font-family);
+  font-size: var(--hig-text-display3-font-size);
+  line-height: var(--hig-text-display3-line-height);
+  font-weight: var(--hig-text-display3-font-weight);
+  letter-spacing: var(--hig-text-display3-letter-spacing, normal);
+}
+.hig-display2 {
+  font-family: var(--hig-text-display2-font-family);
+  font-size: var(--hig-text-display2-font-size);
+  line-height: var(--hig-text-display2-line-height);
+  font-weight: var(--hig-text-display2-font-weight);
+  letter-spacing: var(--hig-text-display2-letter-spacing, normal);
+}
+.hig-display1 {
+  font-family: var(--hig-text-display1-font-family);
+  font-size: var(--hig-text-display1-font-size);
+  line-height: var(--hig-text-display1-line-height);
+  font-weight: var(--hig-text-display1-font-weight);
+  letter-spacing: var(--hig-text-display1-letter-spacing, normal);
+}
 .hig-large-title {
   font-family: var(--hig-text-large-title-font-family);
   font-size: var(--hig-text-large-title-font-size);
