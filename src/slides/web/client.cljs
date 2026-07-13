@@ -27,6 +27,7 @@
   No persistence: reload restores the sample deck by design (browser
   storage would be another host adapter, out of scope here)."
   (:require [cljs.reader :as reader]
+            [reagent.core :as r]
             [reagent.dom.client :as rdc]
             [shitsuke.re-frame.core :as rf]
             [slides.design :as design]
@@ -43,12 +44,19 @@
 
 (def ^:private field-handler
   "Per-field :on-change handler (memoized so prop identity is stable across
-  re-renders)."
+  re-renders). dispatch-SYNC + r/flush, per re-frame's controlled-input
+  guidance: the :value prop must advance in the same tick as the keystroke —
+  with async dispatch (or with sync dispatch but rAF-deferred re-render) a
+  fast burst races the queue and a stale render clobbers the DOM value
+  (reproduced under 5ms-interval typing: \"Textcdefghij\" with plain
+  dispatch, \"abefghij\" with dispatch-sync alone). Flushing reagent's render
+  queue synchronously closes the race window entirely."
   (memoize
    (fn [field]
      (fn [e]
        (when-let [ev (dispatch/field->event field (.. e -target -value))]
-         (rf/dispatch ev))))))
+         (rf/dispatch-sync ev)
+         (r/flush))))))
 
 (defn root []
   (enhance/enhance (views/root @(rf/subscribe [:slides/db])) field-handler))
