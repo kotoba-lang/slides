@@ -2,7 +2,6 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
-            [shitsuke.tokens :as tokens]
             [slides.build :as build]
             [slides.site :as site]))
 
@@ -33,13 +32,17 @@
     (with-redefs [io/file (fn [& _] out)]
       (is (= out (build/css-release!)))
       (let [css (slurp out)]
-        (is (.startsWith css (tokens/css-variables)))
-        ;; css.core/css renders "selector { prop: val; ... }" (spaced, not
-        ;; minified) with map-iteration declaration order, not source order —
-        ;; check rule presence + a declaration it contains rather than an
-        ;; exact minified substring (see slides.web.styles ns docstring).
-        (is (str/includes? css ".top {"))
-        (is (str/includes? css "display: flex"))))))
+        ;; the kotoba-ui theme bundle leads: the cascade-layer order
+        ;; declaration first, then the layered HIG/glass/shell rules with the
+        ;; brand accent threaded into --hig-color-tint.
+        (is (.startsWith css "@layer kotoba.hig, kotoba.glass;"))
+        (is (str/includes? css "--hig-color-tint: #496B9A"))
+        (is (str/includes? css "@layer kotoba.glass"))
+        ;; the app-chrome rules follow, UNLAYERED (css.core renders
+        ;; "selector { prop: val; ... }" — check rule presence + a declaration
+        ;; it contains rather than an exact minified substring).
+        (is (str/includes? css ".editor-main {"))
+        (is (str/includes? css "grid-template-columns"))))))
 
 (deftest pages-writes-html-before-css-release
   (let [calls (atom [])]

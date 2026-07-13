@@ -1,193 +1,271 @@
 (ns slides.web.styles
-  "docs/main.css page-chrome rules as css.core EDN data (per
-  90-docs/adr/2607022800-kotoba-lang-default-uiux-appkit-uikit-interface-fundamentals),
-  replacing the hand-typed resources/slides/static.css string.
+  "Editor page-chrome CSS on the kotoba-lang design-system paved road
+  (kotoba-ui/docs/agent-guide.md, ADR-2607122200).
 
-  Every declaration value is kept as the ORIGINAL CSS value text (a string),
-  not decomposed into css.core's numeric/unitless sugar — this is a faithful
-  transcription of static.css, not a redesign; string values render through
-  css.core/value-str byte-identically to what was hand-typed. `rules` is a
-  vector of [selector decls] pairs (not a map) so declaration/rule ORDER is
-  preserved exactly — several rules here rely on later same-specificity
-  selectors overriding earlier ones in source order (e.g. `.thumb-shape.text`
-  after `.thumb-shape`)."
+  docs/main.css = `(kotoba-ui.core/theme-css theme)` (the layered HIG + glass
+  + shell bundle, emitted by slides.build) followed by this namespace's app
+  rules. App rules are UNLAYERED, so they always win over the library layers
+  (`@layer kotoba.hig, kotoba.glass`) — no compound selectors against
+  `liquid-glass__*`/`kotoba-shell__*` classes are needed or used.
+
+  Color/typography discipline:
+  - zero chrome hex — every chrome color is a `--hig-*` token, a
+    `--liquid-glass-*` token, or a `color-mix()` over one;
+  - the ONLY hex in this namespace are (a) the theme map accent (the one
+    legitimate hex site in app code) and (b) `deck-paper`, which is user-deck
+    domain, not chrome (see its docstring);
+  - no raw px font-size: text sizes reference `--hig-text-*-font-size` vars
+    (the `.hig-*` classes are used in markup where a whole text style fits);
+  - the single font-family below (`#deck-edn`, the EDN source pane) is a
+    documented opt-out: the stack exposes no monospace token/class yet
+    (kotoba-ui gap — same stack as shitsuke.hig/font-family-mono's code/pre
+    rule), and an EDN editor surface is legitimately monospace.
+
+  `rules` stays css.core EDN data (a vector of [selector decls] pairs so rule
+  order is preserved), same pipeline shape as before the migration."
   (:require [css.core :as css]))
 
+(def theme
+  "The kotoba-ui one-map theme — the only styling entry for the editor chrome.
+  :accent is the pre-migration brand steel blue (the old `--accent` #496b9a);
+  :accent-dark is a lighter same-hue blue so accent-tinted chrome stays
+  legible over dark surfaces; :auto follows the OS appearance."
+  {:accent "#496B9A"
+   :accent-dark "#7FA3CF"
+   :appearance :auto})
+
+(def deck-paper
+  "The slide 'paper' color behind user deck content (.canvas / .thumb-preview).
+  This is user-deck domain, not chrome: it mirrors the deck master's
+  `:slides/background` default (FFFFFF) and deliberately does NOT follow the
+  dark appearance — a document canvas stays paper-white so the user's own
+  deck colors render as authored (same as slide editors' dark UIs)."
+  "#fff")
+
 (def rules
-  [["*" {:box-sizing "border-box"}]
-   ["html,body,#app" {:min-height "100%"}]
-   ["body" {:margin "0"
-            :font-family "Inter,ui-sans-serif,system-ui,sans-serif"
-            :background "var(--wash)"
-            :color "var(--ink)"}]
+  [;; --- page ---------------------------------------------------------------
+   ["body" {:background "var(--hig-color-system-grouped-background)"}]
+   ;; raw-element controls the editor still renders directly (.thumb/.shape
+   ;; buttons, property selects) inherit the page type instead of UA defaults.
    ["button,input,textarea,select" {:font "inherit"}]
-   ["button" {:border "1px solid var(--line)"
-              :border-radius "7px"
-              :background "#fff"
-              :color "var(--ink)"
-              :min-height "34px"
-              :padding "0 10px"
-              :cursor "pointer"
-              :white-space "nowrap"}]
-   ["button:hover,.file-label:hover" {:border-color "#9dafc2" :background "#f9fbfd"}]
-   ["button:disabled" {:cursor "default" :opacity ".45" :background "#f3f5f8"}]
-   ["button:disabled:hover" {:border-color "var(--line)" :background "#f3f5f8"}]
-   ["button.primary" {:background "var(--accent)" :border-color "var(--accent)"
-                       :color "#fff" :font-weight "700"}]
-   ["button.danger" {:border-color "#e5b7b6" :color "var(--danger)"}]
-   ["a" {:color "var(--accent)"}]
-   [".top" {:display "flex" :align-items "center" :justify-content "space-between"
-            :gap "16px" :padding "10px 14px" :background "rgba(255,255,255,.96)"
-            :border-bottom "1px solid var(--line)" :position "sticky" :top "0"
-            :z-index "5" :backdrop-filter "saturate(180%) blur(16px)"}]
-   [".toolbar" {:display "grid"
-                :grid-template-columns "minmax(180px,1fr) auto minmax(420px,auto)"
-                :align-items "center" :gap "14px" :width "100%"}]
-   [".brand h1" {:font-size "17px" :font-weight "800" :margin "0" :line-height "1.15"}]
-   [".brand p" {:font-size "12px" :color "var(--muted)" :margin "2px 0 0"
-                :overflow "hidden" :text-overflow "ellipsis" :white-space "nowrap"
-                :max-width "360px"}]
-   [".deck-meta" {:display "flex" :align-items "center" :gap "6px" :min-width "0"}]
-   [".deck-meta span" {:display "inline-flex" :align-items "center" :min-height "24px"
-                        :border "1px solid var(--line)" :border-radius "999px"
-                        :padding "0 9px" :background "#f8fafc" :color "var(--muted)"
-                        :font-size "12px" :max-width "180px" :overflow "hidden"
-                        :text-overflow "ellipsis" :white-space "nowrap"}]
-   [".deck-meta span:last-child" {:border-color "#cfdabf" :color "#49602f" :background "#f7faef"}]
-   [".toolbar-actions" {:display "flex" :align-items "center" :justify-content "flex-end"
-                        :gap "8px" :flex-wrap "wrap"}]
-   [".github" {:display "inline-flex" :align-items "center" :min-height "34px"}]
-   ["main" {:display "grid" :grid-template-columns "238px minmax(520px,1fr) 328px"
-            :min-height "calc(100vh - 55px)"}]
-   ["aside,.props" {:background "#fff" :border-right "1px solid var(--line)" :padding "14px"}]
-   ["aside" {:background "var(--rail)" :overflow "auto"}]
-   [".props" {:border-right "0" :border-left "1px solid var(--line)" :overflow "auto"}]
-   [".aside-title,.panel-title" {:font-size "12px" :font-weight "800"
-                                  :text-transform "uppercase" :letter-spacing ".06em"
-                                  :color "var(--muted)" :margin "0 0 10px"}]
-   [".rail-actions" {:display "grid" :grid-template-columns "1fr 1fr" :gap "8px"
-                      :margin-bottom "12px"}]
-   [".thumb" {:display "grid" :grid-template-columns "24px 74px minmax(0,1fr) 22px"
-              :align-items "center" :gap "8px" :width "100%" :text-align "left"
-              :margin-bottom "9px" :padding "8px" :border-radius "8px" :background "#fff"}]
-   [".thumb.active" {:border-color "var(--accent)"
-                      :box-shadow "inset 3px 0 0 var(--accent),0 8px 18px rgba(23,32,42,.06)"}]
+
+   ;; --- top chrome (glass toolbar as a full-width bar) ----------------------
+   [".editor-toolbar" {:border-radius "0" :width "100%"}]
+   [".editor-toolbar > nav"
+    {:display "grid"
+     :grid-template-columns "minmax(180px,1fr) auto minmax(0,auto)"
+     :align-items "center" :gap "var(--hig-spacing-4)" :width "100%"
+     :min-width "0"}]
+   [".brand h1" {:margin "0"}]
+   [".brand p" {:margin "2px 0 0" :color "var(--hig-color-secondary-label)"
+                :overflow "hidden" :text-overflow "ellipsis"
+                :white-space "nowrap" :max-width "360px"}]
+   [".deck-meta" {:display "flex" :align-items "center"
+                  :gap "var(--hig-spacing-2)" :min-width "0"}]
+   [".toolbar-actions" {:display "flex" :align-items "center"
+                        :justify-content "flex-end"
+                        :gap "var(--hig-spacing-2)" :flex-wrap "wrap"}]
+   ;; accent-filled emphasis (primary action / active mode tab): accent from
+   ;; the theme via the glass token; label flips with the appearance (the
+   ;; dark accent is light, so system-background stays >= 4.5:1 on it).
+   [".primary,.mode-tabs .active"
+    {:background "var(--liquid-glass-accent-tint-strong)"
+     :color "var(--hig-color-system-background)"
+     :text-shadow "none" :font-weight "600"}]
+   [".danger" {:color "var(--hig-palette-red)" :text-shadow "none"}]
+   [".file-label"
+    {:display "inline-flex" :align-items "center" :gap ".4em"
+     :padding ".6em 1.1em" :border-radius "var(--liquid-glass-radius-pill)"
+     :border "var(--hig-hairline) solid var(--hig-color-separator)"
+     :background "var(--hig-color-quaternary-system-fill)"
+     :cursor "pointer" :white-space "nowrap"}]
+   [".file-label input" {:display "none"}]
+   [".github" {:display "inline-flex" :align-items "center" :padding ".6em .2em"}]
+
+   ;; --- slide rail (inside the shell sidebar) -------------------------------
+   [".aside-title,.panel-title"
+    {:font-size "var(--hig-text-caption1-font-size)" :font-weight "600"
+     :text-transform "uppercase" :letter-spacing ".06em"
+     :color "var(--hig-color-secondary-label)"
+     :margin "0 0 var(--hig-spacing-3)"}]
+   ;; the rail panel packs dense thumbs — tighter padding than the glass
+   ;; panel default (own class hook on appkit/panel, unlayered so it wins)
+   [".rail" {:padding "var(--hig-spacing-3)"}]
+   [".rail-actions" {:display "grid" :grid-template-columns "1fr 1fr"
+                     :gap "var(--hig-spacing-2)"
+                     :margin-bottom "var(--hig-spacing-3)"}]
+   [".thumb" {:display "grid"
+              :grid-template-columns "24px 74px minmax(0,1fr) 22px"
+              :align-items "center" :gap "var(--hig-spacing-2)" :width "100%"
+              :text-align "left" :margin-bottom "var(--hig-spacing-2)"
+              :padding "var(--hig-spacing-2)"
+              :border "var(--hig-hairline) solid var(--hig-color-separator)"
+              :border-radius "var(--hig-radius-sm)"
+              :background "var(--hig-color-tertiary-system-background)"
+              :color "inherit" :cursor "pointer"}]
+   [".thumb.active" {:border-color "var(--hig-color-tint)"
+                     :box-shadow "inset 3px 0 0 var(--hig-color-tint)"}]
    [".thumb-preview" {:position "relative" :width "74px" :aspect-ratio "16/9"
-                       :border "1px solid var(--line)" :border-radius "5px"
-                       :background "#fff" :overflow "hidden"}]
+                      :border "var(--hig-hairline) solid var(--hig-color-separator)"
+                      :border-radius "var(--hig-radius-xs)"
+                      :background deck-paper :overflow "hidden"}]
    [".thumb-shape" {:position "absolute" :border-radius "2px" :display "block"
-                     :min-width "2px" :min-height "2px" :opacity ".9"}]
+                    :min-width "2px" :min-height "2px" :opacity ".9"}]
    [".thumb-shape.text" {:height "3px!important"}]
-   [".thumb span" {:overflow "hidden" :text-overflow "ellipsis" :white-space "nowrap"}]
-   [".thumb small,.thumb em" {:color "var(--muted)" :font-size "12px" :font-style "normal"}]
+   [".thumb span" {:overflow "hidden" :text-overflow "ellipsis"
+                   :white-space "nowrap"}]
+   [".thumb small,.thumb em"
+    {:color "var(--hig-color-secondary-label)"
+     :font-size "var(--hig-text-caption1-font-size)" :font-style "normal"}]
    [".thumb em" {:text-align "right"}]
-   [".status" {:display "grid" :grid-template-columns "auto 1fr auto 1fr" :gap "6px"
-               :align-items "baseline" :margin-top "14px" :padding "10px"
-               :border "1px solid var(--line)" :border-radius "8px" :background "#fff"
-               :font-size "12px" :color "var(--muted)"}]
-   [".status strong" {:color "var(--ink)" :font-size "16px"}]
-   [".workspace" {:padding "16px 18px" :overflow "auto"
-                  :background "linear-gradient(#f7f8fb,#eef2f6)"}]
+   [".status" {:display "grid" :grid-template-columns "auto 1fr auto 1fr"
+               :gap "var(--hig-spacing-2)" :align-items "baseline"
+               :margin-top "var(--hig-spacing-4)"
+               :padding "var(--hig-spacing-3)"
+               :border "var(--hig-hairline) solid var(--hig-color-separator)"
+               :border-radius "var(--hig-radius-sm)"
+               :background "var(--hig-color-tertiary-system-background)"
+               :font-size "var(--hig-text-caption1-font-size)"
+               :color "var(--hig-color-secondary-label)"}]
+   [".status strong" {:color "var(--hig-color-label)"
+                      :font-size "var(--hig-text-callout-font-size)"}]
+
+   ;; --- workspace + properties (main column) --------------------------------
+   [".editor-main" {:display "grid"
+                    :grid-template-columns "minmax(0,1fr) 328px"
+                    :gap "var(--hig-spacing-4)" :align-items "start"
+                    :padding "var(--hig-spacing-4)"}]
+   [".workspace" {:min-width "0" :overflow "auto"}]
    [".workspace-head" {:display "flex" :align-items "flex-start"
-                        :justify-content "space-between" :gap "16px"
-                        :margin "0 auto 14px" :max-width "1100px"}]
-   [".workspace-head h2" {:font-size "18px" :font-weight "800" :margin "0" :line-height "1.2"}]
-   [".workspace-head p" {:font-size "13px" :color "var(--muted)" :margin "3px 0 0"}]
-   [".workspace-tools" {:display "flex" :gap "8px" :align-items "center"
-                         :justify-content "flex-end" :flex-wrap "wrap"}]
-   [".mode-tabs,.insert-bar,.zoom-controls" {:display "flex" :gap "0"
-                                              :border "1px solid var(--line)"
-                                              :border-radius "8px" :background "#fff"
-                                              :overflow "hidden"}]
-   [".mode-tabs button,.insert-bar button,.zoom-controls button"
-    {:border "0" :border-right "1px solid var(--line)" :border-radius "0" :min-width "54px"}]
-   [".mode-tabs button:last-child,.insert-bar button:last-child,.zoom-controls button:last-child"
-    {:border-right "0"}]
-   [".mode-tabs button.active" {:background "#17202a" :color "#fff"}]
-   [".zoom-controls button" {:min-width "38px"}]
-   [".zoom-controls #zoom-reset" {:min-width "58px" :color "var(--muted)"}]
+                       :justify-content "space-between"
+                       :gap "var(--hig-spacing-4)"
+                       :margin "0 auto var(--hig-spacing-4)"
+                       :max-width "1100px"}]
+   [".workspace-head h2" {:margin "0"}]
+   [".workspace-head p" {:color "var(--hig-color-secondary-label)"
+                         :margin "3px 0 0"}]
+   [".workspace-tools" {:display "flex" :gap "var(--hig-spacing-2)"
+                        :align-items "center" :justify-content "flex-end"
+                        :flex-wrap "wrap"}]
+   [".mode-tabs,.insert-bar,.zoom-controls"
+    {:display "flex" :gap "var(--hig-spacing-1)"}]
+   [".zoom-controls #zoom-reset" {:min-width "58px"}]
    [".stage" {:min-height "620px" :display "grid" :place-items "center"
-              :padding "34px 20px" :overflow "auto"}]
+              :padding "var(--hig-spacing-7) var(--hig-spacing-5)"
+              :overflow "auto"}]
+   ;; the mode panes toggle via the `hidden` attribute; an author `display`
+   ;; (like .stage's grid) beats the UA [hidden] rule, so restate it — the
+   ;; visual pane must actually hide in EDN mode.
+   [".stage[hidden],#edn-pane[hidden]" {:display "none"}]
    [".canvas-shell" {:width "min(100%,1040px)" :transform-origin "center top"
-                      :transition "transform .12s ease"}]
-   [".canvas" {:position "relative" :width "100%" :background "#fff"
-               :border "1px solid var(--line)" :box-shadow "var(--shadow)" :overflow "hidden"}]
+                     :transition "transform .12s ease"}]
+   [".canvas" {:position "relative" :width "100%" :background deck-paper
+               :border "var(--hig-hairline) solid var(--hig-color-separator)"
+               :box-shadow "0 18px 46px color-mix(in srgb, var(--hig-color-label) 12%, transparent)"
+               :overflow "hidden"}]
    [".shape" {:position "absolute" :display "block" :text-align "left"
               :white-space "pre-wrap" :border "0" :background "transparent"
               :padding "0" :margin "0" :overflow "hidden" :cursor "grab"
               :touch-action "none"}]
    [".shape:active" {:cursor "grabbing"}]
    [".shape.text" {:line-height "1.12"}]
-   [".shape.rect" {:border "2px solid #496b9a"}]
-   [".shape.selected" {:z-index "2"
-                        :box-shadow "0 0 0 1px rgba(255,255,255,.9),0 10px 22px rgba(23,32,42,.12)"}]
+   ;; rect border COLOR always comes from the shape's inline border-color
+   ;; (user deck data — views.cljc/shape-node); only width/style live here.
+   [".shape.rect" {:border-width "2px" :border-style "solid"}]
+   [".shape.selected"
+    {:z-index "2"
+     :box-shadow "0 0 0 1px color-mix(in srgb, var(--hig-color-system-background) 90%, transparent),0 10px 22px color-mix(in srgb, var(--hig-color-label) 12%, transparent)"}]
    [".resize-handles" {:position "absolute" :inset "0" :pointer-events "none"}]
    [".resize-handle" {:position "absolute" :width "10px" :height "10px"
-                       :border "1px solid #fff" :border-radius "999px"
-                       :background "#17202a" :box-shadow "0 2px 6px rgba(23,32,42,.2)"
-                       :pointer-events "auto"}]
+                      :border "1px solid var(--hig-color-system-background)"
+                      :border-radius "var(--hig-radius-capsule)"
+                      :background "var(--hig-color-tint)"
+                      :box-shadow "0 2px 6px color-mix(in srgb, var(--hig-color-label) 20%, transparent)"
+                      :pointer-events "auto"}]
    [".resize-handle.nw" {:left "2px" :top "2px" :cursor "nwse-resize"}]
    [".resize-handle.ne" {:right "2px" :top "2px" :cursor "nesw-resize"}]
    [".resize-handle.sw" {:left "2px" :bottom "2px" :cursor "nesw-resize"}]
    [".resize-handle.se" {:right "2px" :bottom "2px" :cursor "nwse-resize"}]
-   [".props label" {:display "block" :margin "0 0 10px"}]
-   [".props span" {:display "block" :font-size "12px" :color "var(--muted)" :margin "0 0 4px"}]
-   [".props input,.props textarea,.props select,#deck-edn"
-    {:width "100%" :border "1px solid var(--line)" :border-radius "7px"
-     :background "#fff" :color "var(--ink)" :padding "8px"}]
-   [".props textarea" {:min-height "108px" :resize "vertical"}]
-   [".grid2" {:display "grid" :grid-template-columns "1fr 1fr" :gap "8px"}]
-   [".inspector-actions" {:display "grid" :grid-template-columns "1fr 1fr" :gap "8px"
-                           :margin-top "4px"}]
-   [".selection-count" {:display "flex" :align-items "baseline" :gap "6px"
-                         :margin "0 0 14px" :padding "10px" :border "1px solid var(--line)"
-                         :border-radius "8px" :background "#f8fafc"}]
-   [".selection-count strong" {:font-size "18px"}]
-   [".selection-count span" {:margin "0"}]
-   [".align-grid" {:display "grid" :grid-template-columns "1fr 1fr 1fr" :gap "8px"}]
-   ["#edn-pane" {:max-width "1100px" :margin "0 auto"}]
-   ["#deck-edn" {:min-height "620px" :font "13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace"}]
-   [".edn-actions" {:display "flex" :gap "8px" :margin-top "10px"}]
-   ["#error" {:min-height "18px" :color "var(--danger)" :font-size "13px"
-              :margin "10px auto 0" :max-width "1100px"}]
-   [".file-label" {:display "inline-flex" :align-items "center" :min-height "34px"
-                    :border "1px solid var(--line)" :border-radius "7px"
-                    :padding "0 10px" :background "#fff" :cursor "pointer"
-                    :white-space "nowrap"}]
-   [".file-label input" {:display "none"}]])
 
-(def root-vars-rule
-  "The hand-typed :root custom-property block from static.css. Kept distinct
-  from `shitsuke.tokens/css-variables`' own generated :root block (slides.build
-  emits both, unchanged pre-existing behavior — see slides.build/css-release!)."
-  [":root" {:--ink "#17202a" :--muted "#526170" :--line "#d8dee8" :--panel "#fff"
-            :--wash "#f4f6f9" :--rail "#fbfcfe" :--accent "#496b9a" :--accent2 "#657f3d"
-            :--danger "#9f3a38" :--shadow "0 18px 46px rgba(23,32,42,.12)"}])
+   ;; --- properties panel -----------------------------------------------------
+   [".props" {:overflow "auto"}]
+   [".props label" {:display "block" :margin "0 0 var(--hig-spacing-3)"}]
+   [".props label > span" {:display "block"
+                           :font-size "var(--hig-text-caption1-font-size)"
+                           :color "var(--hig-color-secondary-label)"
+                           :margin "0 0 4px"}]
+   ;; property selects stay raw <select> (they carry the data-field enhancer
+   ;; contract that shitsuke.components/select doesn't pass through) — give
+   ;; them the same quiet fill as the glass fields around them.
+   [".props select"
+    {:width "100%" :padding ".55em .9em"
+     :border "var(--hig-hairline) solid var(--hig-color-separator)"
+     :border-radius "var(--liquid-glass-radius-pill)"
+     :background "var(--hig-color-quaternary-system-fill)"
+     :color "inherit"}]
+   [".grid2" {:display "grid" :grid-template-columns "1fr 1fr"
+              :gap "var(--hig-spacing-2)"}]
+   [".inspector-actions" {:display "grid" :grid-template-columns "1fr 1fr"
+                          :gap "var(--hig-spacing-2)"
+                          :margin-top "var(--hig-spacing-1)"}]
+   [".selection-count" {:display "flex" :align-items "baseline"
+                        :gap "var(--hig-spacing-2)"
+                        :margin "0 0 var(--hig-spacing-4)"
+                        :padding "var(--hig-spacing-3)"
+                        :border "var(--hig-hairline) solid var(--hig-color-separator)"
+                        :border-radius "var(--hig-radius-sm)"
+                        :background "var(--hig-color-quaternary-system-fill)"}]
+   [".selection-count strong" {:font-size "var(--hig-text-title3-font-size)"}]
+   [".selection-count span" {:margin "0"}]
+   [".align-grid" {:display "grid" :grid-template-columns "1fr 1fr 1fr"
+                   :gap "var(--hig-spacing-2)"}]
+
+   ;; --- EDN pane ---------------------------------------------------------------
+   ["#edn-pane" {:max-width "1100px" :margin "0 auto"}]
+   ["#deck-edn"
+    {:min-height "620px"
+     :font-size "var(--hig-text-footnote-font-size)" :line-height "1.5"
+     ;; documented opt-out (ns docstring): no monospace token/class exists in
+     ;; the stack yet; same stack shitsuke.hig uses for code/pre.
+     :font-family "ui-monospace, \"SF Mono\", SFMono-Regular, Menlo, Consolas, monospace"}]
+   [".edn-actions" {:display "flex" :gap "var(--hig-spacing-2)"
+                    :margin-top "var(--hig-spacing-3)"}]
+   ["#error" {:min-height "18px" :color "var(--hig-palette-red)"
+              :font-size "var(--hig-text-footnote-font-size)"
+              :margin "var(--hig-spacing-3) auto 0" :max-width "1100px"}]])
+
+(def media-desktop
+  "Desktop-only layout override on the app's own `.editor` class hook (the
+  shell :class passthrough — see kotoba-ui.shell's root-opts contract; layout
+  overrides belong in app CSS): the slide rail needs ~300px so thumb titles
+  don't truncate. Scoped to min-width so the shell's own <=768px sidebar
+  collapse (inside @layer kotoba.hig) still applies unbeaten."
+  {".editor .kotoba-shell__app-body" {:grid-template-columns "320px minmax(0,1fr)"}
+   ".editor .kotoba-shell__app-sidebar" {:padding "var(--hig-spacing-3)"}})
 
 (def media-1180
-  {".toolbar" {:grid-template-columns "1fr" :align-items "flex-start"}
+  {".editor-toolbar > nav" {:grid-template-columns "1fr"
+                            :align-items "flex-start"}
    ".toolbar-actions" {:justify-content "flex-start"}
-   "main" {:grid-template-columns "212px minmax(420px,1fr) 300px"}})
+   ".editor-main" {:grid-template-columns "minmax(0,1fr) 300px"}})
 
 (def media-940
-  [["main" {:grid-template-columns "1fr"}]
-   [".props,aside" {:border "0" :border-bottom "1px solid var(--line)"}]
-   ["aside" {:order "1"}]
-   [".workspace" {:order "2"}]
-   [".props" {:order "3"}]
-   [".top" {:position "static"}]
+  [[".editor-main" {:grid-template-columns "1fr"}]
    [".workspace-head" {:display "block"}]
-   [".workspace-tools" {:justify-content "flex-start" :margin-top "12px"}]
-   [".stage" {:min-height "360px" :padding "20px 6px"}]
+   [".workspace-tools" {:justify-content "flex-start"
+                        :margin-top "var(--hig-spacing-3)"}]
+   [".stage" {:min-height "360px" :padding "var(--hig-spacing-5) var(--hig-spacing-1)"}]
    [".thumb" {:grid-template-columns "24px 96px minmax(0,1fr) 22px"}]
    [".thumb-preview" {:width "96px"}]])
 
 (def sheet
-  {:rules (into [root-vars-rule] rules)
-   :media [["(max-width:1180px)" media-1180]
+  {:rules rules
+   :media [["(min-width:769px)" media-desktop]
+           ["(max-width:1180px)" media-1180]
            ["(max-width:940px)" media-940]]})
 
 (defn static-css
-  "Renders the same rules static.css hand-typed, via css.core/css."
+  "The editor's unlayered app-chrome rules, rendered via css.core/css.
+  slides.build appends this after the kotoba-ui theme bundle."
   []
   (css/css sheet))

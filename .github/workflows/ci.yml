@@ -13,6 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # kotoba-ui / appkit / shitsuke / liquid-glass-ui are :local/root
+      # west-sibling deps (deps.edn — kotoba-ui itself pins shitsuke and
+      # liquid-glass-ui as :local/root, so the whole design-system stack
+      # rides as siblings). Clone them next to this checkout.
+      - name: Check out design-system siblings
+        run: |
+          for repo in shitsuke liquid-glass-ui kotoba-ui appkit; do
+            git clone --depth 1 https://github.com/kotoba-lang/$repo ../$repo
+          done
+
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
