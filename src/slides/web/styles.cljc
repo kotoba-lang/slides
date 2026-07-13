@@ -2,9 +2,10 @@
   "Editor page-chrome CSS on the kotoba-lang design-system paved road
   (kotoba-ui/docs/agent-guide.md, ADR-2607122200).
 
-  docs/main.css = `(kotoba-ui.core/theme-css theme)` (the layered HIG + glass
-  + shell bundle, emitted by slides.build) followed by this namespace's app
-  rules. App rules are UNLAYERED, so they always win over the library layers
+  docs/main.css = this namespace's app rules only (emitted by slides.build);
+  the layered HIG + glass + shell theme bundle is inlined into
+  docs/index.html's <head> by kotoba-ui.core/->page (slides.site). App rules
+  are UNLAYERED, so they always win over the library layers
   (`@layer kotoba.hig, kotoba.glass`) — no compound selectors against
   `liquid-glass__*`/`kotoba-shell__*` classes are needed or used.
 

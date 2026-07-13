@@ -7,11 +7,16 @@
 
 (deftest index-html-renders-github-pages-shell
   (let [html (site/index-html)]
-    ;; kotoba.html/html5 emits uppercase DOCTYPE (HTML doctype is case-
-    ;; insensitive; this is the same substrate shitsuke.hiccup itself is
-    ;; built on, see slides.site ns docstring / 90-docs/adr/2607022800)
-    (is (.startsWith html "<!DOCTYPE html>"))
+    ;; kotoba-ui.core/->page emits the lowercase doctype (HTML doctype is
+    ;; case-insensitive) and the whole head chrome — see slides.site ns
+    ;; docstring / ADR-2607122200.
+    (is (.startsWith html "<!doctype html>"))
     (is (re-find #"<title>kotoba-lang/slides</title>" html))
+    ;; library-owned head chrome: notch-aware viewport + per-scheme
+    ;; theme-color metas + the inlined layered theme CSS bundle.
+    (is (re-find #"viewport-fit=cover" html))
+    (is (re-find #"name=\"theme-color\"" html))
+    (is (str/includes? html "@layer kotoba.hig, kotoba.glass;"))
     (is (re-find #"<link rel=\"stylesheet\" href=\"\./main\.css\">" html))
     (is (re-find #"<body class=\"slides-page\">" html))
     (is (re-find #"<div id=\"app\" data-kotoba-render=\"ssr\">" html))
@@ -36,13 +41,11 @@
     (with-redefs [io/file (fn [& _] out)]
       (is (= out (build/css-release!)))
       (let [css (slurp out)]
-        ;; the kotoba-ui theme bundle leads: the cascade-layer order
-        ;; declaration first, then the layered HIG/glass/shell rules with the
-        ;; brand accent threaded into --hig-color-tint.
-        (is (.startsWith css "@layer kotoba.hig, kotoba.glass;"))
-        (is (str/includes? css "--hig-color-tint: #496B9A"))
-        (is (str/includes? css "@layer kotoba.glass"))
-        ;; the app-chrome rules follow, UNLAYERED (css.core renders
+        ;; main.css is now app-chrome-only: the layered kotoba-ui theme
+        ;; bundle is inlined into docs/index.html by kotoba-ui.core/->page
+        ;; (slides.site), not duplicated here.
+        (is (not (str/includes? css "@layer kotoba.hig")))
+        ;; the app-chrome rules, UNLAYERED (css.core renders
         ;; "selector { prop: val; ... }" — check rule presence + a declaration
         ;; it contains rather than an exact minified substring).
         (is (str/includes? css ".editor-main {"))
