@@ -8,8 +8,14 @@
 
 (deftest root-html-stable-test
   (let [html (ssr/root-html)]
-    (is (clojure.string/starts-with? html "<div class=\"shitsuke__app\">"))
+    ;; root is now the kotoba-ui shell frame (kotoba-shell__app + the app's
+    ;; own "editor" class hook via the shell :class passthrough)
+    (is (clojure.string/starts-with? html "<div class=\"kotoba-shell__app"))
+    (is (clojure.string/includes? html "editor"))
     (is (clojure.string/includes? html "kotoba-lang/slides"))
+    ;; the stable #id enhancer hooks survive the glass components
+    (is (clojure.string/includes? html "id=\"new-deck\""))
+    (is (clojure.string/includes? html "id=\"zoom-in\""))
     (is (clojure.string/includes? html "data-act=\"new-deck\""))
     (is (clojure.string/includes? html "data-act=\"undo\""))
     (is (clojure.string/includes? html "data-act=\"redo\""))

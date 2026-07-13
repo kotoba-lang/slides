@@ -13,10 +13,18 @@
     :data-shape    shape selection (idx)
     :data-field    property input (prefixed: shape.x / slide.title / ...)
   This preserves the document-level dispatch model while keeping the rendering
-  surface as portable hiccup data."
+  surface as portable hiccup data.
+
+  Chrome is built on the kotoba-lang design-system paved road (ADR-2607122200):
+  kotoba-ui.core (single entry — shell layout, glass toolbar/buttons/fields)
+  + appkit.core (desktop panes: thick/flat panels). Every chrome control keeps
+  its stable #id + data-* enhancer hooks (see `with-attrs`). The slide CANVAS
+  and thumbnails render user deck data (colors/sizes from the deck EDN) —
+  that stays inline user data, untouched by the design system."
   (:require [clojure.string :as str]
             [slides.design :as design]
-            [shitsuke.style :as sstyle]))
+            [kotoba-ui.core :as ui]
+            [appkit.core :as appkit]))
 
 ;; ---------------------------------------------------------------------------
 ;; pure helpers
@@ -52,6 +60,20 @@
            (when-let [idx (:selected-shape db)] #{idx})
            #{})))
 
+(defn with-attrs
+  "Merge extra root attrs (the stable :id / data-* hooks of the SSR enhancer
+  contract) onto a kotoba-ui component's hiccup ([tag attrs & children]).
+  The component's own generated attrs win on key conflict."
+  [node extra]
+  (update node 1 #(merge extra %)))
+
+(defn chrome-button
+  "Glass chrome button carrying the editor's stable #id + data-act contract.
+  opts pass through to kotoba-ui.core/button (:disabled :class :title :type)."
+  ([id label act] (chrome-button id label act nil))
+  ([id label act opts]
+   (with-attrs (ui/button label (assoc opts :act act)) {:id id})))
+
 ;; ---------------------------------------------------------------------------
 ;; slide list / canvas
 ;; ---------------------------------------------------------------------------
@@ -69,7 +91,9 @@
                   (= :rect (:slides/shape resolved))
                   (assoc :background (str "#" (valid-hex (:slides/fill resolved) "EAF0F8")))
                   (not= :rect (:slides/shape resolved))
-                  (assoc :background (if (zero? idx) "#17202A" "#526170")))}]))
+                  (assoc :background (if (zero? idx)
+                                       "var(--hig-color-label)"
+                                       "var(--hig-color-secondary-label)")))}]))
 
 (defn thumb-preview [deck slide]
   [:div.thumb-preview
@@ -100,7 +124,8 @@
              :height (str h "%")
              :font-size (str (positive (:slides/font-size shape) 24) "px")
              :color (str "#" (valid-hex (:slides/color shape) "17202A"))}
-      selected? (assoc :outline "2px solid #111827" :outline-offset "2px"))))
+      selected? (assoc :outline "2px solid var(--hig-color-tint)"
+                       :outline-offset "2px"))))
 
 (defn shape-node [db idx shape]
   (let [d (:deck db)
@@ -146,11 +171,11 @@
 (defn property-input [label id field value opts]
   (let [{:keys [type step]} opts]
     [:label [:span label]
-     [:input {:id id
-              :value (if (nil? value) "" (str value))
-              :data-field field
-              :type (or type "text")
-              :step step}]]))
+     (ui/text-field {:id id
+                     :value (if (nil? value) "" (str value))
+                     :data-field field
+                     :type (or type "text")
+                     :step step})]))
 
 (defn select-options [values selected]
   (cons [:option {:value ""}]
@@ -178,7 +203,10 @@
        [:option {:value "rect" :selected (= :rect (:slides/shape shape))} "Rect"]]]
      (when (not= :rect (:slides/shape shape))
        [:label [:span "Text"]
-        [:textarea#shape-text {:data-field "shape.text"} (:slides/text shape "")]])
+        (ui/text-area {:id "shape-text"
+                       :data-field "shape.text"
+                       :rows 4
+                       :value (:slides/text shape "")})])
      [:div.grid2
       (property-input "X" "shape-x" "shape.x" (:slides/x shape 0) {:type "number" :step "0.1"})
       (property-input "Y" "shape-y" "shape.y" (:slides/y shape 0) {:type "number" :step "0.1"})
@@ -192,8 +220,8 @@
         (property-input "Font" "shape-font-size" "shape.font-size" (:slides/font-size shape 24) {:type "number" :step "1"})
         (property-input "Color" "shape-color" "shape.color" (:slides/color shape "17202A") {})])
      [:div.inspector-actions
-      [:button#duplicate-shape {:data-act "duplicate-shape" :type "button"} "Duplicate"]
-      [:button#delete-shape.danger {:data-act "delete-shape" :type "button"} "Delete"]]]))
+      (chrome-button "duplicate-shape" "Duplicate" :duplicate-shape)
+      (chrome-button "delete-shape" "Delete" :delete-shape {:class "danger"})]]))
 
 (defn slide-properties [db]
   (let [slide (selected-slide db)]
@@ -201,7 +229,7 @@
      [:div.panel-title "Slide"]
      (property-input "ID" "slide-id" "slide.id" (:slides/id slide "") {})
      (property-input "Title" "slide-title" "slide.title" (:slides/title slide "") {})
-     [:button#delete-slide.danger {:data-act "delete-slide" :type "button"} "Delete Slide"]]))
+     (chrome-button "delete-slide" "Delete Slide" :delete-slide {:class "danger"})]))
 
 (defn selection-properties [db]
   (let [n (count (selected-shapes-set db))]
@@ -212,12 +240,12 @@
       [:span "shapes selected"]]
      [:div.panel-title "Align"]
      [:div.align-grid
-      [:button#align-left {:data-act "align-left" :type "button"} "Left"]
-      [:button#align-center {:data-act "align-center" :type "button"} "Center"]
-      [:button#align-right {:data-act "align-right" :type "button"} "Right"]
-      [:button#align-top {:data-act "align-top" :type "button"} "Top"]
-      [:button#align-middle {:data-act "align-middle" :type "button"} "Middle"]
-      [:button#align-bottom {:data-act "align-bottom" :type "button"} "Bottom"]]]))
+      (chrome-button "align-left" "Left" :align-left)
+      (chrome-button "align-center" "Center" :align-center)
+      (chrome-button "align-right" "Right" :align-right)
+      (chrome-button "align-top" "Top" :align-top)
+      (chrome-button "align-middle" "Middle" :align-middle)
+      (chrome-button "align-bottom" "Bottom" :align-bottom)]]))
 
 (defn properties-panel [db]
   (cond
@@ -236,21 +264,23 @@
 
 (defn mode-tabs [mode]
   [:div.mode-tabs
-   [:button#mode-visual {:class (when (= :visual mode) "active") :data-act "mode-visual" :type "button"} "Visual"]
-   [:button#mode-edn {:class (when (= :edn mode) "active") :data-act "mode-edn" :type "button"} "EDN"]])
+   (chrome-button "mode-visual" "Visual" :mode-visual
+                  {:class (when (= :visual mode) "active")})
+   (chrome-button "mode-edn" "EDN" :mode-edn
+                  {:class (when (= :edn mode) "active")})])
 
 (defn insert-bar []
   [:div.insert-bar
-   [:button#add-text {:data-act "add-text" :type "button"} "Text"]
-   [:button#add-rect {:data-act "add-rect" :type "button"} "Rect"]
-   [:button#add-title {:data-act "add-title" :type "button"} "Title"]
-   [:button#add-panel {:data-act "add-panel" :type "button"} "Panel"]])
+   (chrome-button "add-text" "Text" :add-text)
+   (chrome-button "add-rect" "Rect" :add-rect)
+   (chrome-button "add-title" "Title" :add-title)
+   (chrome-button "add-panel" "Panel" :add-panel)])
 
 (defn zoom-controls [zoom]
   [:div.zoom-controls
-   [:button#zoom-out {:data-act "zoom-out" :type "button"} "-"]
-   [:button#zoom-reset {:data-act "zoom-reset" :type "button"} (str (long (* 100 (positive zoom 1))) "%")]
-   [:button#zoom-in {:data-act "zoom-in" :type "button"} "+"]])
+   (chrome-button "zoom-out" "-" :zoom-out)
+   (chrome-button "zoom-reset" (str (long (* 100 (positive zoom 1))) "%") :zoom-reset)
+   (chrome-button "zoom-in" "+" :zoom-in)])
 
 (defn workspace [db]
   (let [mode (:mode db)
@@ -260,8 +290,8 @@
     [:section.workspace
      [:div.workspace-head
       [:div
-       [:h2 (:slides/title deck "Untitled deck")]
-       [:p (str (:slides/title slide (:slides/id slide "Slide")))]]
+       [:h2 {:class "hig-title3"} (:slides/title deck "Untitled deck")]
+       [:p {:class "hig-footnote"} (str (:slides/title slide (:slides/id slide "Slide")))]]
       [:div.workspace-tools
        (mode-tabs mode)
        (insert-bar)
@@ -271,14 +301,19 @@
        (canvas db)]]
      [:div#edn-pane {:hidden (not= :edn mode)}
       ;; Uncontrolled textarea keyed by deck content: React won't revert user
-      ;; edits (no :on-change), and it remounts with the current deck's pr-str
-      ;; whenever the deck changes — mirroring the legacy imperative
-      ;; `set! (.-value …)`. Apply EDN reads the live DOM value via the enhancer.
-      [:textarea#deck-edn {:spellcheck "false"
-                           :key (hash deck)
-                           :default-value (pr-str deck)}]
+      ;; edits (no :on-change / no :value), and it remounts with the current
+      ;; deck's pr-str whenever the deck changes — mirroring the legacy
+      ;; imperative `set! (.-value …)`. Apply EDN reads the live DOM value via
+      ;; the enhancer. kotoba-ui/text-area passes :key/:default-value/
+      ;; :spellcheck through to the <textarea> untouched and leaves an
+      ;; absent :value absent (the control stays uncontrolled).
+      (ui/text-area {:id "deck-edn"
+                     :spellcheck "false"
+                     :key (hash deck)
+                     :rows 24
+                     :default-value (pr-str deck)})
       [:div.edn-actions
-       [:button#apply-edn.primary {:data-act "apply-edn" :type "button"} "Apply EDN"]]]
+       (chrome-button "apply-edn" "Apply EDN" :apply-edn {:class "primary"})]]
      [:div#error (:error db)]]))
 
 (defn rail [db]
@@ -286,44 +321,51 @@
         n (count ss)
         slide (selected-slide db)
         shape-count (count (:slides/shapes slide))]
-    [:aside
-     [:div.aside-title "Slides"]
-     [:div.rail-actions
-      [:button#add-slide {:data-act "add-slide" :type "button"} "Add"]
-      [:button#duplicate-slide {:data-act "duplicate-slide" :type "button"} "Copy"]]
-     (slide-list db)
-     [:div#status.status
-      [:strong (str n)]
-      [:span "slides"]
-      [:strong (str shape-count)]
-      [:span "shapes"]]]))
+    ;; body as a list (seq) so both render hosts treat it as children, not as
+    ;; a single (invalid) vector-of-vectors element under reagent.
+    (appkit/panel
+     (list
+      [:div.aside-title "Slides"]
+      [:div.rail-actions
+       (chrome-button "add-slide" "Add" :add-slide)
+       (chrome-button "duplicate-slide" "Copy" :duplicate-slide)]
+      (slide-list db)
+      [:div#status.status
+       [:strong (str n)]
+       [:span "slides"]
+       [:strong (str shape-count)]
+       [:span "shapes"]]))))
 
 (defn toolbar [db]
   (let [deck (:deck db)
         slide-count (count (:slides/slides deck))]
-  [:div.toolbar
-   [:div.brand
-    [:h1 "kotoba-lang/slides"]
-    [:p (:slides/title deck "Untitled deck")]]
-   [:div.deck-meta
-    [:span (:slides/id deck "deck")]
-    [:span (str slide-count " slides")]
-    [:span "causal PPTX"]]
-   [:div.toolbar-actions
-    [:button#new-deck {:data-act "new-deck" :type "button"} "New"]
-    [:button#undo {:data-act "undo" :type "button" :disabled (empty? (:undo-stack db))} "Undo"]
-    [:button#redo {:data-act "redo" :type "button" :disabled (empty? (:redo-stack db))} "Redo"]
-    [:label.file-label "Open EDN"
-     [:input#edn-file {:type "file" :accept ".edn,text/plain"}]]
-    [:label.file-label "Open PPTX"
-     [:input#pptx-file {:type "file" :accept ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"}]]
-    [:button#download-edn {:data-act "download-edn" :type "button"} "EDN"]
-    [:button#download-svgraph {:data-act "download-svgraph" :type "button"} "SVGraph"]
-    [:button#download-pptx.primary {:data-act "download-pptx" :type "button"} "PPTX + causal"]
-    [:a.github {:href "https://github.com/kotoba-lang/slides"} "GitHub"]]]))
+    (ui/toolbar
+     [[:div.brand
+       [:h1 {:class "hig-headline"} "kotoba-lang/slides"]
+       [:p {:class "hig-caption1"} (:slides/title deck "Untitled deck")]]
+      [:div.deck-meta
+       (ui/badge (:slides/id deck "deck"))
+       (ui/badge (str slide-count " slides"))
+       (ui/badge "causal PPTX")]
+      [:div.toolbar-actions
+       (chrome-button "new-deck" "New" :new-deck)
+       (chrome-button "undo" "Undo" :undo {:disabled (empty? (:undo-stack db))})
+       (chrome-button "redo" "Redo" :redo {:disabled (empty? (:redo-stack db))})
+       [:label.file-label "Open EDN"
+        [:input#edn-file {:type "file" :accept ".edn,text/plain"}]]
+       [:label.file-label "Open PPTX"
+        [:input#pptx-file {:type "file" :accept ".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"}]]
+       (chrome-button "download-edn" "EDN" :download-edn)
+       (chrome-button "download-svgraph" "SVGraph" :download-svgraph)
+       (chrome-button "download-pptx" "PPTX + causal" :download-pptx {:class "primary"})
+       [:a.github {:href "https://github.com/kotoba-lang/slides"} "GitHub"]]]
+     {:class "editor-toolbar"})))
 
 (defn root [db]
-  [:div {:class (sstyle/class-name :app)}
-   [:header.top (toolbar db)]
-   [:main (rail db) (workspace db)]
-   [:section#properties.props (properties-panel db)]])
+  (ui/app-shell
+   {:nav (toolbar db)
+    :sidebar (rail db)
+    :class "editor"}
+   [:div.editor-main
+    (workspace db)
+    (appkit/panel (properties-panel db) {:id "properties" :class "props"})]))
