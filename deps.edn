@@ -28,15 +28,19 @@
         ;; the same lib are uncomparable and fail the classpath build — same
         ;; resolution as the appkit exemplar, gftdcojp/cloud-itonami#393).
         ;; CI clones these four siblings before running (see ci.yml).
-        io.github.kotoba-lang/kotoba-ui {:local/root "../kotoba-ui"}
-        io.github.kotoba-lang/appkit {:local/root "../appkit"}
-        io.github.kotoba-lang/liquid-glass-ui {:local/root "../liquid-glass-ui"}
+        io.github.kotoba-lang/kotoba-ui {:git/url "https://github.com/kotoba-lang/kotoba-ui.git"
+         :git/sha "4167b3aa911690368bb47b61e825c47d3327bfac"}
+        io.github.kotoba-lang/appkit {:git/url "https://github.com/kotoba-lang/appkit.git"
+         :git/sha "03b1c5373817229060f3fac9e41e97775c320997"}
+        io.github.kotoba-lang/liquid-glass-ui {:git/url "https://github.com/kotoba-lang/liquid-glass-ui.git"
+         :git/sha "8bb2c4fa10c06e638e38e55bff1b7f36830f2766"}
         ;; shitsuke: shared UI design system (tokens + hiccup + style +
         ;; portable re-frame seam + components). Pure .cljc, zero runtime deps.
         ;; :local/root (was :git/sha) — see the kotoba-ui note above; the
         ;; sibling main also carries the reagent-safe :on-input→:on-change
         ;; controlled-input fix (kotoba-lang/shitsuke PR #4) and shitsuke.hig.
-        io.github.kotoba-lang/shitsuke {:local/root "../shitsuke"}
+        io.github.kotoba-lang/shitsuke {:git/url "https://github.com/kotoba-lang/shitsuke.git"
+         :git/sha "8820801bbf52d47a31be9521a193f9bc5359a39e"}
         ;; canvaskit: canvas/viewport interaction math, Apple HIG/UIKit
         ;; vocabulary (ADR-2607071130). slides.web.events uses the zoom-scale
         ;; clamp for the editor canvas zoom.
