@@ -47,6 +47,36 @@
       (re-matches #"[0-9A-Fa-f]{6}" v) (str "#" v)
       :else v)))
 
+(defn- measure
+  "A number as text, and the same text on both hosts.
+
+  `(/ 72 72.0)` is `1.0` on the JVM and `1` in ClojureScript, so a deck drawn
+  from nbb and the same deck drawn from the JVM came out as different bytes
+  for the same picture. Nothing looks different — SVG reads both — but any
+  two things that compare the drawings disagree, and a cache keyed on them
+  never hits. `sheets` met this in a workbook's bytes and fixed it there;
+  this is the same fix on the surface next door.
+
+  Four decimals, which is a ten-thousandth of an inch: far below anything a
+  screen can show, and enough to keep `0.1 + 0.2` from printing its tail."
+  [x]
+  (let [d (double x)
+        r (/ #?(:clj (Math/round (* d 10000.0)) :cljs (js/Math.round (* d 10000))) 10000.0)
+        s (str r)]
+    (if (str/ends-with? s ".0") (subs s 0 (- (count s) 2)) s)))
+
+(def ^:private guide
+  "The stroke of a frame that is a guide rather than part of the picture.
+
+  In inches, spelled out, because the viewBox is in inches and SVG's default
+  `stroke-width` is one user unit — one inch here. A dashed frame left to
+  the default draws in inch-wide strokes two inches long, and three of them
+  cover a ten-inch slide in grey blocks. That is what this did: the outlines
+  were unreadable on screen while every assertion about them passed, because
+  the element is right and only its width is wrong. Nothing in a string test
+  can see it, so the number is named once and shared."
+  " fill=\"none\" stroke=\"#d0d7de\" stroke-width=\"0.02\" stroke-dasharray=\"0.06 0.04\"")
+
 (defn- text-shape [s]
   (let [x (num-or (:slides/x s) 0) y (num-or (:slides/y s) 0)
         w (num-or (:slides/w s) 1) h (num-or (:slides/h s) 0.5)
@@ -54,8 +84,8 @@
         ;; else here is in inches, so a 28pt line is 28/72 of an inch tall.
         size (/ (num-or (:slides/font-size s) 18) 72.0)
         lines (str/split-lines (str (:slides/text s)))]
-    (str "<text x=\"" x "\" y=\"" (+ y size)
-         "\" font-size=\"" size
+    (str "<text x=\"" (measure x) "\" y=\"" (measure (+ y size))
+         "\" font-size=\"" (measure size)
          "\" fill=\"" (colour (:slides/color s) "#24292f") "\""
          (when (:slides/bold s) " font-weight=\"bold\"")
          (when (:slides/italic s) " font-style=\"italic\"")
@@ -66,7 +96,7 @@
                    ;; One `tspan` per line: SVG text does not wrap and a
                    ;; newline inside it renders as a space, so a two-line
                    ;; title would come out as one long one.
-                   (str "<tspan x=\"" x "\" dy=\"" (if (zero? i) 0 (* size 1.2)) "\">"
+                   (str "<tspan x=\"" (measure x) "\" dy=\"" (measure (if (zero? i) 0 (* size 1.2))) "\">"
                         (esc line) "</tspan>"))
                  (if (seq lines) lines [""])))
          "</text>"
@@ -74,12 +104,13 @@
          ;; but its height is what the editor is moving, so it is worth
          ;; being able to see. Only when asked.
          (when (:slides.svg/outline? s)
-           (str "<rect x=\"" x "\" y=\"" y "\" width=\"" w "\" height=\"" h
-                "\" fill=\"none\" stroke=\"#d0d7de\" stroke-dasharray=\"2 2\"/>")))))
+           (str "<rect x=\"" (measure x) "\" y=\"" (measure y) "\" width=\"" (measure w)
+                "\" height=\"" (measure h) "\"" guide "/>")))))
 
 (defn- rect-shape [s]
-  (str "<rect x=\"" (num-or (:slides/x s) 0) "\" y=\"" (num-or (:slides/y s) 0)
-       "\" width=\"" (num-or (:slides/w s) 1) "\" height=\"" (num-or (:slides/h s) 1)
+  (str "<rect x=\"" (measure (num-or (:slides/x s) 0)) "\" y=\"" (measure (num-or (:slides/y s) 0))
+       "\" width=\"" (measure (num-or (:slides/w s) 1))
+       "\" height=\"" (measure (num-or (:slides/h s) 1))
        "\" fill=\"" (colour (:slides/fill s) "#EAF0F8") "\""
        (when (:slides/line s)
          (str " stroke=\"" (colour (:slides/line s) "#496B9A")
@@ -94,9 +125,10 @@
         w (num-or (:slides/w s) 1) h (num-or (:slides/h s) 1)
         data (str (:slides/image-data s))]
     (if (str/blank? data)
-      (str "<rect x=\"" x "\" y=\"" y "\" width=\"" w "\" height=\"" h
-           "\" fill=\"none\" stroke=\"#d0d7de\" stroke-dasharray=\"3 3\"/>")
-      (str "<image x=\"" x "\" y=\"" y "\" width=\"" w "\" height=\"" h
+      (str "<rect x=\"" (measure x) "\" y=\"" (measure y) "\" width=\"" (measure w)
+           "\" height=\"" (measure h) "\"" guide "/>")
+      (str "<image x=\"" (measure x) "\" y=\"" (measure y) "\" width=\"" (measure w)
+           "\" height=\"" (measure h)
            "\" href=\"data:" (esc (or (:slides/media-type s) "image/png"))
            ";base64," (esc data) "\" preserveAspectRatio=\"xMidYMid meet\"/>"))))
 
@@ -125,10 +157,10 @@
    (let [w (num-or (:slides/width deck) svgraph/default-width-in)
          h (num-or (:slides/height deck) svgraph/default-height-in)
          shapes (filter map? (:slides/shapes s))]
-     (str "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " w " " h "\""
+     (str "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " (measure w) " " (measure h) "\""
           " role=\"img\" aria-label=\""
           (esc (or (:slides/title s) (:slides/id s) "スライド")) "\">"
-          "<rect x=\"0\" y=\"0\" width=\"" w "\" height=\"" h "\" fill=\"#ffffff\"/>"
+          "<rect x=\"0\" y=\"0\" width=\"" (measure w) "\" height=\"" (measure h) "\" fill=\"#ffffff\"/>"
           (apply str (keep #(shape (cond-> % outline? (assoc :slides.svg/outline? true)))
                            shapes))
           "</svg>"))))

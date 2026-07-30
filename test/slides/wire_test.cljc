@@ -17,13 +17,22 @@
   (let [deck {:slides/id "deck"}
         envelope (wire/deck-envelope deck)]
     (is (= {"slides/id" "deck"} (wire/read-deck-envelope (:body envelope))))
-    (is (thrown? #?(:clj clojure.lang.ExceptionInfo
-                    :cljs cljs.core.ExceptionInfo)
-                 (wire/read-deck-envelope
-                  {"kotoba.protocol/family" "kotoba.protocol/office"
-                   "kotoba.protocol/version" 1
-                   "kotoba.resource/kind" "docs/document"
-                   "kotoba.resource/payload" {}})))))
+    ;; The kind it refused, out of the thrown value's `ex-data`, rather than
+    ;; `(thrown? ExceptionInfo …)`. Two reasons, and the second is why this
+    ;; changed: naming the class means naming it per host, and the `:cljs`
+    ;; branch said `cljs.core.ExceptionInfo`, which sci cannot resolve — the
+    ;; branch had never been read, because nothing ran this file anywhere but
+    ;; the JVM. Asking what was thrown is portable and says more than that
+    ;; something was.
+    (is (= :docs/document
+           (try (wire/read-deck-envelope
+                 {"kotoba.protocol/family" "kotoba.protocol/office"
+                  "kotoba.protocol/version" 1
+                  "kotoba.resource/kind" "docs/document"
+                  "kotoba.resource/payload" {}})
+                nil
+                (catch #?(:clj Exception :cljs :default) e
+                  (:kind (ex-data e))))))))
 
 (deftest a-deck-survives-the-projection-and-comes-back
   (let [deck (-> (model/deck "d1" {:slides/title "四半期"})

@@ -41,8 +41,25 @@
 (deftest a-font-size-is-points-and-everything-else-is-inches
   ;; A 72pt line is one inch tall. Mixing the two units silently gives a
   ;; slide whose text is 28 inches high.
+  ;;
+  ;; `1` and not `1.0`: this asked for `1.0`, which is what `(/ 72 72.0)`
+  ;; prints on the JVM and not what it prints in ClojureScript, so the
+  ;; assertion was a host's spelling of a number rather than the number.
+  ;; Both hosts now write the same text for the same measurement.
   (is (str/includes? (one (m/text-box "t" "本文" {:slides/font-size 72}))
-                     "font-size=\"1.0\"")))
+                     "font-size=\"1\"")))
+
+(deftest the-same-deck-draws-the-same-bytes-on-either-host
+  ;; Not a second spelling of the test above: that one is about a unit, this
+  ;; is about every number in the picture. A drawing whose bytes depend on
+  ;; where it was drawn cannot be compared, cached or diffed, and the two
+  ;; hosts disagree on exactly the numbers that come out whole — which is
+  ;; most of a slide's, since decks are laid out in tenths of an inch.
+  (let [out (one (m/text-box "t" "本文" {:slides/font-size 72 :slides/x 2 :slides/y 1})
+                 (m/rect "r" {:slides/x 3 :slides/w 2 :slides/h 1}))]
+    (is (not (str/includes? out ".0\"")) out)
+    ;; And the tail of a float is not a measurement either.
+    (is (str/includes? (one (m/rect "r" {:slides/x (+ 0.1 0.2)})) "x=\"0.3\""))))
 
 (deftest a-newline-is-a-line
   ;; SVG text does not wrap and a newline inside it renders as a space, so a
@@ -93,3 +110,37 @@
              {:slides/shapes [{:slides/shape :rect}]}
              {:slides/shapes [{:slides/shape :text :slides/x "x"}]}]]
     (is (string? (svg/slide (m/deck "d" {}) s)) (pr-str s))))
+
+(defn- parse-num [s]
+  #?(:clj (Double/parseDouble s) :cljs (js/parseFloat s)))
+
+(defn- stroked
+  "Every element in `out` that draws a stroke."
+  [out]
+  (->> (str/split out #"<")
+       (filter #(str/includes? % "stroke=\""))
+       (remove #(str/includes? % "stroke=\"none\""))))
+
+(deftest a-stroke-is-in-inches-like-everything-else-here
+  ;; SVG's default stroke-width is one user unit, and a user unit here is an
+  ;; inch: a frame that leaves it out draws in inch-wide strokes across a
+  ;; ten-inch slide. The outlines did exactly that — three shapes came out as
+  ;; grey blocks covering the slide — while every assertion about them
+  ;; passed, because the element was right and only its width was wrong. A
+  ;; string test cannot see a picture, but it can see that a number is a
+  ;; whole inch, which is the part that was checkable all along.
+  (let [out (svg/slide (m/deck "d" {})
+                       (reduce m/add-shape (m/slide "s" {})
+                               [(m/text-box "t" "本文")
+                                (m/rect "r" {:slides/line "496B9A"})
+                                (m/image "i" "")])
+                       {:outline? true})
+        elements (stroked out)]
+    (is (= 3 (count elements)) (pr-str elements))
+    (doseq [el elements]
+      (let [w (some-> (re-find #"stroke-width=\"([0-9.]+)\"" el) second parse-num)]
+        (is (some? w) (str "a stroke with no width takes the default inch: " el))
+        (is (and (pos? w) (< w 0.1)) (str "a stroke a tenth of an inch thick: " el))))
+    (doseq [[_ dash] (re-seq #"stroke-dasharray=\"([^\"]+)\"" out)
+            n (map parse-num (str/split dash #"[ ,]+"))]
+      (is (and (pos? n) (< n 0.5)) (str "half an inch of dash: " dash)))))
