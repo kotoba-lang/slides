@@ -1,5 +1,7 @@
 (ns slides.wire-test
   (:require [clojure.test :refer [deftest is]]
+            [slides.model :as model]
+            [slides.validate :as validate]
             [slides.wire :as wire]))
 
 (deftest deck-envelope-round-trips-as-plain-json
@@ -22,3 +24,55 @@
                    "kotoba.protocol/version" 1
                    "kotoba.resource/kind" "docs/document"
                    "kotoba.resource/payload" {}})))))
+
+(deftest a-deck-survives-the-projection-and-comes-back
+  (let [deck (-> (model/deck "d1" {:slides/title "四半期"})
+                 (model/add-slide
+                  (-> (model/slide "s1" {:slides/title "表紙"})
+                      (model/add-shape (model/text-box "t1" "売上"))
+                      (model/add-shape (model/rect "r1")))))
+        projected (wire/read-deck-envelope (:body (wire/deck-envelope deck)))]
+    ;; What the wire carries: the keywords have become bare strings.
+    (is (= "slides/deck" (get projected "slides/kind")))
+    (is (= "gftd" (get projected "slides/theme")))
+    (is (= ["text" "rect"]
+           (mapv #(get % "slides/shape")
+                 (get-in projected ["slides/slides" 0 "slides/shapes"]))))
+    ;; And closed again by a reader that knows which of them were.
+    (is (= deck (wire/rehydrate-deck projected)))
+    (is (= deck (wire/deck-of-envelope (:body (wire/deck-envelope deck)))))))
+
+(deftest a-design-override-theme-stays-a-map
+  (let [deck (model/deck "d1" {:slides/theme {:slides/accent "112233"}})
+        back (wire/deck-of-envelope (:body (wire/deck-envelope deck)))]
+    (is (= {:slides/accent "112233"} (:slides/theme back)))))
+
+(deftest validate-cannot-see-a-deck-that-was-not-rehydrated
+  ;; `slides.validate` matches `:slides/kind` against a set of keywords, so a
+  ;; projected deck is not recognised as a deck at all — its slides and
+  ;; shapes are never looked at, and a broken one comes back unremarked.
+  (let [broken (-> (model/deck "d1" {:slides/title "壊れ"})
+                   (model/add-slide {:slides/id "s1" :slides/title "no shapes key"
+                                     :slides/shapes "not-a-vector"}))
+        workspace-of (fn [d] (model/add-item (model/workspace "ws") d))
+        projected (wire/read-deck-envelope (:body (wire/deck-envelope broken)))]
+    (is (empty? (validate/deck-problems (workspace-of projected)))
+        "vacuously, having not recognised it as a deck")
+    (is (= [:slide/shapes-not-sequential]
+           (->> (validate/deck-problems (workspace-of (wire/rehydrate-deck projected)))
+                (filter #(= :error (:slides/severity %)))
+                (mapv :slides/code)))
+        "and wrong, once it is a deck again")))
+
+(deftest a-malformed-payload-is-handed-on-rather-than-thrown-at
+  ;; The converter's job is to give `slides.validate` something to look at.
+  ;; One that throws is one the validator never gets to answer, and the
+  ;; caller gets a crash instead of the list of what is wrong.
+  (doseq [payload [{"slides/slides" "nope"}
+                   {"slides/slides" [{"slides/shapes" "nope"}]}
+                   {"slides/slides" ["not-a-slide"]}
+                   {"slides/theme" 7}
+                   {"slides/kind" 7}
+                   "not-a-deck-at-all"]]
+    (is (some? (wire/rehydrate-deck payload))
+        (str "survived: " (pr-str payload)))))
