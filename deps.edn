@@ -7,9 +7,13 @@
         io.github.kotoba-lang/ooxml
         {:git/url "https://github.com/kotoba-lang/ooxml.git"
          :git/sha "4b87825e63ecc78bf97f26d98ff87c8bac7a26cd"}
+        ;; Advanced to the pin sheets, docs and forms share. 0d45c30 was the
+        ;; commit that moved the wire to plain JSON, so nothing here changes
+        ;; behaviour — it stops this being the one office library resolving
+        ;; a different transit than the other three.
         io.github.kotoba-lang/transit
         {:git/url "https://github.com/kotoba-lang/transit.git"
-         :git/sha "0d45c3020071cdedffe504d8fc0d9884938e4120"}
+         :git/sha "ab5d9d956e088d77d7f91357f36a4a0c6bdfcadc"}
         io.github.kotoba-lang/drawingml
         {:git/url "https://github.com/kotoba-lang/drawingml.git"
          :git/sha "0ac7037768731333920e1c1cf149d89f0934b6d7"}
