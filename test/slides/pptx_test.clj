@@ -3145,3 +3145,43 @@
           entries (zip-entries (pptx/pptx-bytes deck))
           presentation-xml (entries "ppt/presentation.xml")]
       (is (not (re-find #"sectionLst" presentation-xml))))))
+
+;; ── what a .pptx cannot carry ───────────────────────────────────────────────
+
+(deftest pptx-carries-nearly-everything
+  ;; The finding, as a test: checked against every constructor the model
+  ;; has, the only thing that does not travel is a slide's title.
+  (let [deck (-> (m/deck "d" {:slides/title "提案"})
+                 (m/add-slide
+                  (-> (m/slide "s1" {:slides/title "見出し" :slides/notes "ノート本文"})
+                      (m/add-shape (m/text-box "t1" "本文" {:slides/bold true
+                                                            :slides/font-size 24}))
+                      (m/add-shape (m/rect "r1" {:slides/fill "FF0000"}))
+                      (m/add-shape (m/image "i1" "aGVsbG8=" {})))))
+        files (into {} (pptx/pptx-files deck))
+        anywhere (fn [needle] (boolean (some #(str/includes? (str (val %)) needle) files)))]
+    (is (anywhere "本文") "a text box")
+    (is (anywhere "FF0000") "a rectangle's fill")
+    (is (anywhere "ノート本文") "notes")
+    (is (anywhere "提案") "the deck's title")
+    (is (some #(str/includes? % "media") (keys files)) "an image's bytes")
+    (is (some #(str/includes? % "theme") (keys files)) "the theme")
+    ;; And the one that does not.
+    (is (not (anywhere "見出し")) "a slide's title")))
+
+(deftest a-slide-title-is-reported-because-it-does-not-travel
+  ;; It is a label rather than content — `slide` defaults it to the id, and
+  ;; the reader generates "Slide 1 · source" for a file that has none — so
+  ;; rendering it would put `s1` on every auto-named slide. Reported instead.
+  (let [deck (-> (m/deck "d" {})
+                 (m/add-slide (m/slide "s1" {:slides/title "見出し"}))
+                 (m/add-slide (m/slide "s2" {:slides/title ""})))
+        entries (pptx/unexpressed deck)]
+    (is (= [:pptx/slide-title-dropped] (mapv :slides/code entries)))
+    (is (= ["s1"] (mapv :slides/id entries)) "the blank one has nothing to lose")
+    (is (every? #(= :info (:slides/severity %)) entries))))
+
+(deftest unexpressed-does-not-throw-on-a-half-built-deck
+  (doseq [deck [{} {:slides/slides nil} {:slides/slides [{}]}
+                {:slides/slides [{:slides/title nil}]}]]
+    (is (vector? (pptx/unexpressed deck)) (pr-str deck))))
