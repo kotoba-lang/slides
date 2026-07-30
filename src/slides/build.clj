@@ -1,5 +1,6 @@
 (ns slides.build
   (:require [clojure.java.io :as io]
+            [slides.architecture-site :as architecture-site]
             [slides.site :as site]
             [slides.web.styles :as styles]))
 
@@ -21,6 +22,7 @@
 
 (defn pages [& _]
   (site/write!)
+  (architecture-site/write!)
   (css-release!)
   nil)
 

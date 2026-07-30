@@ -2,6 +2,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
+            [slides.architecture-site :as architecture-site]
             [slides.build :as build]
             [slides.site :as site]))
 
@@ -56,8 +57,11 @@
     (with-redefs [site/write! (fn []
                                 (swap! calls conj :write-html)
                                 :html)
+                  architecture-site/write! (fn []
+                                             (swap! calls conj :write-architecture)
+                                             :architecture)
                   build/css-release! (fn []
                                        (swap! calls conj :css)
                                        :css)]
       (is (nil? (build/pages)))
-      (is (= [:write-html :css] @calls)))))
+      (is (= [:write-html :write-architecture :css] @calls)))))
