@@ -1657,6 +1657,38 @@
 (defn- master-layout-indices [layout-entries master-idx]
   (vec (keep-indexed (fn [i e] (when (= master-idx (:master-idx e)) (inc i))) layout-entries)))
 
+
+(defn unexpressed
+  "What `pptx-files` will drop from this deck, one entry per thing.
+
+  Shaped like `slides.validate/problems`, the same as the other writers'.
+  All `:info`: a format not carrying something is a property of the format.
+
+  **The list has one entry, and that is the finding.** Checked against every
+  constructor the model has: text boxes, rectangles and images all travel
+  with their position, fill, weight and size; notes become a notesSlide
+  part; the deck's title becomes `docProps/core.xml`; the theme becomes a
+  theme part. `slides.pptx` writes very nearly everything, which is why this
+  function exists to name the exception rather than to enumerate a long
+  list.
+
+  The exception is a **slide's** title. It is a label rather than content —
+  `slide` defaults it to the slide's id, and `slides.office` generates
+  `\"Slide 1 · source\"` when reading a file that has none — so rendering it
+  onto the slide would put `s1` on every auto-named one. PowerPoint has
+  nowhere to put a name that a person will see again, so it does not travel,
+  and an interface that calls it a heading is promising something this
+  format cannot keep."
+  [deck]
+  (let [entry (fn [code id msg]
+                {:slides/severity :info :slides/code code :slides/id id
+                 :slides/msg msg})]
+    (vec
+     (for [slide (:slides/slides deck)
+           :when (not (str/blank? (str (:slides/title slide))))]
+       (entry :pptx/slide-title-dropped (:slides/id slide)
+              "スライドの名前は .pptx に書き出されません（スライド上には出ません）。")))))
+
 (defn pptx-files [deck]
   (let [slides (vec (deck-slides deck))
         width (positive-numeric (:slides/width deck) default-width-in)
