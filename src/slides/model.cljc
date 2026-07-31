@@ -1,5 +1,6 @@
 (ns slides.model
-  "Pure EDN model for the GFTD slides/docs/drive/sheets workspace.")
+  "Pure EDN model for the GFTD slides/docs/drive/sheets workspace."
+  (:require [clojure.string :as str]))
 
 (def item-kinds
   #{:slides/deck
@@ -72,6 +73,33 @@
            :slides/fill "EAF0F8"
            :slides/line "496B9A"}
           attrs)))
+
+(def link-schemes
+  "The URL schemes a shape's link may use.
+
+  An allowlist. A deck is rendered as SVG by every preview here, and an
+  an anchor with a `javascript:` target around a shape is script in the
+  reader's session — so the question is not \"is this one of the bad ones\"
+  but \"is this one of the three I know are a place\".
+
+  The twin of `docs.model/link-schemes`, deliberately and not by accident.
+  The two libraries share nothing that a URL policy belongs in — `ooxml` is
+  packaging and `transit` is a wire — so the rule is written twice rather
+  than pushed into a place where it would be surprising to find. If one of
+  them ever learns a fourth scheme, the other has to be told."
+  #{"http" "https" "mailto"})
+
+(defn shape-link
+  "A shape's link, when it is one that may be followed, or nil.
+
+  Nil for anything else — no scheme, an unknown scheme, a non-string —
+  rather than a cleaned-up version of it. There is no safe rewriting of
+  `javascript:alert(1)` into a place."
+  [shape]
+  (let [url (str/trim (str (:slides/hyperlink shape)))
+        scheme (second (re-find #"^([A-Za-z][A-Za-z0-9+.-]*):" url))]
+    (when (and (seq url) scheme (contains? link-schemes (str/lower-case scheme)))
+      url)))
 
 (defn image
   "A picture shape. `image-data` is a base64-encoded string (portable across

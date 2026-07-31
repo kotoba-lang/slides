@@ -22,6 +22,7 @@
   and its position are the same thing and nothing has to be converted to
   find out where something is."
   (:require [clojure.string :as str]
+            [slides.model :as model]
             [slides.svgraph :as svgraph]))
 
 (defn- esc [s]
@@ -143,6 +144,21 @@
            "\" href=\"data:" (esc (or (:slides/media-type s) "image/png"))
            ";base64," (esc data) "\" preserveAspectRatio=\"xMidYMid meet\"/>"))))
 
+(defn- linked
+  "`drawn` inside an `<a>` when the shape carries a link that may be
+  followed, and as it is otherwise.
+
+  `slides.pptx` has written `:slides/hyperlink` as a relationship on the
+  shape all along and this drew nothing, so a linked shape looked ordinary
+  in every preview and arrived clickable in PowerPoint.
+
+  `rel` on every one: a deck is a thing people are sent, and the page it
+  opens should not be handed a window it can navigate back."
+  [s drawn]
+  (if-let [url (model/shape-link s)]
+    (str "<a href=\"" (esc url) "\" rel=\"noreferrer noopener\">" drawn "</a>")
+    drawn))
+
 (defn shape
   "One shape as SVG, or nil for a kind this does not know.
 
@@ -151,11 +167,12 @@
   to draw it*, and the two look identical on screen."
   [s]
   (when (map? s)
-    (case (:slides/shape s)
-      :text (text-shape s)
-      :rect (rect-shape s)
-      :image (image-shape s)
-      nil)))
+    (some->> (case (:slides/shape s)
+               :text (text-shape s)
+               :rect (rect-shape s)
+               :image (image-shape s)
+               nil)
+             (linked s))))
 
 (defn slide
   "One slide as an SVG string.

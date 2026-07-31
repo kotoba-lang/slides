@@ -160,3 +160,25 @@
                          "text-decoration=\"underline line-through\"")))
     (testing "and a plain run says nothing about decoration"
       (is (not (str/includes? (drawn {}) "text-decoration"))))))
+
+(deftest a-linked-shape-is-drawn-inside-an-anchor
+  ;; `slides.pptx` has written `:slides/hyperlink` as a relationship on the
+  ;; shape all along and this drew nothing, so a linked shape looked
+  ;; ordinary in every preview and arrived clickable in PowerPoint.
+  (let [drawn (fn [url] (one (m/text-box "t" "ここを見て"
+                                         {:slides/hyperlink url})))]
+    (is (str/includes? (drawn "https://example.com/?a=1&b=2")
+                       "<a href=\"https://example.com/?a=1&amp;b=2\" rel=\"noreferrer noopener\">"))
+    (is (str/includes? (drawn "https://example.com") "</a>"))
+    (testing "a scheme that is not a place is not drawn as one"
+      ;; The shape stays; only the link goes. An allowlist, because an
+      ;; `<a href=\"javascript:…\">` in a preview is script in the reader's
+      ;; session.
+      (doseq [refused ["javascript:alert(1)" "data:text/html,<script>" "/relative"
+                       "example.com" "" nil]]
+        (let [out (drawn refused)]
+          (is (not (str/includes? out "<a ")) (pr-str refused))
+          (is (str/includes? out "ここを見て") (pr-str refused)))))
+    (testing "and a rect can carry one too"
+      (is (str/includes? (one (m/rect "r" {:slides/hyperlink "https://example.com"}))
+                         "<a href=\"https://example.com\"")))))
