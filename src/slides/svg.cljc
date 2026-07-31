@@ -89,6 +89,17 @@
          "\" fill=\"" (colour (:slides/color s) "#24292f") "\""
          (when (:slides/bold s) " font-weight=\"bold\"")
          (when (:slides/italic s) " font-style=\"italic\"")
+         ;; `slides.pptx` has carried underline and strikethrough into
+         ;; PowerPoint all along and this drew neither, so a deck with
+         ;; either looked plain here and arrived marked up — a preview that
+         ;; denies what the file says. SVG spells both in one attribute, and
+         ;; a run that is both gets them space-separated, which is what
+         ;; `text-decoration` takes.
+         (let [marks (cond-> []
+                       (:slides/underline s) (conj "underline")
+                       (:slides/strikethrough s) (conj "line-through"))]
+           (when (seq marks)
+             (str " text-decoration=\"" (str/join " " marks) "\"")))
          ">"
          (apply str
                 (map-indexed
