@@ -117,6 +117,28 @@
            :slides/media-type "image/png"}
           attrs)))
 
+(defn table
+  "A table shape. `rows` is a vector of rows, each a vector of cell text.
+
+  `slides.pptx` has written one as a native `<a:tbl>` inside a
+  `<p:graphicFrame>` from the start — it round-trips a table imported from
+  PowerPoint and regenerates one from scratch — and there was no way to make
+  the shape it writes. A deck could only have a table if a .pptx brought one.
+
+  Ragged rows are allowed here and padded by the writer to the widest, which
+  is the same choice `docs.model/table` makes: a row somebody has not
+  finished typing is input, not an impossibility."
+  ([id rows] (table id rows {}))
+  ([id rows attrs]
+   (merge {:slides/id id
+           :slides/shape :table
+           :slides/x 0.8
+           :slides/y 1.5
+           :slides/w 8.4
+           :slides/h 2.0
+           :slides/rows (mapv #(mapv str %) rows)}
+          attrs)))
+
 (defn add-slide [deck slide]
   (update deck :slides/slides conj slide))
 

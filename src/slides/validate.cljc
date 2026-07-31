@@ -19,7 +19,12 @@
   it — including every one imported from a .pptx — warned `unknown shape
   kind will use renderer fallback` on every save, about a kind three of
   this library's four writers know by name."
-  #{:text :rect :image})
+  ;; `:table` was missing for the same reason `:image` was: `slides.pptx`
+  ;; writes one as a native `<a:tbl>` and `slides.office` produces the shape
+  ;; when it reads a PowerPoint file with a table in it, so every deck with
+  ;; one — including every imported deck — warned about an unknown shape on
+  ;; every save.
+  #{:text :rect :image :table})
 
 (def design-override-keys
   [:slides/master :slides/guides

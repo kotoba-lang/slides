@@ -129,6 +129,47 @@
               "\" stroke-width=\"0.02\""))
        "/>"))
 
+(defn- table-shape
+  "A grid of cells, drawn.
+
+  `slides.pptx` writes a table as a native `<a:tbl>`; this drew nothing at
+  all, so a deck with one showed an empty rectangle in every preview and
+  arrived in PowerPoint with the table in it.
+
+  Even columns and rows. The model's `:slides/column-widths` and
+  `:slides/row-heights` are what a PowerPoint import brings with it, and
+  honouring them here is worth doing — it is not done yet, and a preview
+  with even columns is a preview of the right cells in the wrong widths
+  rather than a preview of nothing."
+  [s]
+  (let [x (num-or (:slides/x s) 0) y (num-or (:slides/y s) 0)
+        w (num-or (:slides/w s) 8.4) h (num-or (:slides/h s) 2.0)
+        rows (filterv sequential? (:slides/rows s))
+        cols (max 1 (reduce max 1 (map count rows)))
+        row-count (max 1 (count rows))
+        cell-w (/ w cols)
+        cell-h (/ h row-count)
+        ;; Two thirds of the row, which leaves the text sitting on the line
+        ;; rather than through it, and a size the box chose rather than one
+        ;; this file picked.
+        size (min 0.25 (* cell-h 0.55))]
+    (str
+     (apply str
+            (for [r (range row-count) c (range cols)]
+              (str "<rect x=\"" (measure (+ x (* c cell-w)))
+                   "\" y=\"" (measure (+ y (* r cell-h)))
+                   "\" width=\"" (measure cell-w) "\" height=\"" (measure cell-h)
+                   "\" fill=\"none\" stroke=\"#8c959f\" stroke-width=\"0.01\"/>")))
+     (apply str
+            (for [r (range row-count)
+                  c (range cols)
+                  :let [text (get (get rows r []) c)]
+                  :when (and text (not (str/blank? (str text))))]
+              (str "<text x=\"" (measure (+ x (* c cell-w) 0.06))
+                   "\" y=\"" (measure (+ y (* r cell-h) (* cell-h 0.65)))
+                   "\" font-size=\"" (measure size) "\" fill=\"#24292f\">"
+                   (esc text) "</text>"))))))
+
 (defn- image-shape [s]
   ;; A data URI, because the bytes are already base64 in the model and the
   ;; alternative is a second place they live. An image with no data draws
@@ -171,6 +212,7 @@
                :text (text-shape s)
                :rect (rect-shape s)
                :image (image-shape s)
+               :table (table-shape s)
                nil)
              (linked s))))
 

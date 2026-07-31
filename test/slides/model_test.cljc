@@ -65,3 +65,16 @@
                                   (m/add-shape (m/rect "r" {}))
                                   (m/add-shape (m/image "i" "aGVsbG8=")))))]
     (is (= [] (v/deck-problems deck)) (pr-str (v/deck-problems deck)))))
+
+(deftest a-table-is-a-shape-the-validator-knows
+  ;; The same bug `:image` had: `slides.pptx` writes a table as a native
+  ;; `<a:tbl>` and `slides.office` produces the shape when it reads a
+  ;; PowerPoint file with one, so every deck with a table — including every
+  ;; imported deck — warned about an unknown shape on every save.
+  (let [deck (-> (m/deck "d" {:slides/title "表"})
+                 (m/add-slide (-> (m/slide "s1" {})
+                                  (m/add-shape (m/table "tb" [["名前" "点"] ["a" 10]])))))]
+    (is (= [] (v/deck-problems deck)) (pr-str (v/deck-problems deck)))
+    (is (= [["名前" "点"] ["a" "10"]]
+           (:slides/rows (first (:slides/shapes (first (:slides/slides deck))))))
+        "cells are text, because that is what a cell in a slide's table is")))
