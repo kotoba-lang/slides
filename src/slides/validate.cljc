@@ -10,7 +10,16 @@
    :slides/msg msg})
 
 (def shape-kinds
-  #{:text :rect})
+  "The shapes this deck's own model makes.
+
+  `:image` was missing, and it is one `slides.model/image` constructs,
+  `slides.pptx` embeds as a `p:pic` with its own media part, `slides.svg`
+  draws as a data URI, and `slides.office` produces when it reads a
+  PowerPoint file containing a picture. So every deck with a photograph in
+  it — including every one imported from a .pptx — warned `unknown shape
+  kind will use renderer fallback` on every save, about a kind three of
+  this library's four writers know by name."
+  #{:text :rect :image})
 
 (def design-override-keys
   [:slides/master :slides/guides

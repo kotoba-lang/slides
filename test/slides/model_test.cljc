@@ -51,3 +51,17 @@
         docs (m/items-by-kind ws :slides/doc)]
     (is (= ["doc-a" "doc-b"] (map :slides/id docs)))
     (is (= 2 (count docs)))))
+
+(deftest every-shape-the-model-makes-is-one-the-validator-knows
+  ;; `:image` was not in `shape-kinds`, so a deck with a picture in it
+  ;; warned about an unknown shape on every save — while `slides.pptx`
+  ;; embedded it as a `p:pic`, `slides.svg` drew it, and `slides.office`
+  ;; produced exactly that shape when reading a PowerPoint file with a
+  ;; picture in it. A constructor the validator does not recognise is a
+  ;; warning nobody can act on.
+  (let [deck (-> (m/deck "d" {:slides/title "写真"})
+                 (m/add-slide (-> (m/slide "s1" {:slides/title "一枚目"})
+                                  (m/add-shape (m/text-box "t" "見出し"))
+                                  (m/add-shape (m/rect "r" {}))
+                                  (m/add-shape (m/image "i" "aGVsbG8=")))))]
+    (is (= [] (v/deck-problems deck)) (pr-str (v/deck-problems deck)))))
