@@ -1,6 +1,6 @@
 (ns slides.svg-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is]]
+            [clojure.test :refer [deftest is testing]]
             [slides.model :as m]
             [slides.svg :as svg]))
 
@@ -144,3 +144,19 @@
     (doseq [[_ dash] (re-seq #"stroke-dasharray=\"([^\"]+)\"" out)
             n (map parse-num (str/split dash #"[ ,]+"))]
       (is (and (pos? n) (< n 0.5)) (str "half an inch of dash: " dash)))))
+
+(deftest the-marks-powerpoint-carries-are-the-marks-that-are-drawn
+  ;; `slides.pptx` writes underline and strikethrough; this drew neither, so
+  ;; a deck with either looked plain in the preview and arrived marked up in
+  ;; PowerPoint — a preview that denies what the file says.
+  (let [drawn (fn [attrs] (one (m/text-box "t" "本文" attrs)))]
+    (is (str/includes? (drawn {:slides/bold true}) "font-weight=\"bold\""))
+    (is (str/includes? (drawn {:slides/italic true}) "font-style=\"italic\""))
+    (is (str/includes? (drawn {:slides/underline true}) "text-decoration=\"underline\""))
+    (is (str/includes? (drawn {:slides/strikethrough true})
+                       "text-decoration=\"line-through\""))
+    (testing "both at once is one attribute, which is what SVG takes"
+      (is (str/includes? (drawn {:slides/underline true :slides/strikethrough true})
+                         "text-decoration=\"underline line-through\"")))
+    (testing "and a plain run says nothing about decoration"
+      (is (not (str/includes? (drawn {}) "text-decoration"))))))
