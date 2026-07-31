@@ -182,3 +182,22 @@
     (testing "and a rect can carry one too"
       (is (str/includes? (one (m/rect "r" {:slides/hyperlink "https://example.com"}))
                          "<a href=\"https://example.com\"")))))
+
+(deftest a-table-is-drawn-as-a-grid-with-its-text-in-it
+  ;; `slides.pptx` writes a table as a native `<a:tbl>`; this drew nothing,
+  ;; so a deck with one showed an empty rectangle in every preview and
+  ;; arrived in PowerPoint with the table in it.
+  (let [out (one (m/table "tb" [["名前" "点"] ["a" "10"]]))]
+    (is (= 4 (count (re-seq #"stroke=\"#8c959f\"" out))) "two rows of two cells")
+    (doseq [text ["名前" "点" "a" "10"]]
+      (is (str/includes? out (str ">" text "</text>")) text))
+    (testing "a ragged row is input, not an impossibility"
+      ;; The writer pads to the widest; the preview draws the widest too, so
+      ;; the two agree about how many columns there are.
+      (let [ragged (one (m/table "tb" [["a" "b" "c"] ["d"]]))]
+        (is (= 6 (count (re-seq #"stroke=\"#8c959f\"" ragged))))
+        (is (str/includes? ragged ">d</text>"))))
+    (testing "and an empty cell draws its box and no text"
+      (let [gap (one (m/table "tb" [["a" ""]]))]
+        (is (= 2 (count (re-seq #"stroke=\"#8c959f\"" gap))))
+        (is (= 1 (count (re-seq #"<text" gap))))))))
