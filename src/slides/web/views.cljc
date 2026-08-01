@@ -359,6 +359,7 @@
        (chrome-button "download-edn" "EDN" :download-edn)
        (chrome-button "download-svgraph" "SVGraph" :download-svgraph)
        (chrome-button "download-pptx" "PPTX + causal" :download-pptx {:class "primary"})
+       [:a.github {:href "./architecture.html"} "Architecture gallery"]
        [:a.github {:href "https://github.com/kotoba-lang/slides"} "GitHub"]]]
      {:class "editor-toolbar"})))
 
