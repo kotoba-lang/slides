@@ -183,6 +183,29 @@ The default design includes theme colors, title/body fonts, a clean slide
 master, layout guides, and reusable `:title`, `:subtitle`, `:body`, `:panel`,
 `:eyebrow`, and `:accent-bar` components.
 
+## EDN-first architecture diagrams
+
+`slides.architecture` adds a semantic architecture-diagram vocabulary whose
+source of truth remains plain EDN. It includes `service-card`,
+`database-node`, `boundary`, `lane`, and `arrow-label` components; Light,
+Dark, Executive, and Technical themes; a cloud-neutral icon catalog; and a
+deterministic lane layout. The same model emits semantic SVG hiccup and a
+`slides` slide projection.
+
+```clojure
+(require '[slides.architecture :as architecture])
+
+(def diagram (architecture/sample-by-id :aws-cloud))
+(architecture/layout-diagram diagram)       ; positioned EDN
+(architecture/diagram->svg-hiccup diagram)  ; SVG as EDN
+(architecture/diagram->svg diagram)         ; portable SVG string
+(architecture/diagram->slide diagram)       ; slides EDN projection
+```
+
+The checked-in GitHub Pages gallery at `docs/architecture.html` is generated
+from the same four sample maps by `clojure -M:pages`; no SVG file is maintained
+by hand.
+
 ## CLI
 
 The PPTX writer is CLJC and the repo-owned command surface is the Clojure CLI.
