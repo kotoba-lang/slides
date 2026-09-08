@@ -4,7 +4,7 @@
   The renderer intentionally shells out to installed document renderers instead
   of adding heavyweight Java dependencies to slides itself."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str])
+            [kotoba.lang.text :as str])
   (:import [java.nio.file CopyOption Files Path StandardCopyOption]
            [java.util.concurrent TimeUnit]))
 

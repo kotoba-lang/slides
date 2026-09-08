@@ -3,7 +3,7 @@
 
   The source of truth is plain data: themes, icons, semantic components,
   diagrams, layout results, and the final SVG hiccup tree are all EDN."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [slides.hiccup :as hiccup]))
 
 (def themes
@@ -265,7 +265,7 @@
              :fill (:surface-alt theme) :stroke (:line theme)}]
      [:text {:x mx :y (+ my 4) :text-anchor "middle" :fill (:muted theme)
              :font-family (:mono theme) :font-size 10 :font-weight 600}
-      (str/upper-case label)]]))
+      (str/upper label)]]))
 
 (defn diagram->svg-hiccup
   "Returns a complete, semantic SVG as hiccup EDN."

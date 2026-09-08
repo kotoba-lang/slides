@@ -4,7 +4,7 @@
   The public surface is data-first: pass a deck map with :slides/slides and
   receive a .pptx byte array or write it to disk on the JVM."
   (:require [clojure.set :as set]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [drawingml.core :as dml]
             [ooxml.core :as ooxml]
             [presentationml.core :as pml]
@@ -88,7 +88,7 @@
   (long (Math/round (* emu-per-inch (double (numeric inches 0))))))
 
 (defn- hex-color [x fallback]
-  (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper-case)]
+  (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper)]
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn- content-types
@@ -517,7 +517,7 @@
 (defn- author-initials [author-name]
   (->> (str/split (str author-name) #"\s+")
        (remove str/blank?)
-       (map #(str/upper-case (subs % 0 1)))
+       (map #(str/upper (subs % 0 1)))
        (apply str)))
 
 (defn- comment-authors-xml
@@ -1923,7 +1923,7 @@
   (reduce (fn [acc ch]
             (+ (* acc 26) (- (int ch) 64)))
           0
-          (str/upper-case (str col))))
+          (str/upper (str col))))
 
 (defn- index->col [idx]
   (loop [n idx

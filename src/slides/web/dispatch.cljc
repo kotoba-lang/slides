@@ -12,7 +12,7 @@
   handlers in slides.web.events expect. Keeping it pure .cljc means the whole
   contract is exercised by JVM tests; the thin .cljs adapter only reads the
   DOM and calls these fns."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 ;; ---------------------------------------------------------------------------
 ;; value parsing

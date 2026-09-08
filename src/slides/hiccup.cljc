@@ -1,5 +1,5 @@
 (ns slides.hiccup
-  (:require [clojure.string :as str])
+  (:require [kotoba.lang.text :as str])
   #?(:cljs (:import (goog.string StringBuffer))))
 
 (def void-tags

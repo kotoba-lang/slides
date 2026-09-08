@@ -21,7 +21,7 @@
   The SVG uses those numbers directly as its viewBox, so a shape's numbers
   and its position are the same thing and nothing has to be converted to
   find out where something is."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [slides.model :as model]
             [slides.svgraph :as svgraph]))
 

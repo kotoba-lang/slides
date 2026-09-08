@@ -21,7 +21,7 @@
   `(on-field field-string)` factory, so the walk itself is host-independent
   and JVM-testable. The SSR path never calls this namespace — fn-valued
   attrs never reach shitsuke.hiccup/->html."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [clojure.walk :as walk]))
 
 (defn tag-name

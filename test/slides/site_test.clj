@@ -1,6 +1,6 @@
 (ns slides.site-test
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [clojure.test :refer [deftest is]]
             [slides.architecture-site :as architecture-site]
             [slides.build :as build]

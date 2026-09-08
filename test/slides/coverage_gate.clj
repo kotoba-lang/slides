@@ -1,6 +1,6 @@
 (ns slides.coverage-gate
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def default-lcov-path "target/coverage/lcov.info")
 
