@@ -1,7 +1,7 @@
 (ns slides.office
   "Office PPTX to slides deck bridge (EDN/CLJC only)."
   (:require [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [office.embed :as embed]
             [office.graph :as office-graph]
             [office.opc :as opc]
@@ -15,7 +15,7 @@
 (defn- sanitize-id [x]
   (let [base (-> (or x "")
                  str
-                 str/lower-case
+                 str/lower
                  (str/replace #"[^a-z0-9]+" "-")
                  (str/replace #"-{2,}" "-")
                  (str/replace #"(^-)|(-$)" ""))]

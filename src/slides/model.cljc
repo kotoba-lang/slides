@@ -1,6 +1,6 @@
 (ns slides.model
   "Pure EDN model for the GFTD slides/docs/drive/sheets workspace."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def item-kinds
   #{:slides/deck
@@ -98,7 +98,7 @@
   [shape]
   (let [url (str/trim (str (:slides/hyperlink shape)))
         scheme (second (re-find #"^([A-Za-z][A-Za-z0-9+.-]*):" url))]
-    (when (and (seq url) scheme (contains? link-schemes (str/lower-case scheme)))
+    (when (and (seq url) scheme (contains? link-schemes (str/lower scheme)))
       url)))
 
 (defn image

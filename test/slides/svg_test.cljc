@@ -1,5 +1,5 @@
 (ns slides.svg-test
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [clojure.test :refer [deftest is testing]]
             [slides.model :as m]
             [slides.svg :as svg]))

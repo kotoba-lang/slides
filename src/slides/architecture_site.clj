@@ -1,7 +1,7 @@
 (ns slides.architecture-site
   "Static GitHub Pages gallery generated from slides.architecture EDN."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [slides.architecture :as architecture]
             [slides.hiccup :as hiccup]))
 

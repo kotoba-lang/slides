@@ -1,7 +1,7 @@
 (ns slides.cli
   "CLI entrypoint for slides Office/PPTX conversion."
   (:require [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [slides.causal :as causal]
             [slides.office :as office]
             [slides.pptx :as pptx]

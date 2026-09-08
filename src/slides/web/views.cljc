@@ -21,7 +21,7 @@
   its stable #id + data-* enhancer hooks (see `with-attrs`). The slide CANVAS
   and thumbnails render user deck data (colors/sizes from the deck EDN) —
   that stays inline user data, untouched by the design system."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [slides.design :as design]
             [kotoba-ui.core :as ui]
             [appkit.core :as appkit]))
@@ -37,7 +37,7 @@
   (if (and (number? x) (pos? x)) x fallback))
 
 (defn valid-hex [x fallback]
-  (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper-case)]
+  (let [s (-> (or x fallback) str (str/replace #"^#" "") str/upper)]
     (if (re-matches #"[0-9A-F]{6}" s) s fallback)))
 
 (defn slide-index [db]

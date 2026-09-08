@@ -1,6 +1,6 @@
 (ns slides.pptx.import
   "PPTX PresentationML/DrawingML to slides EDN adapter."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [presentationml.parse :as pml-parse]))
 
 (defn- file-title [file-name]
