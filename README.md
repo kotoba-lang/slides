@@ -84,8 +84,8 @@ the reference implementation of the shitsuke dual-render contract's browser
 side; it flips `data-kotoba-render` from `ssr` to `live` on mount):
 
 ```bash
-clojure -M:pages                        # docs/index.html + docs/main.css
-npm ci && npx shadow-cljs release app   # docs/js/main.js
+kbb -M:pages                        # docs/index.html + docs/main.css
+npm ci && amu compile --target wasm32-browser app   # docs/js/main.js
 ```
 
 ## PPTX
@@ -203,7 +203,7 @@ deterministic lane layout. The same model emits semantic SVG hiccup and a
 ```
 
 The checked-in GitHub Pages gallery at `docs/architecture.html` is generated
-from the same four sample maps by `clojure -M:pages`; no SVG file is maintained
+from the same four sample maps by `kbb -M:pages`; no SVG file is maintained
 by hand.
 
 ## CLI
@@ -211,14 +211,14 @@ by hand.
 The PPTX writer is CLJC and the repo-owned command surface is the Clojure CLI.
 
 ```bash
-clojure -M:cli from-pptx deck.pptx deck.edn
-clojure -M:cli pptx deck.edn deck.pptx
-clojure -M:cli pptx-causal deck.edn deck-causal.pptx
-clojure -M:cli causal-deck deck-causal.pptx recovered.edn
-clojure -M:cli svgraph deck.edn deck.svgraph.edn
-clojure -M:cli update base.pptx deck.edn updated.pptx
-clojure -M:cli render-pptx deck.pptx target/visual/deck 120 96
-clojure -M:cli visual-diff before.pptx after.pptx target/visual/diff 120 96
+kbb -M:cli from-pptx deck.pptx deck.edn
+kbb -M:cli pptx deck.edn deck.pptx
+kbb -M:cli pptx-causal deck.edn deck-causal.pptx
+kbb -M:cli causal-deck deck-causal.pptx recovered.edn
+kbb -M:cli svgraph deck.edn deck.svgraph.edn
+kbb -M:cli update base.pptx deck.edn updated.pptx
+kbb -M:cli render-pptx deck.pptx target/visual/deck 120 96
+kbb -M:cli visual-diff before.pptx after.pptx target/visual/diff 120 96
 ```
 
 When imported shapes carry `:ooxml/source` locators, `update` patches matching
@@ -351,11 +351,11 @@ For the *reader* side of each row (`kotoba-lang/drawingml`/
 ## Test
 
 ```bash
-clojure -M:test
-clojure -M:local:test
-clojure -M:pages
-clojure -M:coverage
-clojure -M:coverage-thresholds
+kbb -M:test
+kbb -M:local:test
+kbb -M:pages
+kbb -M:coverage
+kbb -M:coverage-thresholds
 ```
 
 The test suite covers the EDN workspace model, validation, routing, HTML render,
@@ -373,8 +373,8 @@ export -> Office re-import, and include grouped shapes, chart data/workbook
 relationships, and placeholder semantics. Source-aware `update` tests additionally
 verify that the original group XML, placeholder tags, chart parts, chart rels,
 and embedded workbook entries are preserved while patched slide text is updated.
-`clojure -M:coverage` runs Cloverage against the JVM/CLJC namespaces and fails
-below 85% aggregate coverage. `clojure -M:coverage-thresholds` then checks the generated
+`kbb -M:coverage` runs Cloverage against the JVM/CLJC namespaces and fails
+below 85% aggregate coverage. `kbb -M:coverage-thresholds` then checks the generated
 LCOV report against namespace-level floors, with a 90% aggregate floor, so CI
 blocks broad regressions and local coverage holes in the EDN model, Office/PPTX
 bridge, Pages Hiccup shell, and static build pipeline.
