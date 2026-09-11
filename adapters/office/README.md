@@ -2,7 +2,7 @@
 
 Draft package boundary for the Office import adapter.
 
-Current implementation lives in `src/slides/office.cljc`. This directory records
+Current implementation lives in `src/slides/office.cljk`. This directory records
 the package-system boundary before code is physically moved or published:
 
 - consumes `app.kotoba.slides.deck`
