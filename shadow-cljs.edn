@@ -3,7 +3,7 @@
 ;; on top of the repo's own deps (same pattern as kami-mangaka-reader,
 ;; ADR-2606282101). Release output is docs/js/main.js — a checked-in Pages
 ;; artifact like docs/index.html / docs/main.css:
-;;   npm ci && npx shadow-cljs release app
+;;   npm ci && amu compile --target wasm32-browser app
 {:deps {:aliases [:cljs]}
  :builds {:app {:target :browser
                 :output-dir "docs/js"

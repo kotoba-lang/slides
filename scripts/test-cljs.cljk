@@ -1,7 +1,7 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 ;; The same test namespaces, on the other host.
 ;;
-;; `clojure -M:test` runs them on the JVM, which is where they were written
+;; `kbb -M:test` runs them on the JVM, which is where they were written
 ;; and where they all passed while the outline strokes covered a slide in
 ;; grey blocks. That defect was a picture problem, not a host problem — but
 ;; it is the reason to look, and looking found that the four portable
@@ -14,7 +14,7 @@
 ;; wire it sends, and the two pictures it draws — so these are the four that
 ;; have to work on both.
 ;;
-;;   nbb --classpath "$(clojure -Spath):test" scripts/test-cljs.cljk
+;;   kbb --backend sci --classpath "$(kbb -Spath):test" scripts/test-cljs.cljk
 ;;
 ;; The `.clj` tests — the package, the site, the CLI — are absent here rather
 ;; than failing, which is the correct outcome and not a gap.

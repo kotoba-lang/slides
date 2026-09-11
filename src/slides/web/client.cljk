@@ -97,7 +97,7 @@
     (.revokeObjectURL js/URL url)))
 
 (def ^:private pptx-jvm-only
-  "PPTX needs the JVM zip host — run `clojure -M:cli` from kotoba-lang/slides. Browser PPTX is a follow-up.")
+  "PPTX needs the JVM zip host — run `kbb -M:cli` from kotoba-lang/slides. Browser PPTX is a follow-up.")
 
 (defn- import-edn-file! [input]
   (when-let [file (aget (.-files input) 0)]
