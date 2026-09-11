@@ -14,7 +14,7 @@
 ;; wire it sends, and the two pictures it draws — so these are the four that
 ;; have to work on both.
 ;;
-;;   nbb --classpath "$(clojure -Spath):test" scripts/test-cljs.cljs
+;;   nbb --classpath "$(clojure -Spath):test" scripts/test-cljs.cljk
 ;;
 ;; The `.clj` tests — the package, the site, the CLI — are absent here rather
 ;; than failing, which is the correct outcome and not a gap.

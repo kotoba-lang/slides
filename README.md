@@ -61,7 +61,7 @@ PPTX bytes → deck EDN → PPTX bytes の編集/export 境界を EDN だけに�
 
 The package boundary for this integration is recorded as
 `kotoba-lang/slides-office` under `adapters/office/package-manifest.edn`. The
-current code still lives in `src/slides/office.cljc`; the adapter manifest makes
+current code still lives in `src/slides/office.cljk`; the adapter manifest makes
 the dependency boundary explicit before publication.
 
 ## Validation

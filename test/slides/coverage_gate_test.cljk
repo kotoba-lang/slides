@@ -4,12 +4,12 @@
 
 (def sample-lcov
   "TN:
-SF:/repo/src/slides/model.cljc
+SF:/repo/src/slides/model.cljk
 DA:1,1
 DA:2,0
 DA:3,2
 end_of_record
-SF:src/slides/pptx.cljc
+SF:src/slides/pptx.cljk
 DA:1,1
 DA:2,1
 end_of_record
