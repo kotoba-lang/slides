@@ -1,5 +1,5 @@
 (ns slides.causal-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.causal :as causal]
             [slides.model :as m]
             [slides.pptx-test :refer [zip-entries]]))

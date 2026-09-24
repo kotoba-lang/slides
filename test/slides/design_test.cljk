@@ -1,5 +1,5 @@
 (ns slides.design-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.design :as design]))
 
 (deftest deck-design-ignores-malformed-top-level-overrides

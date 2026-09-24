@@ -1,5 +1,5 @@
 (ns slides.render-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.model :as model]
             [slides.render :as render]
             [slides.routes :as routes]))

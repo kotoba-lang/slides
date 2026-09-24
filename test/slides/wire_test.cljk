@@ -1,5 +1,5 @@
 (ns slides.wire-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.model :as model]
             [slides.validate :as validate]
             [slides.wire :as wire]))

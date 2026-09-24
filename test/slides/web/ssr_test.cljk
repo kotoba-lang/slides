@@ -1,7 +1,7 @@
 (ns slides.web.ssr-test
   "SSR parity: the same views reagent mounts must render to stable HTML on the
   JVM via shitsuke.hiccup/->html. Mirrors the kami-mangaka-reader parity test."
-  (:require [kotoba.lang.text] [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.lang.text] [kotoba.test :refer [deftest is testing]]
             [slides.web.ssr :as ssr]
             [slides.web.views :as views]
             [shitsuke.hiccup :as hic]))

@@ -1,5 +1,5 @@
 (ns slides.svgraph-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.model :as m]
             [slides.svgraph :as svgraph]))
 

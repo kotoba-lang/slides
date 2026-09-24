@@ -1,5 +1,5 @@
 (ns slides.hiccup-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.hiccup :as h]))
 
 (deftest renders-tags-attributes-and-escaped-text

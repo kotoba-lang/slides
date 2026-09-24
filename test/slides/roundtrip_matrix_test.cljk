@@ -1,6 +1,6 @@
 (ns slides.roundtrip-matrix-test
   (:require [clojure.edn :as edn]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [slides.causal :as causal]
             [slides.office :as office]
             [slides.pptx :as pptx])

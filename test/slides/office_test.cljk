@@ -1,6 +1,6 @@
 (ns slides.office-test
   (:require [clojure.edn :as edn]
-            [clojure.test :refer [deftest is]]
+            [kotoba.test :refer [deftest is]]
             [kotoba.editor :as editor]
             [office.graph :as office-graph]
             [office-style.style :as office-style]
