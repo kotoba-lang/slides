@@ -1,5 +1,5 @@
 (ns slides.build
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [slides.architecture-site :as architecture-site]
             [slides.site :as site]
             [slides.web.styles :as styles]))

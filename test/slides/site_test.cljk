@@ -1,5 +1,5 @@
 (ns slides.site-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.test :refer [deftest is]]
             [slides.architecture-site :as architecture-site]
@@ -29,16 +29,16 @@
     (is (re-find #"<script src=\"\./js/main\.js\" defer" html))))
 
 (deftest write-persists-index-html
-  (let [dir (java.nio.file.Files/createTempDirectory "slides-site-test" (make-array java.nio.file.attribute.FileAttribute 0))
-        out (io/file (.toFile dir) "index.html")]
+  (let [dir (io/temp-dir "slides-site-test")
+        out (io/file dir "index.html")]
     (with-redefs [io/file (fn [& _] out)]
       (is (= out (site/write!)))
-      (is (.exists out))
+      (is (io/exists? out))
       (is (re-find #"<title>kotoba-lang/slides</title>" (slurp out))))))
 
 (deftest css-release-writes-static-css-with-token-vars
-  (let [dir (java.nio.file.Files/createTempDirectory "slides-css-test" (make-array java.nio.file.attribute.FileAttribute 0))
-        out (io/file (.toFile dir) "main.css")]
+  (let [dir (io/temp-dir "slides-css-test")
+        out (io/file dir "main.css")]
     (with-redefs [io/file (fn [& _] out)]
       (is (= out (build/css-release!)))
       (let [css (slurp out)]
