@@ -2,7 +2,7 @@
   "Exercises the slides web re-frame events/subs on the JVM mini runtime
   (shitsuke.re-frame.core). The SAME registrations run on real re-frame in the
   browser; staying within the portable 7-fn subset keeps this test faithful."
-  (:require [clojure.test :refer [deftest is use-fixtures]]
+  (:require [kotoba.test :refer [deftest is use-fixtures]]
             [shitsuke.re-frame.core :as rf]
             [slides.design :as design]
             [slides.web.events :as events]

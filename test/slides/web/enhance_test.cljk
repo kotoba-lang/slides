@@ -2,7 +2,7 @@
   "The live-host hiccup enhancer: attaches :on-change to data-field controls
   and converts data-field selects to controlled form — leaving everything
   else (including the SSR bytes contract) untouched."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [clojure.walk :as walk]
             [slides.web.enhance :as enhance]
             [slides.web.ssr :as ssr]

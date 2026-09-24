@@ -19,7 +19,7 @@
 ;; The `.clj` tests — the package, the site, the CLI — are absent here rather
 ;; than failing, which is the correct outcome and not a gap.
 
-(require '[clojure.test :as t]
+(require '[kotoba.test :as t]
          'slides.model-test
          'slides.svg-test
          'slides.svgraph-test

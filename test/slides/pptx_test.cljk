@@ -1,6 +1,6 @@
 (ns slides.pptx-test
   (:require [kotoba.lang.text :as str]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [slides.design :as design]
             [slides.model :as m]
             [slides.office :as office]

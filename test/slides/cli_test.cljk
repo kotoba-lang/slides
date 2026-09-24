@@ -1,5 +1,5 @@
 (ns slides.cli-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [clojure.edn :as edn]
             [kotoba.lang.text :as str]
             [slides.causal :as causal]

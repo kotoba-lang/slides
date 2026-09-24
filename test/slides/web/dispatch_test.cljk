@@ -1,7 +1,7 @@
 (ns slides.web.dispatch-test
   "The data-act / data-field → event-vector contract, exercised end-to-end on
   the JVM against the real handlers via the shitsuke re-frame mini runtime."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             #?(:clj [shitsuke.re-frame.core :as rf])
             [slides.web.dispatch :as dispatch]
             #?(:clj [slides.web.events :as events])

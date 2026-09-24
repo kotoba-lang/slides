@@ -1,5 +1,5 @@
 (ns slides.visual-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [slides.visual :as visual]))
 
 (deftest require-tools-reports-missing-renderers
