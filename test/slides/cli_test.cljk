@@ -1,6 +1,6 @@
 (ns slides.cli-test
   (:require [kotoba.test :refer [deftest is]]
-            [clojure.edn :as edn]
+            [kotoba.lang.edn :as edn]
             [kotoba.lang.text :as str]
             [slides.causal :as causal]
             [slides.office :as office]
