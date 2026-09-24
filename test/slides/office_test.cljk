@@ -1,5 +1,5 @@
 (ns slides.office-test
-  (:require [kotoba.lang.edn :as edn]
+  (:require [kotoba.bytes :as kbytes] [kotoba.lang.edn :as edn]
             [kotoba.test :refer [deftest is]]
             [kotoba.editor :as editor]
             [office.graph :as office-graph]
@@ -15,7 +15,7 @@
     (with-open [zip (java.util.zip.ZipOutputStream. out)]
       (doseq [[path text] entries]
         (.putNextEntry zip (java.util.zip.ZipEntry. path))
-        (.write zip (.getBytes text "UTF-8"))
+        (.write zip (kbytes/utf8-bytes text))
         (.closeEntry zip)))
     (.toByteArray out)))
 
@@ -287,7 +287,7 @@
                :office/edges []}]
     (with-redefs [office-graph/analyze-bytes (fn [_] graph)
                   office-style/extract-bytes (fn [_] {})]
-      (let [deck (office/deck-from-office-bytes (.getBytes "ignored" "UTF-8"))
+      (let [deck (office/deck-from-office-bytes (kbytes/utf8-bytes "ignored"))
             texts (map :slides/text (-> deck :slides/slides first :slides/shapes))]
         (is (= ["Two" "Huge"] texts))))))
 

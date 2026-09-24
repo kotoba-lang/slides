@@ -3,7 +3,7 @@
 
   The renderer intentionally shells out to installed document renderers instead
   of adding heavyweight Java dependencies to slides itself."
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.bytes :as kbytes] [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.nio.file CopyOption Files Path StandardCopyOption]
            [java.util.concurrent TimeUnit]))
@@ -43,8 +43,8 @@
     (if finished?
       {:cmd (mapv str cmd)
        :exit (.exitValue process)
-       :stdout (String. (.readAllBytes stdout-stream) "UTF-8")
-       :stderr (String. (.readAllBytes stderr-stream) "UTF-8")}
+       :stdout (kbytes/utf8-string (.readAllBytes stdout-stream))
+       :stderr (kbytes/utf8-string (.readAllBytes stderr-stream))}
       (do
         (.destroyForcibly process)
         (.close stdout-stream)

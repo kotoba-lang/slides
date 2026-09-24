@@ -3,7 +3,7 @@
   and converts data-field selects to controlled form — leaving everything
   else (including the SSR bytes contract) untouched."
   (:require [kotoba.test :refer [deftest is testing]]
-            [clojure.walk :as walk]
+            [kotoba.lang.coll :as walk]
             [slides.web.enhance :as enhance]
             [slides.web.ssr :as ssr]
             [slides.web.views :as views]))

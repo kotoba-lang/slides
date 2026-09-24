@@ -1,5 +1,5 @@
 (ns slides.cli-test
-  (:require [kotoba.test :refer [deftest is]]
+  (:require [kotoba.bytes :as kbytes] [kotoba.test :refer [deftest is]]
             [kotoba.lang.edn :as edn]
             [kotoba.lang.text :as str]
             [slides.causal :as causal]
@@ -36,7 +36,7 @@
 (deftest read-bytes-reads-file-content
   (let [tmp (java.io.File/createTempFile "slides-cli-bytes" ".bin")
         path (.getAbsolutePath tmp)
-        payload (.getBytes "payload-bytes" "UTF-8")
+        payload (kbytes/utf8-bytes "payload-bytes")
         read-bytes-fn (ns-resolve 'slides.cli 'read-bytes)]
     (is (some? read-bytes-fn))
     (is (fn? @read-bytes-fn))

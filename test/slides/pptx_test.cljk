@@ -1,5 +1,5 @@
 (ns slides.pptx-test
-  (:require [kotoba.lang.text :as str]
+  (:require [kotoba.bytes :as kbytes] [kotoba.io :as kio] [kotoba.lang.text :as str]
             [kotoba.test :refer [deftest is testing]]
             [slides.design :as design]
             [slides.model :as m]
@@ -42,7 +42,7 @@
     (with-open [zip (ZipOutputStream. out)]
       (doseq [[path text] entries]
         (.putNextEntry zip (ZipEntry. path))
-        (.write zip (if (string? text) (.getBytes text "UTF-8") text))
+        (.write zip (if (string? text) (kbytes/utf8-bytes text) text))
         (.closeEntry zip)))
     (.toByteArray out)))
 
@@ -282,7 +282,7 @@
                                          (when (pos? n) (.write out buf 0 n) (recur))))
                                      (.toByteArray out))
                                    (recur)))))
-            expected-bytes (.decode (java.util.Base64/getDecoder) one-pixel-png-base64)]
+            expected-bytes (kbytes/base64-decode-bytes one-pixel-png-base64)]
         (is (= (seq expected-bytes) (seq embedded-bytes)))))
     (testing "the slide's own .rels wires rId2 to the media part, alongside the layout rel"
       (is (re-find #"Id=\"rId1\"[^>]*slideLayout" rels-xml))
@@ -1269,8 +1269,8 @@
       (is (not (re-find #"<a:round/>|<a:bevel/>|<a:miter" slide-xml))))))
 
 (deftest writes-picture-fill-as-shape-fill
-  (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
-        b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
+  (let [png-bytes (kbytes/utf8-bytes "PNGDATA")
+        b64 (kbytes/base64-encode png-bytes)
         deck (-> (m/deck "deck" {:slides/title "Picture-filled"})
                  (m/add-slide
                   (-> (m/slide "s1")
@@ -1865,7 +1865,7 @@
     (try
       (spit base "base-placeholder")
       (let [result (pptx/update-pptx! base-path out-path deck)
-            entries (zip-entries (java.nio.file.Files/readAllBytes (java.nio.file.Paths/get out-path (into-array String []))))]
+            entries (zip-entries (kio/read-all-bytes out-path))]
         (is (= out-path (:slides/path result)))
         (is (= 1 (:slides/slides result)))
         (is (= (count (filter #(re-find #"^ppt/slides/slide\d+\.xml$" %)
@@ -1890,7 +1890,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -1932,7 +1932,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         gradient {:stops [{:position 0.0 :color "336699"} {:position 100.0 :color "AABBCC"}] :angle 90.0}
@@ -1969,7 +1969,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2005,7 +2005,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         crop {:left 10.0 :top 5.0}
@@ -2043,7 +2043,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2081,7 +2081,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2118,7 +2118,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2155,7 +2155,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2199,7 +2199,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2249,7 +2249,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         pic-locks {:no-move? true}
@@ -2291,7 +2291,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         body-props {:vertical :vert270 :anchor :center}
@@ -2328,7 +2328,7 @@
                      (with-open [zip (java.util.zip.ZipOutputStream. out)]
                        (doseq [[path text] base-entries]
                          (.putNextEntry zip (java.util.zip.ZipEntry. path))
-                         (.write zip (.getBytes text "UTF-8"))
+                         (.write zip (kbytes/utf8-bytes text))
                          (.closeEntry zip)))
                      (.toByteArray out))
         deck {:slides/id "imported"
@@ -2784,8 +2784,8 @@
     (is (= 2 (count (re-seq #"<p:sp>" slide))))))
 
 (deftest update-pptx-adds-new-image-shape-with-media-and-relationship
-  (let [png-bytes (.getBytes "PNGDATA" "UTF-8")
-        b64 (.encodeToString (java.util.Base64/getEncoder) png-bytes)
+  (let [png-bytes (kbytes/utf8-bytes "PNGDATA")
+        b64 (kbytes/base64-encode png-bytes)
         base-bytes (zip-bytes
                     {"[Content_Types].xml"
                      (str "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"

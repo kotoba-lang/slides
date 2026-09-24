@@ -1,5 +1,5 @@
 (ns slides.causal-test
-  (:require [kotoba.test :refer [deftest is]]
+  (:require [kotoba.io :as kio] [kotoba.test :refer [deftest is]]
             [slides.causal :as causal]
             [slides.model :as m]
             [slides.pptx-test :refer [zip-entries]]))
@@ -28,8 +28,8 @@
         out-path (.getAbsolutePath out)]
     (try
       (let [result (causal/write-pptx! out-path deck)
-            entries (zip-entries (java.nio.file.Files/readAllBytes
-                                  (java.nio.file.Paths/get out-path (into-array String []))))]
+            entries (zip-entries (kio/read-all-bytes
+                                  out-path))]
         (is (= out-path (:slides/path result)))
         (is (:slides/causal result))
         (is (contains? entries "ocz/causal.edn")))
