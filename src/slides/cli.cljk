@@ -1,6 +1,6 @@
 (ns slides.cli
   "CLI entrypoint for slides Office/PPTX conversion."
-  (:require [kotoba.lang.edn :as edn]
+  (:require [kotoba.io :as kio] [kotoba.lang.edn :as edn]
             [kotoba.lang.text :as str]
             [slides.causal :as causal]
             [slides.office :as office]
@@ -35,8 +35,8 @@
 
 (defn- read-bytes [path]
   #?(:clj
-     (java.nio.file.Files/readAllBytes
-      (java.nio.file.Paths/get (str path) (into-array String [])))
+     (kio/read-all-bytes
+      (str path))
      :cljs
      (throw (ex-info "slides CLI byte reader requires a JVM host" {:feature :slides/cli}))))
 

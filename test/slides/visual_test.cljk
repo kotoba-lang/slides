@@ -1,10 +1,10 @@
 (ns slides.visual-test
-  (:require [kotoba.test :refer [deftest is]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is]]
             [slides.visual :as visual]))
 
 (deftest require-tools-reports-missing-renderers
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"PPTX visual rendering requires"
        (visual/require-tools! {:libreoffice nil
                                :pdftoppm nil}))))
@@ -66,7 +66,7 @@
 
 (deftest compare-pngs-requires-equal-lengths
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"PNG sequence lengths differ"
        (visual/compare-pngs! ["a.png"] [] "/tmp/slides-visual-diff"
                              {:tools {:compare "/usr/bin/compare"}}))))
@@ -74,7 +74,7 @@
 (deftest run-command-times-out
   (let [started (System/currentTimeMillis)]
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
+         kerror/ExceptionInfo
          #"command timed out"
          (visual/run-command! ["sh" "-lc" "sleep 3"] {:timeout-seconds 1})))
     (is (< (- (System/currentTimeMillis) started) 5000))))

@@ -3,7 +3,7 @@
 
   The public surface is data-first: pass a deck map with :slides/slides and
   receive a .pptx byte array or write it to disk on the JVM."
-  (:require [kotoba.lang.coll :as set]
+  (:require [kotoba.bytes :as kbytes] [kotoba.io :as kio] [kotoba.lang.coll :as set]
             [kotoba.lang.text :as str]
             [drawingml.core :as dml]
             [ooxml.core :as ooxml]
@@ -49,7 +49,7 @@
   below), so there is no host zip to embed decoded bytes into there yet."
   [s]
   #?(:clj (try
-            (.decode (java.util.Base64/getDecoder) (str s))
+            (kbytes/base64-decode-bytes (str s))
             (catch Exception _ nil))
      :cljs nil))
 
@@ -1779,7 +1779,7 @@
 #?(:clj
    (defn- add-entry! [^ZipOutputStream zip path content]
      (.putNextEntry zip (ZipEntry. path))
-     (.write zip (.getBytes (str content) "UTF-8"))
+     (.write zip (kbytes/utf8-bytes (str content)))
      (.closeEntry zip)))
 
 #?(:clj
@@ -1812,11 +1812,11 @@
        (.toByteArray baos))))
 
 (defn- text-entry-bytes [s]
-  #?(:clj (.getBytes (str s) "UTF-8")
+  #?(:clj (kbytes/utf8-bytes (str s))
      :cljs s))
 
 (defn- bytes->text [bytes]
-  #?(:clj (String. ^bytes bytes "UTF-8")
+  #?(:clj (kbytes/utf8-string ^bytes bytes)
      :cljs bytes))
 
 (declare replace-nth-element)
@@ -3520,8 +3520,8 @@
   "Writes an updated .pptx from base path and deck EDN. JVM only."
   [in-path out-path deck]
   #?(:clj
-     (let [base (java.nio.file.Files/readAllBytes
-                 (java.nio.file.Path/of (str in-path) (into-array String [])))
+     (let [base (kio/read-all-bytes
+                 (str in-path))
            bytes (update-pptx-bytes base deck)]
        (with-open [out (FileOutputStream. (str out-path))]
          (.write out bytes))
