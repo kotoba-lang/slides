@@ -1,5 +1,5 @@
 (ns slides.cli-test
-  (:require [kotoba.bytes :as kbytes] [kotoba.test :refer [deftest is]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.bytes :as kbytes] [kotoba.test :refer [deftest is]]
             [kotoba.lang.edn :as edn]
             [kotoba.lang.text :as str]
             [slides.causal :as causal]
@@ -55,7 +55,7 @@
     (is (fn? @read-deck-fn))
     (try
       (spit tmp "[:not :a :map]")
-      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+      (is (thrown-with-msg? kerror/ExceptionInfo
                             #"deck EDN must be a map"
                             (@read-deck-fn path)))
       (spit tmp "{:slides/title \"Deck\"}")
@@ -68,7 +68,7 @@
     (is (some? require-args-fn))
     (is (fn? @require-args-fn))
     (is (nil? (@require-args-fn "in.edn" "out.pptx")))
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo
+    (is (thrown-with-msg? kerror/ExceptionInfo
                           #"slides cli"
                           (@require-args-fn "in.edn" nil)))))
 
